@@ -1,0 +1,778 @@
+{
+  "schemaVersion": 1,
+  "apiVersion": "1.0",
+  "generatedBy": "src-tauri/src/ipc_schema.rs",
+  "unions": {
+    "AppCloseRespondOutcome": [
+      {
+        "kind": "cancelled"
+      },
+      {
+        "kind": "closing"
+      },
+      {
+        "kind": "alreadyResolved"
+      },
+      {
+        "kind": "unknown"
+      }
+    ],
+    "AppErrorDetails": [
+      {
+        "kind": "path"
+      },
+      {
+        "actual": {},
+        "expected": {},
+        "kind": "conflict"
+      },
+      {
+        "kind": "safety",
+        "report": {}
+      },
+      {
+        "kind": "validation",
+        "reason": "synthetic"
+      },
+      {
+        "kind": "operation",
+        "operationId": "synthetic"
+      },
+      {
+        "displayTarget": "synthetic",
+        "grantRequestId": "synthetic",
+        "kind": "grant",
+        "purpose": "synthetic"
+      },
+      {
+        "cause": "synthetic",
+        "kind": "assetWrite",
+        "owner": {}
+      },
+      {
+        "cause": "synthetic",
+        "kind": "io",
+        "operation": "synthetic"
+      }
+    ],
+    "AppOpenResourcesAckOutcome": [
+      {
+        "kind": "acknowledged"
+      },
+      {
+        "kind": "alreadyAcknowledged"
+      },
+      {
+        "kind": "unknown"
+      }
+    ],
+    "AssetImportClipboardOutcome": [
+      {
+        "asset": "synthetic",
+        "kind": "imported"
+      },
+      {
+        "displayTarget": "synthetic",
+        "grantRequestId": "synthetic",
+        "kind": "needsGrant",
+        "owner": {},
+        "pasteIntentId": "synthetic",
+        "reason": "synthetic"
+      }
+    ],
+    "AssetOwner": [
+      {
+        "documentId": "synthetic",
+        "kind": "document"
+      },
+      {
+        "draftId": "synthetic",
+        "kind": "draft"
+      }
+    ],
+    "AssetState": [
+      {
+        "kind": "staging"
+      },
+      {
+        "kind": "committing",
+        "operationId": "synthetic"
+      },
+      {
+        "kind": "committed"
+      },
+      {
+        "kind": "orphaned",
+        "retainUntilUnixMs": []
+      },
+      {
+        "kind": "deleted"
+      },
+      {
+        "error": {},
+        "kind": "failed"
+      }
+    ],
+    "CommandResponse": [
+      {
+        "apiVersion": "synthetic",
+        "ok": true,
+        "payload": {},
+        "requestId": "synthetic"
+      },
+      {
+        "apiVersion": "synthetic",
+        "error": {},
+        "ok": false,
+        "requestId": "synthetic"
+      }
+    ],
+    "ConflictResolutionOutcome": [
+      {
+        "kind": "reloadChecked",
+        "outcome": {}
+      },
+      {
+        "kind": "saved",
+        "result": {}
+      }
+    ],
+    "ConflictResolutionRequest": [
+      {
+        "action": "reload",
+        "documentId": "synthetic",
+        "observedDiskRevision": 1
+      },
+      {
+        "action": "overwrite",
+        "content": "synthetic",
+        "documentId": "synthetic",
+        "format": {},
+        "observedDiskRevision": 1,
+        "snapshotSessionRevision": 1
+      },
+      {
+        "action": "recreate",
+        "content": "synthetic",
+        "documentId": "synthetic",
+        "format": {},
+        "observedDiskRevision": 1,
+        "snapshotSessionRevision": 1
+      }
+    ],
+    "DiscardReturnState": [
+      {
+        "kind": "dirty"
+      },
+      {
+        "actual": {},
+        "expected": {},
+        "kind": "conflict",
+        "reason": "synthetic"
+      },
+      {
+        "kind": "missing",
+        "lastKnown": "synthetic"
+      },
+      {
+        "error": {},
+        "kind": "saveError"
+      },
+      {
+        "error": {},
+        "kind": "reloadError"
+      }
+    ],
+    "DocumentAnchor": [
+      {
+        "kind": "heading",
+        "slug": "synthetic"
+      },
+      {
+        "blockId": "synthetic",
+        "kind": "block"
+      },
+      {
+        "kind": "sourcePosition",
+        "line": 1
+      }
+    ],
+    "DocumentChangeProvenance": [
+      {
+        "source": "external"
+      },
+      {
+        "source": "ownWrite",
+        "writeId": "synthetic"
+      }
+    ],
+    "DocumentCompareOutcome": [
+      {
+        "content": "synthetic",
+        "diskRevision": 1,
+        "format": {},
+        "kind": "snapshot"
+      },
+      {
+        "diskRevision": 1,
+        "kind": "safetyBlocked",
+        "report": {}
+      },
+      {
+        "diskRevision": 1,
+        "kind": "unsupported",
+        "report": {}
+      }
+    ],
+    "DocumentExternalChanged": [
+      {
+        "change": "modified",
+        "documentId": "synthetic",
+        "observedDiskRevision": 1,
+        "source": "synthetic"
+      },
+      {
+        "change": "deleted",
+        "documentId": "synthetic",
+        "observedDiskRevision": 1,
+        "source": "synthetic"
+      },
+      {
+        "change": "replaced",
+        "documentId": "synthetic",
+        "observedDiskRevision": 1,
+        "source": "synthetic"
+      },
+      {
+        "change": "metadataOnly",
+        "documentId": "synthetic",
+        "observedDiskRevision": 1,
+        "source": "synthetic"
+      },
+      {
+        "capabilityEpoch": 1,
+        "change": "permissionChanged",
+        "documentId": "synthetic",
+        "readOnly": false,
+        "source": "synthetic"
+      }
+    ],
+    "DocumentLoadState": [
+      {
+        "kind": "loading",
+        "operationId": "synthetic",
+        "resource": {}
+      },
+      {
+        "descriptor": {},
+        "diskRevision": 1,
+        "kind": "safetyBlocked",
+        "repairToken": "synthetic",
+        "report": {},
+        "resource": {}
+      },
+      {
+        "kind": "unsupported",
+        "report": {},
+        "resource": {}
+      },
+      {
+        "error": {},
+        "kind": "failed",
+        "resource": {}
+      }
+    ],
+    "DocumentLocator": [
+      {
+        "kind": "workspacePath",
+        "relativePath": "synthetic",
+        "workspaceId": "synthetic"
+      },
+      {
+        "draftId": "synthetic",
+        "kind": "draft"
+      },
+      {
+        "displayName": "synthetic",
+        "grantId": "synthetic",
+        "kind": "grantedFile"
+      }
+    ],
+    "DocumentOpenOutcome": [
+      {
+        "document": {},
+        "kind": "editable"
+      },
+      {
+        "descriptor": {},
+        "diskRevision": 1,
+        "kind": "safetyBlocked",
+        "repairToken": "synthetic",
+        "report": {}
+      },
+      {
+        "kind": "unsupported",
+        "report": {}
+      }
+    ],
+    "DocumentPickOutcome": [
+      {
+        "kind": "selected",
+        "resource": {}
+      },
+      {
+        "kind": "cancelled"
+      }
+    ],
+    "DocumentPrepareSaveAsOutcome": [
+      {
+        "kind": "cancelled",
+        "saveAsIntentId": "synthetic"
+      },
+      {
+        "documentId": "synthetic",
+        "kind": "sameDocument",
+        "saveAsIntentId": "synthetic"
+      },
+      {
+        "kind": "targetAlreadyOpen",
+        "saveAsIntentId": "synthetic",
+        "target": {}
+      },
+      {
+        "kind": "prepared",
+        "newDescriptor": "synthetic",
+        "relativeLinkImpact": "synthetic",
+        "saveAsIntentId": "synthetic",
+        "saveAsToken": "synthetic",
+        "targetExpectedDiskRevision": 1,
+        "uriReplacements": []
+      }
+    ],
+    "DocumentRepairAction": [
+      {
+        "assetDirectoryName": "synthetic",
+        "kind": "extractDataImages"
+      },
+      {
+        "kind": "deleteDataImages"
+      }
+    ],
+    "DocumentSaveAsAbortOutcome": [
+      {
+        "kind": "aborted"
+      },
+      {
+        "kind": "alreadyAborted"
+      },
+      {
+        "kind": "unknown"
+      }
+    ],
+    "DocumentSaveAsAckOutcome": [
+      {
+        "kind": "acknowledged"
+      },
+      {
+        "kind": "alreadyAcknowledged"
+      },
+      {
+        "kind": "unknown"
+      }
+    ],
+    "DocumentSaveAsStatusOutcome": [
+      {
+        "kind": "unknown",
+        "saveAsIntentId": "synthetic"
+      },
+      {
+        "documentId": "synthetic",
+        "kind": "prepared",
+        "saveAsIntentId": "synthetic"
+      },
+      {
+        "documentId": "synthetic",
+        "kind": "committing",
+        "saveAsIntentId": "synthetic"
+      },
+      {
+        "kind": "committed",
+        "outcome": {}
+      },
+      {
+        "documentId": "synthetic",
+        "kind": "rolledBack",
+        "saveAsIntentId": "synthetic"
+      },
+      {
+        "documentId": "synthetic",
+        "kind": "acknowledged",
+        "saveAsIntentId": "synthetic"
+      }
+    ],
+    "DocumentSaveOutcome": [
+      {
+        "bytesWritten": 1,
+        "documentId": "synthetic",
+        "kind": "saved",
+        "newDiskRevision": 1,
+        "savedSessionRevision": 1,
+        "writeId": "synthetic"
+      },
+      {
+        "diskRevision": 1,
+        "documentId": "synthetic",
+        "kind": "noop",
+        "savedSessionRevision": 1
+      }
+    ],
+    "EventScope": [
+      {
+        "kind": "app"
+      },
+      {
+        "kind": "workspace",
+        "workspaceId": "synthetic"
+      },
+      {
+        "documentId": "synthetic",
+        "kind": "document"
+      },
+      {
+        "kind": "operation",
+        "operationId": "synthetic"
+      }
+    ],
+    "ExpectedDiskRevision": [
+      {
+        "kind": "present",
+        "revision": "synthetic"
+      },
+      {
+        "kind": "absent"
+      }
+    ],
+    "NativeOpenTarget": [
+      {
+        "displayPath": "synthetic",
+        "grantToken": "synthetic",
+        "kind": "workspace"
+      },
+      {
+        "kind": "document",
+        "resource": {}
+      }
+    ],
+    "PersistenceState": [
+      {
+        "kind": "clean"
+      },
+      {
+        "kind": "dirty"
+      },
+      {
+        "kind": "reloading",
+        "operationId": "synthetic",
+        "previousDiskRevision": 1
+      },
+      {
+        "editOccurredAfterSnapshot": false,
+        "expectedDiskRevision": 1,
+        "kind": "saving",
+        "operationId": "synthetic",
+        "snapshotSessionRevision": 1
+      },
+      {
+        "actual": {},
+        "expected": {},
+        "kind": "conflict",
+        "reason": "synthetic"
+      },
+      {
+        "kind": "missing",
+        "lastKnown": "synthetic"
+      },
+      {
+        "error": {},
+        "kind": "saveError"
+      },
+      {
+        "error": {},
+        "kind": "reloadError"
+      },
+      {
+        "discardIntentId": "synthetic",
+        "kind": "discarding",
+        "operationId": "synthetic",
+        "previous": [],
+        "snapshotSessionRevision": 1
+      }
+    ],
+    "RecoveryInitialPersistence": [
+      {
+        "kind": "clean"
+      },
+      {
+        "kind": "dirty"
+      },
+      {
+        "actual": {},
+        "expected": {},
+        "kind": "conflict",
+        "reason": "synthetic"
+      }
+    ],
+    "RecoveryOpenOutcome": [
+      {
+        "document": {},
+        "initialPersistence": {},
+        "kind": "editable",
+        "recovery": {},
+        "restoredRevisions": []
+      },
+      {
+        "descriptor": {},
+        "kind": "safetyBlocked",
+        "report": {}
+      }
+    ],
+    "ResourceGrantOutcome": [
+      {
+        "grantRequestId": "synthetic",
+        "kind": "resourceResolved",
+        "resolution": {}
+      },
+      {
+        "grantRequestId": "synthetic",
+        "kind": "assetDirectoryGranted",
+        "owner": {},
+        "pasteIntentId": "synthetic"
+      },
+      {
+        "grantRequestId": "synthetic",
+        "kind": "cancelled"
+      }
+    ],
+    "ResourcePreviewOutcome": [
+      {
+        "excerpt": "synthetic",
+        "kind": "text",
+        "resource": {},
+        "title": "synthetic",
+        "truncated": false
+      },
+      {
+        "kind": "safetyBlocked",
+        "report": {},
+        "resource": {}
+      },
+      {
+        "kind": "unsupported",
+        "report": {},
+        "resource": {}
+      }
+    ],
+    "ResourceRef": [
+      {
+        "kind": "markdown",
+        "locator": {}
+      },
+      {
+        "kind": "asset",
+        "relativePath": "synthetic",
+        "scope": {}
+      },
+      {
+        "kind": "externalUrl",
+        "url": "synthetic"
+      },
+      {
+        "kind": "virtual",
+        "providerId": "synthetic",
+        "resourceId": "synthetic"
+      }
+    ],
+    "ResourceResolution": [
+      {
+        "kind": "resolved",
+        "resource": {}
+      },
+      {
+        "displayTarget": "synthetic",
+        "grantRequestId": "synthetic",
+        "kind": "needsGrant",
+        "reason": "synthetic"
+      },
+      {
+        "displayTarget": "synthetic",
+        "kind": "missing"
+      },
+      {
+        "displayTarget": "synthetic",
+        "kind": "unsupported"
+      },
+      {
+        "error": {},
+        "kind": "invalid"
+      }
+    ],
+    "ResourceScope": [
+      {
+        "kind": "workspace",
+        "workspaceId": "synthetic"
+      },
+      {
+        "documentId": "synthetic",
+        "kind": "document"
+      },
+      {
+        "draftId": "synthetic",
+        "kind": "draft"
+      }
+    ],
+    "RevealTarget": [
+      {
+        "kind": "workspaceRoot",
+        "workspaceId": "synthetic"
+      },
+      {
+        "kind": "workspaceEntry",
+        "relativePath": "synthetic",
+        "workspaceId": "synthetic"
+      },
+      {
+        "grantId": "synthetic",
+        "kind": "grantedFile"
+      },
+      {
+        "kind": "asset",
+        "relativePath": "synthetic",
+        "scope": {}
+      }
+    ],
+    "SafetyReport": [
+      {
+        "allowedActions": [],
+        "detectedDataImageCount": "synthetic",
+        "hasUtf8Bom": false,
+        "kind": "safetyBlocked",
+        "maxLineBytes": 1,
+        "reasons": [],
+        "sizeBytes": 1
+      },
+      {
+        "allowedActions": [],
+        "detectedDataImageCount": "synthetic",
+        "hasUtf8Bom": false,
+        "kind": "unsupported",
+        "maxLineBytes": 1,
+        "reasons": [],
+        "sizeBytes": 1
+      }
+    ],
+    "SessionEditResult": [
+      {
+        "kind": "applied",
+        "newRevision": 1
+      },
+      {
+        "actualRevision": 1,
+        "kind": "stale"
+      },
+      {
+        "error": {},
+        "kind": "rejected"
+      }
+    ],
+    "TaskCancelOutcome": [
+      {
+        "kind": "requested"
+      },
+      {
+        "kind": "notFound"
+      },
+      {
+        "kind": "pastCommitPoint"
+      }
+    ],
+    "WindowLayout": [
+      {
+        "focusedPaneId": "synthetic",
+        "kind": "single",
+        "pane": {}
+      },
+      {
+        "focusedPaneId": "synthetic",
+        "kind": "split",
+        "left": {},
+        "ratio": 1,
+        "right": {}
+      }
+    ],
+    "WorkspaceFileChange": [
+      {
+        "kind": "created",
+        "relativePath": "synthetic"
+      },
+      {
+        "kind": "modified",
+        "relativePath": "synthetic"
+      },
+      {
+        "kind": "removed",
+        "relativePath": "synthetic"
+      },
+      {
+        "confidence": "synthetic",
+        "from": "synthetic",
+        "kind": "renamed",
+        "to": "synthetic"
+      }
+    ],
+    "WorkspacePickOutcome": [
+      {
+        "displayPath": "synthetic",
+        "grantToken": "synthetic",
+        "kind": "selected"
+      },
+      {
+        "kind": "cancelled"
+      }
+    ],
+    "WorkspaceRescanRequest": [
+      {
+        "kind": "start",
+        "knownGeneration": 1,
+        "workspaceId": "synthetic"
+      },
+      {
+        "cursor": "synthetic",
+        "kind": "next",
+        "scanId": "synthetic",
+        "workspaceId": "synthetic"
+      }
+    ],
+    "WorkspaceState": [
+      {
+        "kind": "opening"
+      },
+      {
+        "kind": "ready"
+      },
+      {
+        "kind": "rescanning",
+        "operationId": "synthetic"
+      },
+      {
+        "kind": "degraded",
+        "reason": "synthetic"
+      },
+      {
+        "kind": "closing"
+      },
+      {
+        "kind": "closed"
+      }
+    ]
+  }
+}
