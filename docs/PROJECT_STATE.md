@@ -91,7 +91,7 @@
 | `P0-BOOT-01` | DONE | Integration / none | `7f98624` / `52dc387` | `OPS-BUILD-001`、`OPS-CONTEXT-001` / Git baseline + desktop shell | [`P0-BOOT-01.md`](tasks/P0-BOOT-01.md)；主线文档门禁与 `pnpm verify` PASS |
 | `P0-CI-01` | REVIEW | Integration/QA / Integration | `576a435` / `2cdc7df` | `OPS-CI-001`、`OPS-BUILD-001`、`OPS-CONTEXT-001` / pinned CI quality gates and artifact build | [`P0-CI-01.md`](tasks/P0-CI-01.md)；本地等价门禁与 artifact PASS；合并后等待首次 GitHub hosted run 补证 |
 | `P0-CONTRACT-01` | DONE | Integration / none | merge `9b0ea10` / gate `055084b` | `DATA-REVISION-001`、`SAFE-IPC-001`、`EXT-ROUTER-001`、`EXT-COMMAND-001` / IPC `1.0-draft` Rust single-source contract | [`P0-CONTRACT-01.md`](tasks/P0-CONTRACT-01.md)；独立终审 MERGE；canonical runner 已纳入 root `verify`/CI；main Rust 15/15 + TS 29/29、full verify PASS；`004`–`024` 保持 frozen ports |
-| `P0-FLAG-01` | REVIEW | Application Core (`/root/p0_flag_01`) / Integration | `813da5a` / implementation `21b3de5`、independently reviewed handoff `84783c2`（review record at branch tip） | `DATA-REVISION-001`、`SAFE-IPC-001`、`EXT-ROUTER-001`、`EXT-COMMAND-001`、`UX-EXT-001` / typed feature registry | [`P0-FLAG-01.md`](tasks/P0-FLAG-01.md)；14 flags、fail-closed production factory、transitive dependency/capability resolution、脱敏 diagnostics、15/15 focused + 47/47 full + clean-clone verify PASS；独立终审 MERGE 无 findings；Integration 合并/复验/标记 DONE |
+| `P0-FLAG-01` | DONE | Integration / Phase 1 feature consumers | implementation `21b3de5`, reviewed handoff `84783c2`, review record `50c9a67` / merge `2ce079e` | `DATA-REVISION-001`、`SAFE-IPC-001`、`EXT-ROUTER-001`、`EXT-COMMAND-001`、`UX-EXT-001` / typed feature registry | [`P0-FLAG-01.md`](tasks/P0-FLAG-01.md)；14 flags、fail-closed production factory、transitive dependency/capability resolution、脱敏 diagnostics；独立终审 MERGE；main focused 15/15、frontend 65/65 与全部 canonical/native/build 门禁 PASS |
 | `P0-FIXTURE-01` | DONE | Integration / downstream fixture consumers | implementation `80e434a` / merge `9172a9c` | `DATA-ROUNDTRIP-001`、`DATA-UNKNOWN-001`、`EDIT-IME-001`、`EDIT-TABLE-001` + 09 §4.3 safety/recovery corpus / privacy-safe fixtures | [`P0-FIXTURE-01.md`](tasks/P0-FIXTURE-01.md)；14 manifests、18 committed files、18 runtime artifacts、33 `-text` paths；独立终审 MERGE；fixture/canonical/full main 门禁 PASS |
 | `P0-SPIKE-01` | DONE | Integration / `P1-EDITOR-01` | implementation `2e0beb2`, reviewed handoff `4fcc284` / merge `9688df8` | `EDIT-IME-001`、`EDIT-TABLE-001`、`PERF-VIEWPORT-001` / isolated CodeMirror spike | [`P0-SPIKE-01.md`](tasks/P0-SPIKE-01.md)；独立终审 MERGE；main focused 18/18、30-sample measurement、frontend 50/50、canonical contract/fixture/Rust/Vite/Tauri 全门禁 PASS |
 | `P0-SPIKE-02` | DONE | Integration / `P1-PREFLIGHT-01` | implementation `67e33dd`, reviewed handoff `eb11e2e` / merge `d30e1db` | `FILE-PREFLIGHT-001`、`PERF-LARGE-001`、`SAFE-DATAURI-001`、`SAFE-IPC-001` / native safety feasibility | [`P0-SPIKE-02.md`](tasks/P0-SPIKE-02.md)；独立终审 MERGE；main debug/release focused 各 18/18，canonical contract/fixture/Rust/Vite/Tauri 全门禁 PASS；真实 transport 已由 `P0-TRANSPORT-01` 关闭本机 F0 feasibility |
@@ -101,10 +101,9 @@
 
 ## 7. 下一步（精确到可执行）
 
-1. 完成 `P0-FLAG-01` typed registry 的独立终审、合并与全门禁，不改动已生成 IPC 契约。
-2. 完成 host release 可信证据修复的独立终审和真实系统拼音/菜单/chooser 人工验证。
-3. 获取 GitHub hosted `macos-15` 精确提交的 workflow/artifact 证据；当前无 remote，未获得前不得宣称 `P0-CI-01` DONE。
-4. 只有 Phase 0 出口全部满足时由 Integration 发布 F0；F0 之前禁止进入 Phase 1 功能实现。
+1. 合并已独立终审的 host release harness，完成真实系统拼音/菜单/chooser 人工验证并只接受 `manualPass`。
+2. 获取 GitHub hosted `macos-15` 精确提交的 workflow/artifact 证据；当前无 remote，未获得前不得宣称 `P0-CI-01` DONE。
+3. 只有 Phase 0 出口全部满足时由 Integration 发布 F0；F0 之前禁止进入 Phase 1 功能实现。
 
 ## 8. 验证记录
 
@@ -120,6 +119,7 @@
 - 2026-08-30 Integration no-ff 合并 `P0-SPIKE-01` 到 `main` revision `9688df8`；focused 18/18、30-sample editor measurement、full Vitest 50/50、canonical contract Rust 15/15 + TS 29/29、fixture validator（14/18/18/33）、Rust 17/17、Vite/Tauri debug build 全部 PASS。当前桌面 shell 首次运行未继承 Rustup PATH，显式加入 `${HOME}/.cargo/bin` 后同一代码门禁通过。
 - 2026-08-30 Integration no-ff 合并 `P0-SPIKE-02` 到 `main` revision `d30e1db`，仅增加 exact-pinned test-only UUID direct edge；native safety debug/release focused 各 18/18，full Vitest 50/50、canonical contract Rust 15/15 + TS 29/29、fixture validator（14/18/18/33）、Rust unit 17/17 + safety 18/18、Vite/Tauri debug build 全部 PASS。
 - 2026-08-30 Integration no-ff 合并 `P0-TRANSPORT-01` 到 `main` revision `8b11c21`；真实 Tauri/WKWebView ordinary 与 worst-escaping 各 3/3 往返、default debug/release isolation、structured result/timeout/cleanup 全部 PASS。main full Vitest 50/50、canonical contract Rust 16/16 + TS 29/29、fixture validator（14/18/18/33）、Rust unit 19/19 + safety 18/18、Vite/Tauri debug build 全部 PASS。
+- 2026-08-30 Integration no-ff 合并 `P0-FLAG-01` 到 `main` revision `2ce079e`；focused 15/15、full Vitest 65/65、canonical contract Rust 16/16 + TS 29/29、fixture validator（14/18/18/33）、Rust unit 19/19 + safety 18/18、隐私/范围扫描、Vite/Tauri debug build 全部 PASS。
 
 ## 9. 标准任务交接
 
