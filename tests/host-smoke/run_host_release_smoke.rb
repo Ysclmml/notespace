@@ -14,6 +14,10 @@ ROOT = File.realpath(File.join(__dir__, "..", ".."))
 ROOT_PREFIX = "markdown-workspace-host-smoke."
 RESULT_FILE = "host-smoke-result.json"
 BINARY = File.join(ROOT, "src-tauri", "target", "release", "markdown-workspace")
+HOST_APP = File.join(
+  ROOT, "src-tauri", "target", "release", "bundle", "macos", "Markdown Workspace.app"
+)
+HOST_APP_BINARY = File.join(HOST_APP, "Contents", "MacOS", "markdown-workspace")
 FRONTEND_SENTINELS = [
   "P0-HOST-SMOKE-01",
   "host_release_smoke_frontend_ready",
@@ -109,7 +113,7 @@ rescue Errno::ESRCH, Errno::ECHILD
   nil
 end
 
-def launch_host!(mode:, timeout_seconds:)
+def launch_host!(mode:, timeout_seconds:, binary: BINARY)
   root = nil
   root = private_root
   log_path = File.join(root, "process.log")
@@ -118,7 +122,7 @@ def launch_host!(mode:, timeout_seconds:)
     "MARKDOWN_WORKSPACE_HOST_RELEASE_SMOKE_MODE" => mode,
     "MARKDOWN_WORKSPACE_HOST_RELEASE_SMOKE_ROOT" => root
   }
-  pid = Process.spawn(environment, BINARY, chdir: ROOT, out: log_path, err: [:child, :out])
+  pid = Process.spawn(environment, binary, chdir: ROOT, out: log_path, err: [:child, :out])
   status = wait_for_process(pid, timeout_seconds)
   unless status.success?
     digest = File.exist?(log_path) ? Digest::SHA256.file(log_path).hexdigest : "none"
@@ -257,13 +261,20 @@ def build_and_verify_isolation!
     *PINNED_PNPM,
     "tauri",
     "build",
-    "--no-bundle",
+    "--bundles",
+    "app",
     "--features",
     "host-release-smoke"
   )
   assert!(tree_contains_any?(File.join(ROOT, "dist"), FRONTEND_SENTINELS), "host frontend surface missing")
   assert!(file_contains_all?(BINARY, NATIVE_SENTINELS), "host native surface missing")
+  assert!(File.executable?(HOST_APP_BINARY), "host release app binary missing")
+  assert!(file_contains_all?(HOST_APP_BINARY, NATIVE_SENTINELS), "host release app surface missing")
   assert!(!file_contains_any?(BINARY, LEGACY_TRUST_BYPASS_SENTINELS), "legacy frontend-authored evidence command remains")
+  assert!(
+    !file_contains_any?(HOST_APP_BINARY, LEGACY_TRUST_BYPASS_SENTINELS),
+    "legacy app evidence command remains"
+  )
   assert!(!tree_contains_any?(File.join(ROOT, "dist"), LEGACY_TRUST_BYPASS_SENTINELS), "legacy evidence command remains in frontend")
   assert_chooser_source_is_read_free!
   assert_frontend_runtime_gate_source!
@@ -291,7 +302,9 @@ begin
       3. Run candidate cancel: begin Pinyin after “取消：”, press Escape, then record.
       4. Open the native chooser, cancel it, refresh evidence, then choose Complete and Exit.
     STEPS
-    manual_root, manual_report = launch_host!(mode: "manual", timeout_seconds: 600)
+    manual_root, manual_report = launch_host!(
+      mode: "manual", timeout_seconds: 600, binary: HOST_APP_BINARY
+    )
     assert_manual_report!(manual_report)
     puts "P0-HOST-SMOKE-01 manual release host: PASS"
   end
