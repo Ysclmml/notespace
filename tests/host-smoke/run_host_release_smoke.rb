@@ -122,7 +122,7 @@ def launch_host!(mode:, timeout_seconds:, binary: BINARY)
     "MARKDOWN_WORKSPACE_HOST_RELEASE_SMOKE_MODE" => mode,
     "MARKDOWN_WORKSPACE_HOST_RELEASE_SMOKE_ROOT" => root
   }
-  pid = Process.spawn(environment, binary, chdir: ROOT, out: log_path, err: [:child, :out])
+  pid = Process.spawn(environment, [binary, binary], chdir: ROOT, out: log_path, err: [:child, :out])
   status = wait_for_process(pid, timeout_seconds)
   unless status.success?
     digest = File.exist?(log_path) ? Digest::SHA256.file(log_path).hexdigest : "none"
