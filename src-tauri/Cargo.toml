@@ -10,6 +10,10 @@ publish = false
 name = "markdown_workspace_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
+[features]
+default = []
+host-release-smoke = []
+
 [build-dependencies]
 tauri-build = { version = "=2.6.3", features = [] }
 

@@ -1,0 +1,203 @@
+.host-smoke {
+  box-sizing: border-box;
+  width: min(980px, calc(100% - 48px));
+  min-height: 100%;
+  margin: 0 auto;
+  padding: 44px 0 56px;
+  color: var(--ink-950);
+}
+
+.host-smoke__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-6);
+  margin-bottom: var(--space-8);
+}
+
+.host-smoke__header h1,
+.host-smoke__panel h2,
+.host-smoke__header p {
+  margin: 0;
+}
+
+.host-smoke__header h1 {
+  margin: 6px 0 10px;
+  font-family: var(--font-ui);
+  font-size: clamp(32px, 4vw, 48px);
+  letter-spacing: -0.035em;
+}
+
+.host-smoke__header > div > p:last-child {
+  max-width: 680px;
+  color: var(--ink-500);
+  line-height: 1.65;
+}
+
+.host-smoke__eyebrow {
+  color: var(--accent-700);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.host-smoke__badge {
+  padding: 6px 10px;
+  border: 1px solid var(--line-200);
+  border-radius: 999px;
+  color: var(--ink-600);
+  background: var(--paper-2);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.host-smoke__badge--failed {
+  color: #9c2f2f;
+  border-color: #e1b2ad;
+  background: #fff3f1;
+}
+
+.host-smoke__badge--complete {
+  color: var(--success-700);
+}
+
+.host-smoke__panel {
+  margin-top: var(--space-5);
+  padding: var(--space-6);
+  border: 1px solid var(--line-200);
+  border-radius: var(--radius-lg);
+  background: var(--paper-0);
+  box-shadow: 0 14px 38px rgba(42, 45, 52, 0.06);
+}
+
+.host-smoke__panel-heading,
+.host-smoke__panel-heading > div,
+.host-smoke__actions,
+.host-smoke__status {
+  display: flex;
+  align-items: center;
+}
+
+.host-smoke__panel-heading {
+  justify-content: space-between;
+  gap: var(--space-4);
+  margin-bottom: var(--space-5);
+}
+
+.host-smoke__panel-heading > div {
+  gap: var(--space-3);
+}
+
+.host-smoke__panel-heading span {
+  color: var(--accent-600);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.host-smoke__panel-heading h2 {
+  font-size: 18px;
+}
+
+.host-smoke__panel-heading p {
+  margin: 0;
+  color: var(--ink-500);
+  font-size: 12px;
+}
+
+.host-smoke__editor {
+  min-height: 168px;
+  overflow: hidden;
+  border: 1px solid var(--line-200);
+  border-radius: var(--radius-md);
+  background: var(--paper-1);
+}
+
+.host-smoke__editor .cm-editor {
+  min-height: 168px;
+  font-family: var(--font-ui);
+  font-size: 18px;
+  line-height: 1.7;
+}
+
+.host-smoke__editor .cm-content {
+  min-height: 140px;
+  padding: 18px 20px;
+}
+
+.host-smoke__editor .cm-focused {
+  outline: 2px solid color-mix(in srgb, var(--accent-600) 45%, transparent);
+  outline-offset: -2px;
+}
+
+.host-smoke__actions {
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+}
+
+.host-smoke__actions button {
+  min-height: 36px;
+  padding: 0 14px;
+  border: 1px solid var(--line-200);
+  border-radius: var(--radius-sm);
+  color: var(--ink-700);
+  background: var(--paper-1);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.host-smoke__actions button:hover {
+  border-color: var(--accent-600);
+  background: var(--paper-2);
+}
+
+.host-smoke__actions .host-smoke__finish {
+  margin-left: auto;
+  color: white;
+  border-color: var(--accent-700);
+  background: var(--accent-700);
+}
+
+.host-smoke__native-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.host-smoke__status {
+  gap: var(--space-2);
+  margin-top: var(--space-5);
+  color: var(--ink-600);
+  font-size: 13px;
+}
+
+.host-smoke__status span {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent-600);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent-600) 14%, transparent);
+}
+
+@media (max-width: 720px) {
+  .host-smoke {
+    width: min(100% - 24px, 980px);
+    padding-top: 24px;
+  }
+
+  .host-smoke__header,
+  .host-smoke__panel-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .host-smoke__actions .host-smoke__finish {
+    margin-left: 0;
+  }
+}
