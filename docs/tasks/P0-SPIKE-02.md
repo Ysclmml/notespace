@@ -1,8 +1,8 @@
 # P0-SPIKE-02 — Native/Safety feasibility
 
-- Status: REVIEW
-- Owner / next owner: Native/Safety second-review remediation agent / independent reviewer, then Integration
-- Base revision / implementation head revision: `f07e3e5` / `67e33dd`
+- Status: DONE
+- Owner / next owner: Integration / `P1-PREFLIGHT-01`
+- Base revision / implementation head revision: original base `52dc387`, implementation `67e33dd`, reviewed handoff `eb11e2e`, main merge `d30e1db`
 - Requirement IDs: `FILE-PREFLIGHT-001`, `FILE-SAVE-001`, `PERF-LARGE-001`, `SAFE-DATAURI-001`, `SAFE-IPC-001`, `OPS-CONTEXT-001`, `OPS-HANDOFF-001`
 - Product UX IDs: `UX-SAFE-001`
 - Test / acceptance IDs: `SAFE-001`, `SAFE-003`, `PERF-010`, `FILE-001`, `AC-SAFE-002`, `AC-SAFE-005`, `CONTRACT-010`, `CONTRACT-011`, `CONTRACT-024`, `PROC-001`, `PROC-002`
@@ -81,6 +81,8 @@ Environment for final evidence: macOS `26.6.2` (`25G83`) arm64, rustc `1.98.0`, 
 | Cargo dependency review | `git diff f07e3e5..67e33dd -- src-tauri/Cargo.toml src-tauri/Cargo.lock` | PASS | exact test-only UUID v4 direct edge; lockfile adds one root dependency line and no package/checksum/feature block |
 | `PROC-001`, `PROC-002` full branch gate | `ruby scripts/validate_design_docs.rb`; `PATH=<rustup-bin>:$PATH pnpm verify` after the implementation and handoff metadata | PASS | validator reported 22 Markdown files, 69 relative links, 83 fence pairs, and `RESULT=PASS`; full gate passed Prettier, ESLint, TypeScript, frontend 3/3, Rust fmt/clippy and 18/18 spike tests, Vite build, and Tauri debug no-bundle build |
 | Schema drift | searched repository for a schema/generator drift command | NOT RUN | `P0-CONTRACT-01` has not landed on this base; no schema/generated file was touched; Integration must run its new drift gate after ordered merge |
+| Integration focused gates | `cargo test --manifest-path src-tauri/Cargo.toml --test p0_spike_02_native_safety -- --nocapture --test-threads=1`; same command with `--release` on main merge `d30e1db` | PASS, debug 18/18 and release 18/18 | release: multiline 41,211 us; data image 42,665 us; worst JSON 69,227 us; retained bounds unchanged |
+| Integration repository gate | `PATH="${HOME}/.cargo/bin:${PATH}" pnpm verify` on main merge `d30e1db` | PASS; frontend 50/50, canonical contract Rust 15/15 + TS 29/29, fixtures 14/18/18/33, Rust unit 17/17 + safety 18/18, Vite and Tauri debug build | stdout only; no user content or hazardous committed artifact |
 
 ## Open questions and blockers
 
@@ -91,10 +93,8 @@ Environment for final evidence: macOS `26.6.2` (`25G83`) arm64, rustc `1.98.0`, 
 
 ## Remaining numbered steps
 
-1. An independent reviewer rechecks implementation `67e33dd` specifically against the TAB/LF/CR prefix matrix, exact-shape unissued decoy, post-stat path-swap quarantine, and this task note.
-2. Integration merges the reviewed branch in Phase 0 order, then reruns the new contract/schema gate and full repository gate on the integration head.
-3. Before F0, Integration assigns a separate actual Tauri/WKWebView raw/wire transport experiment; sizing alone cannot close `CONTRACT-024`.
-4. After F0, `P1-PREFLIGHT-01` reimplements the proven algorithm behind frozen production contracts and adds product-level outcomes/UI integration; it must not copy test-only code into a Tauri command wholesale.
+1. Before F0, Integration merges and verifies the separately reviewed actual Tauri/WKWebView raw/wire transport experiment; sizing alone cannot close `CONTRACT-024`.
+2. After F0, `P1-PREFLIGHT-01` reimplements the proven algorithm behind frozen production contracts and adds product-level outcomes/UI integration; it must not copy test-only code into a Tauri command wholesale.
 
 ## Data safety, recovery, and temporary artifacts
 
@@ -104,4 +104,4 @@ For the path-swap case, cleanup moves the replacement into the private same-file
 
 ## Single recommended next action
 
-An independent reviewer rechecks implementation `67e33dd`; after a clean review, Integration preserves the explicit F0 transport blocker and merges only when Phase 0 ordering allows it.
+Integration merges the reviewed real Tauri/WKWebView transport spike and retains the later product/platform follow-ups documented above.
