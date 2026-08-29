@@ -1,8 +1,8 @@
 # P0-CONTRACT-01 — IPC v1 契约冻结与生成绑定
 
-- Status: REVIEW
-- Owner / next owner: Contract/Domain (`/root/p0_contract_01`) / Integration review
-- Base revision / head revision: original base `576a435`; independent-review rework base `0387139`; implementation `42563ee`
+- Status: CLAIMED
+- Owner / next owner: Contract/Domain (`/root/p0_contract_01`) / Contract/Domain implementation
+- Base revision / head revision: original base `576a435`; third-review rework base `91a2782`; head pending
 - Requirement IDs: `DATA-REVISION-001`, `SAFE-IPC-001`, `EXT-ROUTER-001`, `EXT-COMMAND-001`, `OPS-CONTEXT-001`, `OPS-HANDOFF-001`
 - Product UX IDs: `UX-EXT-001`
 - Test / acceptance IDs: `CORE-001`, `SEC-001`, `EXT-001`, `EXT-002`, `CONTRACT-001`–`CONTRACT-024`, `PROC-001`, `PROC-002`; supporting clean-checkout evidence for `BUILD-001`
@@ -18,16 +18,20 @@ Non-goals were preserved: no Tauri command handler, frontend `invoke`/listener, 
 
 ## Acceptance criteria status
 
+Third independent review supersedes the prior REVIEW evidence. The four failed boundaries below are open until new local, mutation, and clean-clone evidence is recorded; unchanged passing areas remain implementation context, not current handoff evidence.
+
 | Requirement / acceptance ID | Expected evidence | Status |
 |---|---|---|
-| `CONTRACT-001` | Rust generator reproduces committed TypeScript, manifest, and fixture artifacts with zero drift | PASS — declarations are emitted mechanically by `ts-rs` from the serde wire types; `generate_ipc --check` reports zero drift |
-| `CONTRACT-002` | Every discriminated union uses concrete Rust variants serialized through `serde_json`, with cross-language artifact equality | PASS — 44 non-empty groups contain real nested resource/revision/error/descriptor values; placeholder field manifests were removed |
-| `CONTRACT-003` | Unknown event/error/optional fields remain readable while unsafe values and unknown writes fail closed | PASS — strict known-event scope/payload/identity/sequence checks, read-only unknown-error recovery policy, and real Rust request decoding regressions pass |
+| `CONTRACT-001` | Rust generator reproduces committed TypeScript, manifest, fixture, and executable validator artifacts with zero drift | IN PROGRESS — replace the handwritten event payload validator with a Rust-serde-derived executable schema; prove a legal Rust event-field rename is accepted only after regeneration and the old field is rejected |
+| `CONTRACT-002` | Every tagged, untagged, and single-variant wire union uses concrete Rust variants serialized through `serde_json`, with mechanically checked registry completeness | IN PROGRESS — remove the hard-coded `44` self-check and add missing `SaveAsTarget`, `NavigateTarget`, `AbsentDiskRevision`, and `DocumentSaveAsOutcome` concrete variants |
+| `CONTRACT-003` | Unknown event/error/optional fields remain readable while unsafe values and unknown writes fail closed | IN PROGRESS — normalize every nested event `AppError` through the decoder and reject all forbidden `DocumentExternalChanged.writeId` combinations in Rust serde |
 | `CONTRACT-004`–`CONTRACT-024` | Freeze canonical ID, layer, fixture port, and future owner without claiming feature behavior | PASS for F0 freeze only — exactly 21 entries remain `frozenPort`; no behavior was implemented |
 | `CORE-001`, `SEC-001`, `EXT-001`, `EXT-002` | Core models, versioned/fail-closed envelopes, and router/command vocabulary are available to Rust and TypeScript | PASS — the full prior TS surface has a Rust serde/`TS` owner, including all 37 command request/response and 8 event payload types |
 | `PROC-001`, `PROC-002` | Durable state and reproducible handoff include exact revisions, commands, results, risks, and next action | PASS — this note supersedes the rejected `0387139` handoff and records local plus clean-clone evidence |
 
 ## Changes made
+
+Third-review implementation has not started. The prior change list below describes the rejected `42563ee` implementation and will be rewritten before REVIEW.
 
 - Deleted the 1,121-line handwritten `src-tauri/src/ipc_schema/typescript.rs` declaration source. `src-tauri/src/ipc_schema/rust_typescript.rs` now invokes `ts-rs` declarations from real Rust serde types; only policy helpers that Rust explicitly maps to—brands, required-nullable, and open/known error-code aliases—are emitted around those declarations.
 - Added the complete command/event payload model in `src-tauri/src/domain/payloads.rs`. A systematic exported-name comparison against the rejected TS surface found no missing prior exported declaration; the new output additionally names mechanically factored enums/value objects.
@@ -50,6 +54,8 @@ Non-goals were preserved: no Tauri command handler, frontend `invoke`/listener, 
 
 ## Verification evidence
 
+Prior evidence below is retained only as historical diagnostic context and is not sufficient for the current claim. Third-review evidence will replace it before handoff.
+
 Environment: macOS/Darwin 25.6.0 arm64; `pnpm exec node v24.14.0`; pnpm `10.32.1`; Rust/Cargo `1.98.0`. `${CARGO_BIN_DIR}` denotes the local Rust toolchain bin directory; `${CLEAN_CLONE}` denotes the validated system-temporary clone and does not persist a personal path.
 
 | Test / acceptance ID | Exact command/environment | Result | Artifact or failure |
@@ -68,7 +74,12 @@ Environment: macOS/Darwin 25.6.0 arm64; `pnpm exec node v24.14.0`; pnpm `10.32.1
 
 ## Open questions and blockers
 
-There is no implementation blocker on this branch.
+There is no external blocker. Current implementation findings owned by Contract/Domain:
+
+- `CONTRACT-003`: `decodeEventEnvelope` validates nested `AppError` but returns the original payload, so unknown codes can retain write-capable recovery actions.
+- `CONTRACT-003`: Rust serde accepts forbidden `external + writeId` forms for `DocumentExternalChanged`.
+- `CONTRACT-001`: `runtime.rs` restates event payload fields and can drift from accepted Rust serde wire shapes.
+- `CONTRACT-002`: the hard-coded fixture count is self-consistent and omits four confirmed union groups.
 
 - Owner: Integration. Decision/input: independently review `42563ee`, then publish or keep IPC schema status `1.0-draft` as part of the F0 decision. Affected task: `P0-CONTRACT-01` and downstream `P0-FLAG-01`. Safe work: read-only review and Integration gate execution may proceed; only Integration marks `DONE`.
 - Owner: mapped future feature owners. Decision/input: implement `CONTRACT-004`–`CONTRACT-024` only in their listed tasks. Affected requirements/tasks: manifest `futureTasks`. Safe work: use the frozen ports; do not interpret their presence as passing behavior.
@@ -77,8 +88,11 @@ There is no implementation blocker on this branch.
 
 ## Remaining numbered steps
 
-1. Integration independently reviews implementation `42563ee` and this REVIEW handoff commit.
-2. If accepted, Integration integrates the branch, reruns the canonical runner plus `pnpm verify`, decides F0 schema publication, and alone marks `P0-CONTRACT-01` `DONE`.
+1. Commit this third-review CLAIMED checkpoint.
+2. Replace the handwritten payload validator with a Rust-derived executable schema and normalize nested errors.
+3. Enforce strict `DocumentExternalChanged` serde and add negative tests.
+4. Make union fixture completeness mechanical and cover all confirmed omissions.
+5. Run local gates, independent mutations, full clean-clone verification, then update this note and the single ledger row to REVIEW.
 
 ## Data safety, recovery, and temporary artifacts
 
@@ -88,4 +102,4 @@ The clean verification clone was moved to the system Trash rather than recursive
 
 ## Single recommended next action
 
-Integration should independently review `42563ee` against the original NO-MERGE findings, then integrate only if the generated-drift mutation proof and full clean-clone gates reproduce.
+Contract/Domain should commit this claim checkpoint, then implement the Rust-derived event schema boundary before touching fixture coverage.
