@@ -1,18 +1,18 @@
 # 项目状态与持久化交接
 
 最后更新：2026-08-30
-状态版本：4
+状态版本：5
 设计基线：Approved design baseline 0.1
 
 > 本文件是上下文压缩、换代理和中断后恢复工作的唯一状态入口。聊天记录不是项目状态。任何实现者先按 `AGENTS.md` 的读取链恢复上下文。
 
 ## 1. 当前终态
 
-- 当前阶段：**Phase 0 启动壳已完成实现与分支验证，等待主线集成复验**。
+- 当前阶段：**Phase 0 基础壳已集成，第一批契约/CI/夹具/技术 Spike 可并行执行**。
 - 应用代码：`P0-BOOT-01` 已建立 Tauri 2 + React/TypeScript/Vite + Rust 桌面壳和 Paper & Ink 合成空状态；尚未实现任何 Phase 1 产品能力。
 - 构建与测试：任务分支和全新 clone 均通过格式、lint、类型、前端单测、Rust fmt/clippy/tests、Vite build 与 Tauri debug build；CI 仍由后续独立任务建立。
-- 工作区：Git 仓库已建立；当前任务分支 `task/P0-BOOT-01-bootstrap`，实现 revision `8478847`。
-- 下一个可执行动作：Integration fast-forward 合并启动壳到 `main`，在主线复验后把 `P0-BOOT-01` 标记 `DONE`，再释放满足依赖的 Phase 0 任务。
+- 工作区：Git 仓库已建立；`main` 已 fast-forward 集成 `P0-BOOT-01`，已验证 revision `52dc387`。
+- 下一个可执行动作：为下表 READY 任务建立各自 task note 与独立 branch/worktree；优先并行 `P0-CONTRACT-01`、`P0-CI-01`、`P0-SPIKE-01`、`P0-SPIKE-02`，`P0-FIXTURE-01` 可由空闲 QA 随后领取。
 - 基线不等于字段 schema 已冻结：`03-domain-model-and-contracts.md` 的 `1.0-draft` 必须在 `P0-CONTRACT-01` 中生成 Rust/TypeScript 类型、通过契约测试后才能发布 F0。
 
 ## 2. 已接受且实现不得自行改动的决策
@@ -81,23 +81,29 @@
 | 里程碑 | 状态 | 准入条件 |
 |---|---|---|
 | Design baseline 0.1 | DONE | 本文档包冻结并通过文档校验 |
-| Phase 0 / F0 | IN_PROGRESS | Git 基线 `7f98624` 已建立；`P0-BOOT-01` 已验证并等待主线集成，F0 尚未发布 |
+| Phase 0 / F0 | IN_PROGRESS | `P0-BOOT-01` 已在 `main` 集成并通过门禁；契约、CI、夹具和两项技术 Spike 尚待完成，F0 尚未发布 |
 | Phase 1–6 | NOT_STARTED | 严格按 `IMPLEMENTATION_PLAN.md` 的依赖和 Freeze Gate |
 
 实施任务 ledger（claim/交接时只修改自己的一行，详细证据在 task note）：
 
 | Task | Status | Owner / next owner | Base / head | IDs / scope | Task note / exact next action |
 |---|---|---|---|---|---|
-| `P0-BOOT-01` | REVIEW | Integration / `/root` | `7f98624` / `8478847` | `OPS-BUILD-001`、`OPS-CONTEXT-001` / Git baseline + desktop shell | [`P0-BOOT-01.md`](tasks/P0-BOOT-01.md)；fast-forward 合并到 `main` 后重跑文档校验与 `pnpm verify` |
+| `P0-BOOT-01` | DONE | Integration / none | `7f98624` / `52dc387` | `OPS-BUILD-001`、`OPS-CONTEXT-001` / Git baseline + desktop shell | [`P0-BOOT-01.md`](tasks/P0-BOOT-01.md)；主线文档门禁与 `pnpm verify` PASS |
+| `P0-CI-01` | READY | unowned | `52dc387` / — | `OPS-CI-001` / pinned CI quality gates and artifact build | 领取后创建 task note；只由 Integration 修改 global CI |
+| `P0-CONTRACT-01` | READY | unowned | `52dc387` / — | `DATA-REVISION-001`、`SAFE-IPC-001`、`EXT-ROUTER-001`、`EXT-COMMAND-001` / IPC v1 + generated bindings | 领取后创建 task note；先复制 canonical schema，不重构语义 |
+| `P0-FIXTURE-01` | READY | unowned | `52dc387` / — | `DATA-ROUNDTRIP-001`、`DATA-UNKNOWN-001`、`EDIT-IME-001`、`EDIT-TABLE-001` / privacy-safe fixtures | 领取后创建 task note；危险大夹具只允许运行时生成 |
+| `P0-SPIKE-01` | READY | unowned | `52dc387` / — | `EDIT-IME-001`、`EDIT-TABLE-001`、`PERF-LARGE-001` / CodeMirror feasibility | 领取后创建 task note；仅 spike/测量，不实现 Phase 1 编辑器 |
+| `P0-SPIKE-02` | READY | unowned | `52dc387` / — | `FILE-PREFLIGHT-001`、`PERF-LARGE-001`、`SAFE-DATAURI-001`、`SAFE-IPC-001` / native safety feasibility | 领取后创建 task note；仅 spike/测量，不实现 Phase 1 file open |
 
-当前只有 `P0-BOOT-01` 为 `REVIEW`；其余任务必须等本任务主线集成完成、依赖满足后再进入 READY/CLAIMED，不要预建整张空表。
+只列出了依赖已满足的第一批任务；`P0-FLAG-01` 必须等待 `P0-CONTRACT-01` 生成初始契约后才能进入 READY。
 
 ## 7. 下一步（精确到可执行）
 
-1. Integration fast-forward 合并 `task/P0-BOOT-01-bootstrap` 到 `main`。
-2. 在 `main` 重跑 `ruby scripts/validate_design_docs.rb` 与 `pnpm verify`（Rustup toolchain bin 需在进程 `PATH`）。
-3. 门禁全通过后，把 `P0-BOOT-01` 标记 `DONE`，按 `IMPLEMENTATION_PLAN.md` 依赖只添加下一批可执行 Phase 0 ledger 行并建立独立 task note/branch。
-4. 只有 Phase 0 出口全部满足时由 Integration 发布 F0；F0 之前禁止进入 Phase 1 功能实现。
+1. 从 `main` 的集成检查点为 `P0-CI-01`、`P0-CONTRACT-01`、`P0-SPIKE-01`、`P0-SPIKE-02` 建立独立 branch/worktree；各 owner 先写 task note 并把自己的 ledger 行改为 `CLAIMED`。
+2. QA 空闲时领取独立的 `P0-FIXTURE-01`；禁止提交超大 Base64/单行 blob。
+3. 每个 feature owner 在本分支验证后交 `REVIEW`；Integration 逐一集成并重跑全门禁。
+4. `P0-CONTRACT-01` 初始生成契约落地后才释放 `P0-FLAG-01`。
+5. 只有 Phase 0 出口全部满足时由 Integration 发布 F0；F0 之前禁止进入 Phase 1 功能实现。
 
 ## 8. 验证记录
 
@@ -107,6 +113,7 @@
 - 同一命令同时检查未完成状态、已退役契约术语、个人绝对路径、嵌入式 Base64、错误码集合和关键 task-level phase 接棒；本次均无命中。
 - 两个独立只读审计从“语义一致性”和“无聊天冷接手”视角复核最终规范，均无剩余 blocker/major。此结论只覆盖设计包，不冒充尚不存在的应用构建、单测或 E2E。
 - 2026-08-30 `P0-BOOT-01` 在任务分支和系统临时目录中的全新 clone 均执行 `pnpm verify` 并 PASS；Tauri debug `.app` 通过原生窗口 smoke，未读取或提交用户文档。详细命令与证据见 [`P0-BOOT-01.md`](tasks/P0-BOOT-01.md)。
+- 2026-08-30 Integration fast-forward 合并 `P0-BOOT-01` 到 `main` revision `52dc387`；`ruby scripts/validate_design_docs.rb` PASS（snapshot `3be99dea...`），补齐已记录的 Rustup `PATH` 前提后 `pnpm verify` 全部 PASS。
 
 ## 9. 标准任务交接
 

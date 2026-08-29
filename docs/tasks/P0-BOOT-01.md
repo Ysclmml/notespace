@@ -1,8 +1,8 @@
 # P0-BOOT-01 — Git 基线与桌面应用壳
 
-- Status: REVIEW
-- Owner / next owner: Integration (`/root`) / Integration review
-- Base revision / head revision: `7f98624` / `8478847`（verified implementation revision）
+- Status: DONE
+- Owner / next owner: Integration (`/root`) / none
+- Base revision / head revision: `7f98624` / `52dc387`（integrated and verified revision）
 - Requirement IDs: `OPS-BUILD-001`, `OPS-CONTEXT-001`
 - Product UX IDs: 纯基础设施任务，不适用
 - Test / acceptance IDs: `BUILD-001`, `PROC-001`
@@ -59,6 +59,7 @@
 | `BUILD-001` native desktop smoke | debug `.app` 启动并通过 macOS accessibility tree 检查文件/大纲切换与侧栏收起 | PASS；窗口可启动、布局与合成空状态清晰 | 本机 ignored 证据：`artifacts/P0-BOOT-01/app-shell-smoke.png`；应用：`src-tauri/target/debug/bundle/macos/Markdown Workspace.app` |
 | dependency audit | `pnpm audit --registry=https://registry.npmjs.org --audit-level high`；pnpm/cargo license metadata 检查 | PASS；无已知高危漏洞，Rust metadata 无缺失 license 字段 | 默认镜像不提供 audit endpoint，故显式使用 npm 官方 registry |
 | privacy/boundary scan | tracked file scan + source scan；检查 `.DS_Store`、用户原型、opener、空 CSP、Tauri invoke/listen | PASS；无用户语料或越界 capability/IPC | schema drift 不适用：`P0-CONTRACT-01` 尚未建立 schema |
+| Integration gate | `ruby scripts/validate_design_docs.rb`，随后 `pnpm verify`；`main` at `52dc387`，Rustup toolchain bin 已加入进程 `PATH` | PASS；文档门禁、全部前后端检查与 Tauri debug build 通过 | 首次未带 Rustup `PATH` 的调用在 `cargo` 启动前退出，补齐已记录环境前提后完整通过；无代码失败 |
 
 ## Open questions and blockers
 
@@ -67,9 +68,7 @@
 
 ## Remaining numbered steps
 
-1. Integration fast-forward 合并 `task/P0-BOOT-01-bootstrap` 到 `main`。
-2. 在 `main` 重跑文档校验与 `pnpm verify`。
-3. 通过后将本任务和状态账本标记为 `DONE`，再按依赖发布下一批 Phase 0 任务。
+无。本任务已在 `main` 集成并通过全部门禁。
 
 ## Data safety, recovery, and temporary artifacts
 
@@ -78,4 +77,4 @@
 
 ## Single recommended next action
 
-Integration fast-forward 合并 `task/P0-BOOT-01-bootstrap` 到 `main`，并在 `main` 重跑 `ruby scripts/validate_design_docs.rb` 与 `pnpm verify`。
+按依赖领取下一批 Phase 0 任务；不得在 F0 发布前进入 Phase 1。
