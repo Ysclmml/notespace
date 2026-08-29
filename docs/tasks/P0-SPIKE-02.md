@@ -1,8 +1,8 @@
 # P0-SPIKE-02 — Native/Safety feasibility
 
-- Status: CLAIMED
-- Owner / next owner: Native/Safety remediation agent / Integration
-- Base revision / head revision: `576a435` / `de87aaa` (independent-review remediation starts here)
+- Status: REVIEW
+- Owner / next owner: Native/Safety remediation agent / independent reviewer, then Integration
+- Base revision / head revision: `576a435` / `dcd1b6e` (review-blocker remediation implementation; handoff metadata follows)
 - Requirement IDs: `FILE-PREFLIGHT-001`, `FILE-SAVE-001`, `PERF-LARGE-001`, `SAFE-DATAURI-001`, `SAFE-IPC-001`, `OPS-CONTEXT-001`, `OPS-HANDOFF-001`
 - Product UX IDs: `UX-SAFE-001`
 - Test / acceptance IDs: `SAFE-001`, `SAFE-003`, `PERF-010`, `FILE-001`, `AC-SAFE-002`, `AC-SAFE-005`, `CONTRACT-010`, `CONTRACT-011`, `CONTRACT-024`, `PROC-001`, `PROC-002`
@@ -32,23 +32,25 @@ This task does not implement `document_open_v1`, product IPC, a safety-page UI, 
 
 | Requirement / acceptance ID | Expected evidence | Status |
 |---|---|---|
-| `SAFE-001` / `FILE-PREFLIGHT-001` | Ordered threshold boundary tests and blocked/unsupported reports that never contain source text | PASS |
-| `SAFE-003` / `SAFE-DATAURI-001` | Runtime-generated 10 MiB single-line data image is detected across bounded chunks and classified before any editor/product path | PASS at scanner layer |
+| `SAFE-001` / `FILE-PREFLIGHT-001` | Ordered threshold boundary tests and blocked/unsupported reports that never contain source text | PASS; explicit `Unsupported` precedence when binary and both safety thresholds also match |
+| `SAFE-003` / `SAFE-DATAURI-001` | Runtime-generated 10 MiB single-line data image is detected across bounded chunks and classified before any editor/product path | PASS at scanner layer; threshold -1/exact/+1 and every split boundary covered; ambiguous candidates fail closed |
 | `PERF-010` / `PERF-LARGE-001` | Runtime-generated 10 MiB multiline UTF-8 is classified `largeText`; measured scanner duration and retained-buffer bound are recorded | PASS at scanner layer |
 | `CONTRACT-010` | Deterministic cancellation stops a streaming scan before full consumption | PASS |
 | `CONTRACT-011` | Binary/invalid UTF-8/oversize remain `Unsupported`; safety-blocked reports expose no body or Base64 snippet | PASS for spike report shape |
-| `FILE-001` supporting evidence | Pre-rename failure leaves old bytes complete; post-rename state contains complete new bytes; stale task-owned temporary files are scoped and removable | PASS on macOS spike; product fault matrix remains Phase 1 |
-| `CONTRACT-024` | Record bounded raw/wire-budget feasibility evidence without claiming end-to-end Tauri transport | PASS for stream sizing; actual Tauri transport NOT RUN |
+| `FILE-001` supporting evidence | Pre-rename failure leaves old bytes complete; post-rename state contains complete new bytes; stale task-owned temporary files are scoped and removable | PASS on macOS spike; full-name/owner/age validation preserves malformed decoys, symlinks, directories, and recent files; product fault matrix remains Phase 1 |
+| `CONTRACT-024` | Record bounded raw/wire-budget feasibility evidence without claiming end-to-end Tauri transport | Stream sizing PASS only; actual Tauri/WebView transport NOT RUN and remains an F0 blocker |
 | `AC-SAFE-002`, `AC-SAFE-005` | Spike-level classifier/timing evidence only; real UI/WebView acceptance remains owned by later product/E2E tasks | supporting evidence PASS; product AC not claimed |
 
 ## Changes made
 
 - Added one dependency-free Rust integration-test harness; no product module imports it.
 - Implemented a fixed-size streaming scan that observes exact accepted byte thresholds, streaming UTF-8 validity, binary indicators, BOM/line metrics, and `data:image/...;base64,` state across arbitrary read boundaries.
+- Closed the independent-review data-image blocker: folded header/payload whitespace and CRLF no longer terminate counting; percent-obfuscated, overlong-header, malformed-padding, or otherwise unprovable image candidates enter a fail-closed quarantine instead of returning editable; threshold -1/exact/+1 is checked at every possible two-read split.
+- Defined the spike's physical-line measurement explicitly: the UTF-8 BOM is excluded from line bytes, both bytes of CRLF are excluded from line bytes and count as one line ending, while a lone CR remains content. One-byte chunk tests cover BOM and CRLF boundaries.
 - Added deterministic cancellation and read-failure paths that return no partial success/body.
 - Added runtime generators for 8/32 MiB file boundaries, 256 KiB/1 MiB line boundaries, 512 KiB decoded-image boundaries, 10 MiB multiline text, and 10 MiB single-line data image; no hazardous fixture is stored in Git.
-- Added macOS same-directory temp/write/flush/sync/rename/directory-sync feasibility with injected failures before and after the commit point.
-- Added a real child-process exit after temp-file sync, followed by exact-target stale cleanup that preserves the original, an unrelated decoy, and a recent matching temp.
+- Added explicitly macOS-only same-directory temp/write/flush/sync/rename/directory-sync feasibility with injected failures before and after the commit point; no Windows replace claim is made.
+- Closed the independent-review stale-cleanup blocker: temporary names now use an exact versioned fixed-width grammar bound to the target filename and owner UID; cleanup additionally requires a secure regular file (`0600`, one hard link), matching target/candidate ownership, and both embedded timestamp and filesystem mtime to be stale. Same-prefix malformed files, wrong-owner files, symlinks, directories, unrelated files, and recent valid files are retained.
 - Added bounded worst-case JSON escape sizing for the accepted 32 MiB raw / 193 MiB wire budget without pretending it exercises the Tauri WebView bridge.
 
 ## Decisions and assumptions
@@ -56,32 +58,35 @@ This task does not implement `document_open_v1`, product IPC, a safety-page UI, 
 - The spike lives only under the Rust integration-test tree so no disposable feasibility implementation becomes a product command or service.
 - Hazardous inputs are generated inside validated process-scoped temporary directories and are never committed or logged.
 - Scanner memory evidence means an explicit retained-state bound (fixed read buffer plus constant parser state); whole-process RSS includes the Rust/Tauri test harness and will not be misrepresented as scanner memory.
-- macOS same-directory `rename`/directory-sync feasibility is the primary-platform result. Cross-platform replacement semantics remain a production adapter responsibility.
+- Ambiguous image candidates are represented by an internal spike counter and conservatively map to the existing `largeDataImage` safety reason; the frozen IPC schema is not changed. The production preflight task must keep a typed internal ambiguity path without exposing blocked bytes.
+- BOM/CRLF accounting above is a spike measurement definition, not a silent frozen-schema change. Integration/Native Core must carry the same definition into the production policy or persist a reviewed contract clarification before `P1-PREFLIGHT-01`.
+- macOS same-directory `rename`/directory-sync feasibility is the only atomic-replace result. Windows replacement, file-share, and directory-durability semantics remain a separately tested production adapter responsibility.
 - Threshold order and values were copied unchanged from the accepted policy. No design, schema, error-code, flag, manifest, dependency, or lockfile change was required.
 
 ## Verification evidence
 
 | Test / acceptance ID | Exact command and environment | Result | Artifact or failure |
 |---|---|---|---|
-| `PROC-001` | `ruby scripts/validate_design_docs.rb` at `576a435` | PASS | snapshot `e0905a48...` |
+| `PROC-001` | `ruby scripts/validate_design_docs.rb` at `5982219` before handoff metadata | PASS | snapshot `becce4ad080c0625d55341a7c7965a4033bbe1c9f63194f6daaf305e3e5aed8c` |
 | `BUILD-001` baseline | `pnpm install --frozen-lockfile && PATH=<rustup-bin>:$PATH pnpm verify`; macOS 26.6.2 arm64, rustc 1.98.0, pnpm 10.32.1, project Node 24.14.0 | PASS | frontend 3/3; Rust 0 tests before spike; Vite and Tauri debug build PASS |
-| `SAFE-001`, `SAFE-003`, `PERF-010`, `CONTRACT-010`, `CONTRACT-011`, `FILE-001`, `CONTRACT-024` | `PATH=<rustup-bin>:$PATH cargo test --manifest-path src-tauri/Cargo.toml --test p0_spike_02_native_safety -- --nocapture --test-threads=1`; debug, same environment | PASS, 11/11 | 10 MiB multiline `223,023 us`; data image `166,161 us`; scanner retained bound `65,591 B`; worst JSON sizing `1,036,794 us` |
-| `SAFE-003`, `PERF-010`, `CONTRACT-024` | `PATH=<rustup-bin>:$PATH cargo test --release --manifest-path src-tauri/Cargo.toml --test p0_spike_02_native_safety -- --nocapture --test-threads=1` | PASS, 11/11 | release: multiline `27,367 us`; data image `21,406 us`; worst JSON sizing `103,410 us`; 32 MiB raw -> `202,375,168 B` wire; JSON retained bound `458,752 B` |
+| `SAFE-001`, `SAFE-003`, `PERF-010`, `CONTRACT-010`, `CONTRACT-011`, `FILE-001`, `CONTRACT-024` | `PATH=<rustup-bin>:$PATH cargo test --manifest-path src-tauri/Cargo.toml --test p0_spike_02_native_safety -- --nocapture --test-threads=1`; debug at `dcd1b6e`, same environment | PASS, 16/16 | 10 MiB multiline `235,203 us`; data image `212,091 us`; scanner retained bound `65,644 B`; worst JSON sizing `1,040,846 us` |
+| `SAFE-003`, `PERF-010`, `CONTRACT-024` | `PATH=<rustup-bin>:$PATH cargo test --release --manifest-path src-tauri/Cargo.toml --test p0_spike_02_native_safety -- --nocapture --test-threads=1` at `dcd1b6e` | PASS, 16/16 | release: multiline `40,762 us`; data image `43,463 us`; worst JSON sizing `92,557 us`; 32 MiB raw -> `202,375,168 B` wire; JSON retained bound `458,752 B`; explicitly not WebView transport |
 | Rust format/lint | `cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check`; `cargo clippy --manifest-path src-tauri/Cargo.toml --test p0_spike_02_native_safety -- -D warnings` | PASS | no warnings |
-| Full branch gate | `ruby scripts/validate_design_docs.rb && PATH=<rustup-bin>:$PATH pnpm verify` | PASS | validator, Prettier, ESLint, TypeScript, frontend 3/3, Rust 11/11, Vite build, Tauri debug build |
+| Full branch gate | `ruby scripts/validate_design_docs.rb && PATH=<rustup-bin>:$PATH pnpm verify` at `dcd1b6e` with handoff metadata; macOS 26.6.2 arm64, rustc 1.98.0, pnpm 10.32.1, project Node 24.14.0 | PASS | validator, Prettier, ESLint, TypeScript, frontend 3/3, Rust 16/16, Vite build, Tauri debug build |
 | Schema drift | searched repository for a schema/generator drift command | NOT RUN | `P0-CONTRACT-01` has not landed on this base; no schema/generated file was touched; Integration must run its new drift gate after ordered merge |
 
 ## Open questions and blockers
 
-- No blocker was found for bounded scanning, cancellation, cross-chunk detection, macOS same-directory atomic replacement, or scoped stale cleanup.
-- Integration owns one F0 risk: this branch proves `CONTRACT-024` raw/wire sizing can be streamed with bounded retained state, but does not test a 32 MiB/193 MiB payload through the actual Tauri WebView bridge. `P0-CONTRACT-01` or a follow-up pre-F0 transport experiment must close it; product code must not assume success.
-- Native Core owns the later cross-platform adapter risk: Windows replacement and directory durability semantics were not run on this macOS-first host. This does not block the accepted macOS feasibility result.
+- The two independent-review P0 blockers are closed in the spike: ambiguous/cross-boundary data images no longer fail open, and stale cleanup no longer accepts a loose same-prefix name.
+- **F0 blocker — Integration/Contract owner:** this branch proves only bounded `CONTRACT-024` raw/wire sizing. It does not send 32 MiB ordinary text and the approximately 193 MiB worst-escaped wire payload through the actual Tauri/WKWebView bridge as required by 03 §10.5 and §17. A separate real transport harness must pass before F0; otherwise an accepted chunk/handle ADR and regenerated contract are required. Product code must not assume success.
+- **Cross-platform follow-up — Native Core:** Windows replacement/share-mode and directory durability semantics were not run because the atomic-replace spike is compiled and tested only on macOS. A Windows platform adapter and equivalent fault matrix remain required before Windows support is claimed.
 
 ## Remaining numbered steps
 
-1. Integration reviews and merges this branch in the Phase 0 order, then reruns the new contract/schema gate and full repository gate on the integration head.
-2. Before F0, Integration assigns or confirms an actual Tauri raw/wire transport experiment for the remaining `CONTRACT-024` bridge risk.
-3. After F0, `P1-PREFLIGHT-01` reimplements the proven algorithm behind frozen production contracts and adds product-level outcomes/UI integration; it must not copy test-only code into a Tauri command wholesale.
+1. An independent reviewer rechecks `dcd1b6e` specifically against the two prior blocker reproductions and this task note.
+2. Integration merges the reviewed branch in Phase 0 order, then reruns the new contract/schema gate and full repository gate on the integration head.
+3. Before F0, Integration assigns a separate actual Tauri/WKWebView raw/wire transport experiment; sizing alone cannot close `CONTRACT-024`.
+4. After F0, `P1-PREFLIGHT-01` reimplements the proven algorithm behind frozen production contracts and adds product-level outcomes/UI integration; it must not copy test-only code into a Tauri command wholesale.
 
 ## Data safety, recovery, and temporary artifacts
 
@@ -89,4 +94,4 @@ No user documents, clipboard bytes, recovery data, personal paths, or committed 
 
 ## Single recommended next action
 
-Integration reviews `d395624`, preserves the explicit Tauri-transport caveat, and merges only after the Phase 0 contract/CI ordering allows it.
+An independent reviewer rechecks implementation `dcd1b6e`; after a clean review, Integration preserves the explicit F0 transport blocker and merges only when Phase 0 ordering allows it.

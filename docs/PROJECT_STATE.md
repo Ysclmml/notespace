@@ -93,7 +93,7 @@
 | `P0-CONTRACT-01` | READY | unowned | `52dc387` / — | `DATA-REVISION-001`、`SAFE-IPC-001`、`EXT-ROUTER-001`、`EXT-COMMAND-001` / IPC v1 + generated bindings | 领取后创建 task note；先复制 canonical schema，不重构语义 |
 | `P0-FIXTURE-01` | READY | unowned | `52dc387` / — | `DATA-ROUNDTRIP-001`、`DATA-UNKNOWN-001`、`EDIT-IME-001`、`EDIT-TABLE-001` / privacy-safe fixtures | 领取后创建 task note；危险大夹具只允许运行时生成 |
 | `P0-SPIKE-01` | READY | unowned | `52dc387` / — | `EDIT-IME-001`、`EDIT-TABLE-001`、`PERF-LARGE-001` / CodeMirror feasibility | 领取后创建 task note；仅 spike/测量，不实现 Phase 1 编辑器 |
-| `P0-SPIKE-02` | CLAIMED | Native/Safety remediation agent / Integration | `576a435` / `de87aaa` | `FILE-PREFLIGHT-001`、`FILE-SAVE-001`、`PERF-LARGE-001`、`SAFE-DATAURI-001`、`SAFE-IPC-001` / bounded Rust safety feasibility only | [`P0-SPIKE-02.md`](tasks/P0-SPIKE-02.md)；修复独立审查的 data-URI fail-open 与 stale-temp 误删 blocker，完成后重跑 focused/full gates 并交 Integration 复审 |
+| `P0-SPIKE-02` | REVIEW | Native/Safety remediation agent / independent reviewer, then Integration | `576a435` / `dcd1b6e` | `FILE-PREFLIGHT-001`、`FILE-SAVE-001`、`PERF-LARGE-001`、`SAFE-DATAURI-001`、`SAFE-IPC-001` / bounded Rust safety feasibility only | [`P0-SPIKE-02.md`](tasks/P0-SPIKE-02.md)；两个 review blocker 已修复，debug/release 16/16 与全门禁 PASS；实际 Tauri 32 MiB/~193 MiB bridge `CONTRACT-024` 仍是 F0 blocker，先复审 `dcd1b6e` |
 
 只列出了依赖已满足的第一批任务；`P0-FLAG-01` 必须等待 `P0-CONTRACT-01` 生成初始契约后才能进入 READY。
 
