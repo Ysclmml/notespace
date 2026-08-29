@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "apiVersion": "1.0",
-  "generatedBy": "src-tauri/src/ipc_schema.rs",
+  "generatedBy": "src-tauri/src/ipc_schema/fixtures.rs",
   "unions": {
     "AppCloseRespondOutcome": [
       {
@@ -19,40 +19,73 @@
     ],
     "AppErrorDetails": [
       {
+        "displayPath": "/fixture/document.md",
         "kind": "path"
       },
       {
-        "actual": {},
-        "expected": {},
+        "actual": {
+          "kind": "absent"
+        },
+        "expected": {
+          "kind": "present",
+          "revision": {
+            "contentHash": "fixture-content-hash",
+            "fileIdentityHint": "fixture-file-identity",
+            "modifiedAtUnixMs": 2000000000000,
+            "sizeBytes": 128,
+            "token": "fixture-revision-token"
+          }
+        },
         "kind": "conflict"
       },
       {
         "kind": "safety",
-        "report": {}
+        "report": {
+          "allowedActions": [
+            "extractDataImages"
+          ],
+          "detectedDataImageCount": 1,
+          "hasUtf8Bom": false,
+          "kind": "safetyBlocked",
+          "largestDataImageEstimateBytes": 16,
+          "lineCountEstimate": 4,
+          "maxLineBytes": 64,
+          "reasons": [
+            "largeDataImage"
+          ],
+          "sizeBytes": 128
+        }
       },
       {
+        "field": "fixtureField",
         "kind": "validation",
-        "reason": "synthetic"
+        "reason": "fixture validation reason"
       },
       {
         "kind": "operation",
-        "operationId": "synthetic"
+        "operationId": "fixture-operation",
+        "phase": "fixture-phase"
       },
       {
-        "displayTarget": "synthetic",
-        "grantRequestId": "synthetic",
+        "displayTarget": "/fixture/outside.md",
+        "grantRequestId": "fixture-grant-request",
         "kind": "grant",
-        "purpose": "synthetic"
+        "purpose": "resourceResolution"
       },
       {
-        "cause": "synthetic",
+        "cause": "diskFull",
+        "displayTarget": "/fixture/assets/fixture.png",
         "kind": "assetWrite",
-        "owner": {}
+        "owner": {
+          "documentId": "fixture-document",
+          "kind": "document"
+        }
       },
       {
-        "cause": "synthetic",
+        "cause": "permissionRevoked",
+        "displayPath": "/fixture/document.md",
         "kind": "io",
-        "operation": "synthetic"
+        "operation": "write"
       }
     ],
     "AppOpenResourcesAckOutcome": [
@@ -68,25 +101,44 @@
     ],
     "AssetImportClipboardOutcome": [
       {
-        "asset": "synthetic",
+        "asset": {
+          "contentHash": "fixture-asset-hash",
+          "height": 16,
+          "id": "fixture-asset",
+          "markdownUri": "assets/fixture.png",
+          "mediaType": "image/png",
+          "owner": {
+            "documentId": "fixture-document",
+            "kind": "document"
+          },
+          "relativePath": "assets/fixture.png",
+          "sizeBytes": 64,
+          "state": {
+            "kind": "committed"
+          },
+          "width": 16
+        },
         "kind": "imported"
       },
       {
-        "displayTarget": "synthetic",
-        "grantRequestId": "synthetic",
+        "displayTarget": "/fixture/assets",
+        "grantRequestId": "fixture-grant-request",
         "kind": "needsGrant",
-        "owner": {},
-        "pasteIntentId": "synthetic",
-        "reason": "synthetic"
+        "owner": {
+          "draftId": "fixture-draft",
+          "kind": "draft"
+        },
+        "pasteIntentId": "fixture-paste-intent",
+        "reason": "assetDirectory"
       }
     ],
     "AssetOwner": [
       {
-        "documentId": "synthetic",
+        "documentId": "fixture-document",
         "kind": "document"
       },
       {
-        "draftId": "synthetic",
+        "draftId": "fixture-draft",
         "kind": "draft"
       }
     ],
@@ -96,68 +148,173 @@
       },
       {
         "kind": "committing",
-        "operationId": "synthetic"
+        "operationId": "fixture-operation"
       },
       {
         "kind": "committed"
       },
       {
         "kind": "orphaned",
-        "retainUntilUnixMs": []
+        "retainUntilUnixMs": 2000000000000
       },
       {
         "kind": "deleted"
       },
       {
-        "error": {},
+        "error": {
+          "code": "ERR_IO",
+          "correlationId": "fixture-correlation",
+          "message": "Fixture I/O failure",
+          "messageKey": "fixture.io",
+          "recoveryActions": [
+            "retry",
+            "compare"
+          ],
+          "retryable": true
+        },
         "kind": "failed"
       }
     ],
     "CommandResponse": [
       {
-        "apiVersion": "synthetic",
+        "apiVersion": "1.0",
         "ok": true,
         "payload": {},
-        "requestId": "synthetic"
+        "requestId": "fixture-request"
       },
       {
-        "apiVersion": "synthetic",
-        "error": {},
+        "apiVersion": "1.0",
+        "error": {
+          "code": "ERR_IO",
+          "correlationId": "fixture-correlation",
+          "message": "Fixture I/O failure",
+          "messageKey": "fixture.io",
+          "recoveryActions": [
+            "retry",
+            "compare"
+          ],
+          "retryable": true
+        },
         "ok": false,
-        "requestId": "synthetic"
+        "requestId": "fixture-request"
       }
     ],
     "ConflictResolutionOutcome": [
       {
         "kind": "reloadChecked",
-        "outcome": {}
+        "outcome": {
+          "document": {
+            "content": "# fixture document",
+            "descriptor": {
+              "displayName": "fixture.md",
+              "documentId": "fixture-document",
+              "locator": {
+                "kind": "workspacePath",
+                "relativePath": "docs/fixture.md",
+                "workspaceId": "fixture-workspace"
+              },
+              "readOnly": false,
+              "relativePath": "docs/fixture.md",
+              "workspaceId": "fixture-workspace"
+            },
+            "diskRevision": {
+              "kind": "present",
+              "revision": {
+                "contentHash": "fixture-content-hash",
+                "fileIdentityHint": "fixture-file-identity",
+                "modifiedAtUnixMs": 2000000000000,
+                "sizeBytes": 128,
+                "token": "fixture-revision-token"
+              }
+            },
+            "format": {
+              "encoding": "utf8",
+              "hasUtf8Bom": false,
+              "lineEnding": "lf",
+              "preferredLineEnding": "lf"
+            },
+            "mode": "normal",
+            "preflight": {
+              "detectedDataImageCount": 1,
+              "hasUtf8Bom": false,
+              "largestDataImageEstimateBytes": 16,
+              "lineCountEstimate": 4,
+              "maxLineBytes": 32,
+              "sizeBytes": 128
+            }
+          },
+          "kind": "editable"
+        }
       },
       {
         "kind": "saved",
-        "result": {}
+        "result": {
+          "bytesWritten": 128,
+          "documentId": "fixture-document",
+          "kind": "saved",
+          "newDiskRevision": {
+            "contentHash": "fixture-content-hash",
+            "fileIdentityHint": "fixture-file-identity",
+            "modifiedAtUnixMs": 2000000000000,
+            "sizeBytes": 128,
+            "token": "fixture-revision-token"
+          },
+          "savedSessionRevision": 14,
+          "writeId": "fixture-write"
+        }
       }
     ],
     "ConflictResolutionRequest": [
       {
         "action": "reload",
-        "documentId": "synthetic",
-        "observedDiskRevision": 1
+        "documentId": "fixture-document",
+        "observedDiskRevision": {
+          "kind": "present",
+          "revision": {
+            "contentHash": "fixture-content-hash",
+            "fileIdentityHint": "fixture-file-identity",
+            "modifiedAtUnixMs": 2000000000000,
+            "sizeBytes": 128,
+            "token": "fixture-revision-token"
+          }
+        }
       },
       {
         "action": "overwrite",
-        "content": "synthetic",
-        "documentId": "synthetic",
-        "format": {},
-        "observedDiskRevision": 1,
-        "snapshotSessionRevision": 1
+        "content": "# overwrite fixture",
+        "documentId": "fixture-document",
+        "format": {
+          "encoding": "utf8",
+          "hasUtf8Bom": false,
+          "lineEnding": "lf",
+          "preferredLineEnding": "lf"
+        },
+        "observedDiskRevision": {
+          "kind": "present",
+          "revision": {
+            "contentHash": "fixture-content-hash",
+            "fileIdentityHint": "fixture-file-identity",
+            "modifiedAtUnixMs": 2000000000000,
+            "sizeBytes": 128,
+            "token": "fixture-revision-token"
+          }
+        },
+        "snapshotSessionRevision": 12
       },
       {
         "action": "recreate",
-        "content": "synthetic",
-        "documentId": "synthetic",
-        "format": {},
-        "observedDiskRevision": 1,
-        "snapshotSessionRevision": 1
+        "content": "# recreate fixture",
+        "documentId": "fixture-document",
+        "format": {
+          "encoding": "utf8",
+          "hasUtf8Bom": false,
+          "lineEnding": "lf",
+          "preferredLineEnding": "lf"
+        },
+        "observedDiskRevision": {
+          "kind": "absent"
+        },
+        "snapshotSessionRevision": 13
       }
     ],
     "DiscardReturnState": [
@@ -165,36 +322,84 @@
         "kind": "dirty"
       },
       {
-        "actual": {},
-        "expected": {},
+        "actual": {
+          "kind": "absent"
+        },
+        "expected": {
+          "kind": "present",
+          "revision": {
+            "contentHash": "fixture-content-hash",
+            "fileIdentityHint": "fixture-file-identity",
+            "modifiedAtUnixMs": 2000000000000,
+            "sizeBytes": 128,
+            "token": "fixture-revision-token"
+          }
+        },
         "kind": "conflict",
-        "reason": "synthetic"
+        "reason": "deleted"
       },
       {
         "kind": "missing",
-        "lastKnown": "synthetic"
+        "lastKnown": {
+          "contentHash": "fixture-content-hash",
+          "fileIdentityHint": "fixture-file-identity",
+          "modifiedAtUnixMs": 2000000000000,
+          "sizeBytes": 128,
+          "token": "fixture-revision-token"
+        }
       },
       {
-        "error": {},
+        "error": {
+          "code": "ERR_IO",
+          "correlationId": "fixture-correlation",
+          "message": "Fixture I/O failure",
+          "messageKey": "fixture.io",
+          "recoveryActions": [
+            "retry",
+            "compare"
+          ],
+          "retryable": true
+        },
         "kind": "saveError"
       },
       {
-        "error": {},
-        "kind": "reloadError"
+        "error": {
+          "code": "ERR_IO",
+          "correlationId": "fixture-correlation",
+          "message": "Fixture I/O failure",
+          "messageKey": "fixture.io",
+          "recoveryActions": [
+            "retry",
+            "compare"
+          ],
+          "retryable": true
+        },
+        "kind": "reloadError",
+        "observed": {
+          "kind": "present",
+          "revision": {
+            "contentHash": "fixture-content-hash",
+            "fileIdentityHint": "fixture-file-identity",
+            "modifiedAtUnixMs": 2000000000000,
+            "sizeBytes": 128,
+            "token": "fixture-revision-token"
+          }
+        }
       }
     ],
     "DocumentAnchor": [
       {
         "kind": "heading",
-        "slug": "synthetic"
+        "slug": "fixture-heading"
       },
       {
-        "blockId": "synthetic",
+        "blockId": "fixture-block",
         "kind": "block"
       },
       {
+        "column": 4,
         "kind": "sourcePosition",
-        "line": 1
+        "line": 12
       }
     ],
     "DocumentChangeProvenance": [
@@ -203,122 +408,445 @@
       },
       {
         "source": "ownWrite",
-        "writeId": "synthetic"
+        "writeId": "fixture-write"
       }
     ],
     "DocumentCompareOutcome": [
       {
-        "content": "synthetic",
-        "diskRevision": 1,
-        "format": {},
+        "content": "# fixture snapshot",
+        "diskRevision": {
+          "kind": "present",
+          "revision": {
+            "contentHash": "fixture-content-hash",
+            "fileIdentityHint": "fixture-file-identity",
+            "modifiedAtUnixMs": 2000000000000,
+            "sizeBytes": 128,
+            "token": "fixture-revision-token"
+          }
+        },
+        "format": {
+          "encoding": "utf8",
+          "hasUtf8Bom": false,
+          "lineEnding": "lf",
+          "preferredLineEnding": "lf"
+        },
         "kind": "snapshot"
       },
       {
-        "diskRevision": 1,
+        "diskRevision": {
+          "kind": "present",
+          "revision": {
+            "contentHash": "fixture-content-hash",
+            "fileIdentityHint": "fixture-file-identity",
+            "modifiedAtUnixMs": 2000000000000,
+            "sizeBytes": 128,
+            "token": "fixture-revision-token"
+          }
+        },
         "kind": "safetyBlocked",
-        "report": {}
+        "report": {
+          "allowedActions": [
+            "extractDataImages"
+          ],
+          "detectedDataImageCount": 1,
+          "hasUtf8Bom": false,
+          "kind": "safetyBlocked",
+          "largestDataImageEstimateBytes": 16,
+          "lineCountEstimate": 4,
+          "maxLineBytes": 64,
+          "reasons": [
+            "largeDataImage"
+          ],
+          "sizeBytes": 128
+        }
       },
       {
-        "diskRevision": 1,
+        "diskRevision": {
+          "kind": "present",
+          "revision": {
+            "contentHash": "fixture-content-hash",
+            "fileIdentityHint": "fixture-file-identity",
+            "modifiedAtUnixMs": 2000000000000,
+            "sizeBytes": 128,
+            "token": "fixture-revision-token"
+          }
+        },
         "kind": "unsupported",
-        "report": {}
+        "report": {
+          "allowedActions": [
+            "openExternal"
+          ],
+          "detectedDataImageCount": 0,
+          "hasUtf8Bom": false,
+          "kind": "unsupported",
+          "lineCountEstimate": 4,
+          "maxLineBytes": 64,
+          "reasons": [
+            "invalidUtf8"
+          ],
+          "sizeBytes": 128
+        }
       }
     ],
     "DocumentExternalChanged": [
       {
         "change": "modified",
-        "documentId": "synthetic",
-        "observedDiskRevision": 1,
-        "source": "synthetic"
+        "documentId": "fixture-document",
+        "observedDiskRevision": {
+          "kind": "present",
+          "revision": {
+            "contentHash": "fixture-content-hash",
+            "fileIdentityHint": "fixture-file-identity",
+            "modifiedAtUnixMs": 2000000000000,
+            "sizeBytes": 128,
+            "token": "fixture-revision-token"
+          }
+        },
+        "source": "external"
       },
       {
         "change": "deleted",
-        "documentId": "synthetic",
-        "observedDiskRevision": 1,
-        "source": "synthetic"
+        "documentId": "fixture-document",
+        "observedDiskRevision": {
+          "kind": "absent"
+        },
+        "source": "external"
       },
       {
         "change": "replaced",
-        "documentId": "synthetic",
-        "observedDiskRevision": 1,
-        "source": "synthetic"
+        "documentId": "fixture-document",
+        "observedDiskRevision": {
+          "kind": "present",
+          "revision": {
+            "contentHash": "fixture-content-hash",
+            "fileIdentityHint": "fixture-file-identity",
+            "modifiedAtUnixMs": 2000000000000,
+            "sizeBytes": 128,
+            "token": "fixture-revision-token"
+          }
+        },
+        "source": "ownWrite",
+        "writeId": "fixture-write"
       },
       {
         "change": "metadataOnly",
-        "documentId": "synthetic",
-        "observedDiskRevision": 1,
-        "source": "synthetic"
+        "documentId": "fixture-document",
+        "observedDiskRevision": {
+          "kind": "present",
+          "revision": {
+            "contentHash": "fixture-content-hash",
+            "fileIdentityHint": "fixture-file-identity",
+            "modifiedAtUnixMs": 2000000000000,
+            "sizeBytes": 128,
+            "token": "fixture-revision-token"
+          }
+        },
+        "source": "external"
       },
       {
-        "capabilityEpoch": 1,
+        "capabilityEpoch": 4,
         "change": "permissionChanged",
-        "documentId": "synthetic",
-        "readOnly": false,
-        "source": "synthetic"
+        "documentId": "fixture-document",
+        "error": {
+          "code": "ERR_IO",
+          "correlationId": "fixture-correlation",
+          "message": "Fixture I/O failure",
+          "messageKey": "fixture.io",
+          "recoveryActions": [
+            "retry",
+            "compare"
+          ],
+          "retryable": true
+        },
+        "readOnly": true,
+        "source": "external"
       }
     ],
     "DocumentLoadState": [
       {
         "kind": "loading",
-        "operationId": "synthetic",
-        "resource": {}
+        "operationId": "fixture-operation",
+        "resource": {
+          "anchor": {
+            "kind": "heading",
+            "slug": "fixture-heading"
+          },
+          "kind": "markdown",
+          "locator": {
+            "kind": "workspacePath",
+            "relativePath": "docs/fixture.md",
+            "workspaceId": "fixture-workspace"
+          }
+        }
       },
       {
-        "descriptor": {},
-        "diskRevision": 1,
+        "descriptor": {
+          "displayName": "fixture.md",
+          "documentId": "fixture-document",
+          "locator": {
+            "kind": "workspacePath",
+            "relativePath": "docs/fixture.md",
+            "workspaceId": "fixture-workspace"
+          },
+          "readOnly": false,
+          "relativePath": "docs/fixture.md",
+          "workspaceId": "fixture-workspace"
+        },
+        "diskRevision": {
+          "kind": "present",
+          "revision": {
+            "contentHash": "fixture-content-hash",
+            "fileIdentityHint": "fixture-file-identity",
+            "modifiedAtUnixMs": 2000000000000,
+            "sizeBytes": 128,
+            "token": "fixture-revision-token"
+          }
+        },
         "kind": "safetyBlocked",
-        "repairToken": "synthetic",
-        "report": {},
-        "resource": {}
+        "repairToken": "fixture-repair-token",
+        "report": {
+          "allowedActions": [
+            "extractDataImages"
+          ],
+          "detectedDataImageCount": 1,
+          "hasUtf8Bom": false,
+          "kind": "safetyBlocked",
+          "largestDataImageEstimateBytes": 16,
+          "lineCountEstimate": 4,
+          "maxLineBytes": 64,
+          "reasons": [
+            "largeDataImage"
+          ],
+          "sizeBytes": 128
+        },
+        "resource": {
+          "anchor": {
+            "kind": "heading",
+            "slug": "fixture-heading"
+          },
+          "kind": "markdown",
+          "locator": {
+            "kind": "workspacePath",
+            "relativePath": "docs/fixture.md",
+            "workspaceId": "fixture-workspace"
+          }
+        }
       },
       {
+        "descriptor": {
+          "displayName": "fixture.md",
+          "documentId": "fixture-document",
+          "locator": {
+            "kind": "workspacePath",
+            "relativePath": "docs/fixture.md",
+            "workspaceId": "fixture-workspace"
+          },
+          "readOnly": false,
+          "relativePath": "docs/fixture.md",
+          "workspaceId": "fixture-workspace"
+        },
         "kind": "unsupported",
-        "report": {},
-        "resource": {}
+        "report": {
+          "allowedActions": [
+            "openExternal"
+          ],
+          "detectedDataImageCount": 0,
+          "hasUtf8Bom": false,
+          "kind": "unsupported",
+          "lineCountEstimate": 4,
+          "maxLineBytes": 64,
+          "reasons": [
+            "invalidUtf8"
+          ],
+          "sizeBytes": 128
+        },
+        "resource": {
+          "anchor": {
+            "kind": "heading",
+            "slug": "fixture-heading"
+          },
+          "kind": "markdown",
+          "locator": {
+            "kind": "workspacePath",
+            "relativePath": "docs/fixture.md",
+            "workspaceId": "fixture-workspace"
+          }
+        }
       },
       {
-        "error": {},
+        "error": {
+          "code": "ERR_IO",
+          "correlationId": "fixture-correlation",
+          "message": "Fixture I/O failure",
+          "messageKey": "fixture.io",
+          "recoveryActions": [
+            "retry",
+            "compare"
+          ],
+          "retryable": true
+        },
         "kind": "failed",
-        "resource": {}
+        "resource": {
+          "anchor": {
+            "kind": "heading",
+            "slug": "fixture-heading"
+          },
+          "kind": "markdown",
+          "locator": {
+            "kind": "workspacePath",
+            "relativePath": "docs/fixture.md",
+            "workspaceId": "fixture-workspace"
+          }
+        }
       }
     ],
     "DocumentLocator": [
       {
         "kind": "workspacePath",
-        "relativePath": "synthetic",
-        "workspaceId": "synthetic"
+        "relativePath": "docs/fixture.md",
+        "workspaceId": "fixture-workspace"
       },
       {
-        "draftId": "synthetic",
-        "kind": "draft"
+        "draftId": "fixture-draft",
+        "kind": "draft",
+        "suggestedName": "fixture.md"
       },
       {
-        "displayName": "synthetic",
-        "grantId": "synthetic",
+        "displayName": "fixture.md",
+        "grantId": "fixture-grant",
         "kind": "grantedFile"
       }
     ],
     "DocumentOpenOutcome": [
       {
-        "document": {},
+        "document": {
+          "content": "# fixture document",
+          "descriptor": {
+            "displayName": "fixture.md",
+            "documentId": "fixture-document",
+            "locator": {
+              "kind": "workspacePath",
+              "relativePath": "docs/fixture.md",
+              "workspaceId": "fixture-workspace"
+            },
+            "readOnly": false,
+            "relativePath": "docs/fixture.md",
+            "workspaceId": "fixture-workspace"
+          },
+          "diskRevision": {
+            "kind": "present",
+            "revision": {
+              "contentHash": "fixture-content-hash",
+              "fileIdentityHint": "fixture-file-identity",
+              "modifiedAtUnixMs": 2000000000000,
+              "sizeBytes": 128,
+              "token": "fixture-revision-token"
+            }
+          },
+          "format": {
+            "encoding": "utf8",
+            "hasUtf8Bom": false,
+            "lineEnding": "lf",
+            "preferredLineEnding": "lf"
+          },
+          "mode": "normal",
+          "preflight": {
+            "detectedDataImageCount": 1,
+            "hasUtf8Bom": false,
+            "largestDataImageEstimateBytes": 16,
+            "lineCountEstimate": 4,
+            "maxLineBytes": 32,
+            "sizeBytes": 128
+          }
+        },
         "kind": "editable"
       },
       {
-        "descriptor": {},
-        "diskRevision": 1,
+        "descriptor": {
+          "displayName": "fixture.md",
+          "documentId": "fixture-document",
+          "locator": {
+            "kind": "workspacePath",
+            "relativePath": "docs/fixture.md",
+            "workspaceId": "fixture-workspace"
+          },
+          "readOnly": false,
+          "relativePath": "docs/fixture.md",
+          "workspaceId": "fixture-workspace"
+        },
+        "diskRevision": {
+          "kind": "present",
+          "revision": {
+            "contentHash": "fixture-content-hash",
+            "fileIdentityHint": "fixture-file-identity",
+            "modifiedAtUnixMs": 2000000000000,
+            "sizeBytes": 128,
+            "token": "fixture-revision-token"
+          }
+        },
         "kind": "safetyBlocked",
-        "repairToken": "synthetic",
-        "report": {}
+        "repairToken": "fixture-repair-token",
+        "report": {
+          "allowedActions": [
+            "extractDataImages"
+          ],
+          "detectedDataImageCount": 1,
+          "hasUtf8Bom": false,
+          "kind": "safetyBlocked",
+          "largestDataImageEstimateBytes": 16,
+          "lineCountEstimate": 4,
+          "maxLineBytes": 64,
+          "reasons": [
+            "largeDataImage"
+          ],
+          "sizeBytes": 128
+        }
       },
       {
+        "descriptor": {
+          "displayName": "fixture.md",
+          "documentId": "fixture-document",
+          "locator": {
+            "kind": "workspacePath",
+            "relativePath": "docs/fixture.md",
+            "workspaceId": "fixture-workspace"
+          },
+          "readOnly": false,
+          "relativePath": "docs/fixture.md",
+          "workspaceId": "fixture-workspace"
+        },
         "kind": "unsupported",
-        "report": {}
+        "report": {
+          "allowedActions": [
+            "openExternal"
+          ],
+          "detectedDataImageCount": 0,
+          "hasUtf8Bom": false,
+          "kind": "unsupported",
+          "lineCountEstimate": 4,
+          "maxLineBytes": 64,
+          "reasons": [
+            "invalidUtf8"
+          ],
+          "sizeBytes": 128
+        }
       }
     ],
     "DocumentPickOutcome": [
       {
         "kind": "selected",
-        "resource": {}
+        "resource": {
+          "anchor": {
+            "kind": "heading",
+            "slug": "fixture-heading"
+          },
+          "kind": "markdown",
+          "locator": {
+            "kind": "workspacePath",
+            "relativePath": "docs/fixture.md",
+            "workspaceId": "fixture-workspace"
+          }
+        }
       },
       {
         "kind": "cancelled"
@@ -327,31 +855,61 @@
     "DocumentPrepareSaveAsOutcome": [
       {
         "kind": "cancelled",
-        "saveAsIntentId": "synthetic"
+        "saveAsIntentId": "fixture-save-as"
       },
       {
-        "documentId": "synthetic",
+        "documentId": "fixture-document",
         "kind": "sameDocument",
-        "saveAsIntentId": "synthetic"
+        "saveAsIntentId": "fixture-save-as"
       },
       {
         "kind": "targetAlreadyOpen",
-        "saveAsIntentId": "synthetic",
-        "target": {}
+        "saveAsIntentId": "fixture-save-as",
+        "target": {
+          "displayName": "fixture.md",
+          "documentId": "fixture-document",
+          "locator": {
+            "kind": "workspacePath",
+            "relativePath": "docs/fixture.md",
+            "workspaceId": "fixture-workspace"
+          },
+          "readOnly": false,
+          "relativePath": "docs/fixture.md",
+          "workspaceId": "fixture-workspace"
+        }
       },
       {
         "kind": "prepared",
-        "newDescriptor": "synthetic",
-        "relativeLinkImpact": "synthetic",
-        "saveAsIntentId": "synthetic",
-        "saveAsToken": "synthetic",
-        "targetExpectedDiskRevision": 1,
-        "uriReplacements": []
+        "newDescriptor": {
+          "displayName": "fixture.md",
+          "documentId": "fixture-document",
+          "locator": {
+            "kind": "workspacePath",
+            "relativePath": "docs/fixture.md",
+            "workspaceId": "fixture-workspace"
+          },
+          "readOnly": false,
+          "relativePath": "docs/fixture.md",
+          "workspaceId": "fixture-workspace"
+        },
+        "relativeLinkImpact": "baseDirectoryChanged",
+        "saveAsIntentId": "fixture-save-as",
+        "saveAsToken": "fixture-save-as-token",
+        "targetExpectedDiskRevision": {
+          "kind": "absent"
+        },
+        "uriReplacements": [
+          {
+            "assetId": "fixture-asset",
+            "newUri": "assets/fixture.png",
+            "oldUri": "draft-assets/fixture.png"
+          }
+        ]
       }
     ],
     "DocumentRepairAction": [
       {
-        "assetDirectoryName": "synthetic",
+        "assetDirectoryName": "assets",
         "kind": "extractDataImages"
       },
       {
@@ -383,47 +941,102 @@
     "DocumentSaveAsStatusOutcome": [
       {
         "kind": "unknown",
-        "saveAsIntentId": "synthetic"
+        "saveAsIntentId": "fixture-save-as"
       },
       {
-        "documentId": "synthetic",
+        "documentId": "fixture-document",
         "kind": "prepared",
-        "saveAsIntentId": "synthetic"
+        "saveAsIntentId": "fixture-save-as"
       },
       {
-        "documentId": "synthetic",
+        "documentId": "fixture-document",
         "kind": "committing",
-        "saveAsIntentId": "synthetic"
+        "saveAsIntentId": "fixture-save-as"
       },
       {
         "kind": "committed",
-        "outcome": {}
+        "outcome": {
+          "kind": "saved",
+          "newDescriptor": {
+            "displayName": "fixture.md",
+            "documentId": "fixture-document",
+            "locator": {
+              "kind": "workspacePath",
+              "relativePath": "docs/fixture.md",
+              "workspaceId": "fixture-workspace"
+            },
+            "readOnly": false,
+            "relativePath": "docs/fixture.md",
+            "workspaceId": "fixture-workspace"
+          },
+          "result": {
+            "bytesWritten": 128,
+            "documentId": "fixture-document",
+            "kind": "saved",
+            "newDiskRevision": {
+              "contentHash": "fixture-content-hash",
+              "fileIdentityHint": "fixture-file-identity",
+              "modifiedAtUnixMs": 2000000000000,
+              "sizeBytes": 128,
+              "token": "fixture-revision-token"
+            },
+            "savedSessionRevision": 14,
+            "writeId": "fixture-write"
+          },
+          "saveAsIntentId": "fixture-save-as"
+        }
       },
       {
-        "documentId": "synthetic",
+        "documentId": "fixture-document",
+        "error": {
+          "code": "ERR_IO",
+          "correlationId": "fixture-correlation",
+          "message": "Fixture I/O failure",
+          "messageKey": "fixture.io",
+          "recoveryActions": [
+            "retry",
+            "compare"
+          ],
+          "retryable": true
+        },
         "kind": "rolledBack",
-        "saveAsIntentId": "synthetic"
+        "saveAsIntentId": "fixture-save-as"
       },
       {
-        "documentId": "synthetic",
+        "documentId": "fixture-document",
         "kind": "acknowledged",
-        "saveAsIntentId": "synthetic"
+        "saveAsIntentId": "fixture-save-as"
       }
     ],
     "DocumentSaveOutcome": [
       {
-        "bytesWritten": 1,
-        "documentId": "synthetic",
+        "bytesWritten": 128,
+        "documentId": "fixture-document",
         "kind": "saved",
-        "newDiskRevision": 1,
-        "savedSessionRevision": 1,
-        "writeId": "synthetic"
+        "newDiskRevision": {
+          "contentHash": "fixture-content-hash",
+          "fileIdentityHint": "fixture-file-identity",
+          "modifiedAtUnixMs": 2000000000000,
+          "sizeBytes": 128,
+          "token": "fixture-revision-token"
+        },
+        "savedSessionRevision": 14,
+        "writeId": "fixture-write"
       },
       {
-        "diskRevision": 1,
-        "documentId": "synthetic",
+        "diskRevision": {
+          "kind": "present",
+          "revision": {
+            "contentHash": "fixture-content-hash",
+            "fileIdentityHint": "fixture-file-identity",
+            "modifiedAtUnixMs": 2000000000000,
+            "sizeBytes": 128,
+            "token": "fixture-revision-token"
+          }
+        },
+        "documentId": "fixture-document",
         "kind": "noop",
-        "savedSessionRevision": 1
+        "savedSessionRevision": 11
       }
     ],
     "EventScope": [
@@ -432,21 +1045,27 @@
       },
       {
         "kind": "workspace",
-        "workspaceId": "synthetic"
+        "workspaceId": "fixture-workspace"
       },
       {
-        "documentId": "synthetic",
+        "documentId": "fixture-document",
         "kind": "document"
       },
       {
         "kind": "operation",
-        "operationId": "synthetic"
+        "operationId": "fixture-operation"
       }
     ],
     "ExpectedDiskRevision": [
       {
         "kind": "present",
-        "revision": "synthetic"
+        "revision": {
+          "contentHash": "fixture-content-hash",
+          "fileIdentityHint": "fixture-file-identity",
+          "modifiedAtUnixMs": 2000000000000,
+          "sizeBytes": 128,
+          "token": "fixture-revision-token"
+        }
       },
       {
         "kind": "absent"
@@ -454,13 +1073,24 @@
     ],
     "NativeOpenTarget": [
       {
-        "displayPath": "synthetic",
-        "grantToken": "synthetic",
+        "displayPath": "/fixture/workspace",
+        "grantToken": "fixture-workspace-grant",
         "kind": "workspace"
       },
       {
         "kind": "document",
-        "resource": {}
+        "resource": {
+          "anchor": {
+            "kind": "heading",
+            "slug": "fixture-heading"
+          },
+          "kind": "markdown",
+          "locator": {
+            "kind": "workspacePath",
+            "relativePath": "docs/fixture.md",
+            "workspaceId": "fixture-workspace"
+          }
+        }
       }
     ],
     "PersistenceState": [
@@ -472,40 +1102,101 @@
       },
       {
         "kind": "reloading",
-        "operationId": "synthetic",
-        "previousDiskRevision": 1
+        "operationId": "fixture-operation",
+        "previousDiskRevision": {
+          "kind": "present",
+          "revision": {
+            "contentHash": "fixture-content-hash",
+            "fileIdentityHint": "fixture-file-identity",
+            "modifiedAtUnixMs": 2000000000000,
+            "sizeBytes": 128,
+            "token": "fixture-revision-token"
+          }
+        }
       },
       {
-        "editOccurredAfterSnapshot": false,
-        "expectedDiskRevision": 1,
+        "editOccurredAfterSnapshot": true,
+        "expectedDiskRevision": {
+          "kind": "present",
+          "revision": {
+            "contentHash": "fixture-content-hash",
+            "fileIdentityHint": "fixture-file-identity",
+            "modifiedAtUnixMs": 2000000000000,
+            "sizeBytes": 128,
+            "token": "fixture-revision-token"
+          }
+        },
         "kind": "saving",
-        "operationId": "synthetic",
-        "snapshotSessionRevision": 1
+        "operationId": "fixture-operation",
+        "snapshotSessionRevision": 7
       },
       {
-        "actual": {},
-        "expected": {},
+        "actual": {
+          "kind": "absent"
+        },
+        "expected": {
+          "kind": "present",
+          "revision": {
+            "contentHash": "fixture-content-hash",
+            "fileIdentityHint": "fixture-file-identity",
+            "modifiedAtUnixMs": 2000000000000,
+            "sizeBytes": 128,
+            "token": "fixture-revision-token"
+          }
+        },
         "kind": "conflict",
-        "reason": "synthetic"
+        "reason": "deleted"
       },
       {
         "kind": "missing",
-        "lastKnown": "synthetic"
+        "lastKnown": null
       },
       {
-        "error": {},
+        "error": {
+          "code": "ERR_IO",
+          "correlationId": "fixture-correlation",
+          "message": "Fixture I/O failure",
+          "messageKey": "fixture.io",
+          "recoveryActions": [
+            "retry",
+            "compare"
+          ],
+          "retryable": true
+        },
         "kind": "saveError"
       },
       {
-        "error": {},
-        "kind": "reloadError"
+        "error": {
+          "code": "ERR_IO",
+          "correlationId": "fixture-correlation",
+          "message": "Fixture I/O failure",
+          "messageKey": "fixture.io",
+          "recoveryActions": [
+            "retry",
+            "compare"
+          ],
+          "retryable": true
+        },
+        "kind": "reloadError",
+        "observed": {
+          "kind": "absent"
+        }
       },
       {
-        "discardIntentId": "synthetic",
+        "discardIntentId": "fixture-discard-intent",
         "kind": "discarding",
-        "operationId": "synthetic",
-        "previous": [],
-        "snapshotSessionRevision": 1
+        "operationId": "fixture-operation",
+        "previous": {
+          "kind": "missing",
+          "lastKnown": {
+            "contentHash": "fixture-content-hash",
+            "fileIdentityHint": "fixture-file-identity",
+            "modifiedAtUnixMs": 2000000000000,
+            "sizeBytes": 128,
+            "token": "fixture-revision-token"
+          }
+        },
+        "snapshotSessionRevision": 8
       }
     ],
     "RecoveryInitialPersistence": [
@@ -516,171 +1207,486 @@
         "kind": "dirty"
       },
       {
-        "actual": {},
-        "expected": {},
+        "actual": {
+          "kind": "absent"
+        },
+        "expected": {
+          "kind": "present",
+          "revision": {
+            "contentHash": "fixture-content-hash",
+            "fileIdentityHint": "fixture-file-identity",
+            "modifiedAtUnixMs": 2000000000000,
+            "sizeBytes": 128,
+            "token": "fixture-revision-token"
+          }
+        },
         "kind": "conflict",
-        "reason": "synthetic"
+        "reason": "deleted"
       }
     ],
     "RecoveryOpenOutcome": [
       {
-        "document": {},
-        "initialPersistence": {},
+        "document": {
+          "content": "# recovered fixture",
+          "descriptor": {
+            "displayName": "fixture.md",
+            "documentId": "fixture-document",
+            "locator": {
+              "kind": "workspacePath",
+              "relativePath": "docs/fixture.md",
+              "workspaceId": "fixture-workspace"
+            },
+            "readOnly": false,
+            "relativePath": "docs/fixture.md",
+            "workspaceId": "fixture-workspace"
+          },
+          "format": {
+            "encoding": "utf8",
+            "hasUtf8Bom": false,
+            "lineEnding": "lf",
+            "preferredLineEnding": "lf"
+          },
+          "mode": "normal",
+          "observedDiskRevision": {
+            "kind": "present",
+            "revision": {
+              "contentHash": "fixture-content-hash",
+              "fileIdentityHint": "fixture-file-identity",
+              "modifiedAtUnixMs": 2000000000000,
+              "sizeBytes": 128,
+              "token": "fixture-revision-token"
+            }
+          },
+          "preflight": {
+            "detectedDataImageCount": 1,
+            "hasUtf8Bom": false,
+            "largestDataImageEstimateBytes": 16,
+            "lineCountEstimate": 4,
+            "maxLineBytes": 32,
+            "sizeBytes": 128
+          }
+        },
+        "initialPersistence": {
+          "kind": "dirty"
+        },
         "kind": "editable",
-        "recovery": {},
-        "restoredRevisions": []
+        "reconciledSaveAs": {
+          "outcome": {
+            "kind": "saved",
+            "newDescriptor": {
+              "displayName": "fixture.md",
+              "documentId": "fixture-document",
+              "locator": {
+                "kind": "workspacePath",
+                "relativePath": "docs/fixture.md",
+                "workspaceId": "fixture-workspace"
+              },
+              "readOnly": false,
+              "relativePath": "docs/fixture.md",
+              "workspaceId": "fixture-workspace"
+            },
+            "result": {
+              "bytesWritten": 128,
+              "documentId": "fixture-document",
+              "kind": "saved",
+              "newDiskRevision": {
+                "contentHash": "fixture-content-hash",
+                "fileIdentityHint": "fixture-file-identity",
+                "modifiedAtUnixMs": 2000000000000,
+                "sizeBytes": 128,
+                "token": "fixture-revision-token"
+              },
+              "savedSessionRevision": 14,
+              "writeId": "fixture-write"
+            },
+            "saveAsIntentId": "fixture-save-as"
+          },
+          "requiresAck": true,
+          "saveAsIntentId": "fixture-save-as"
+        },
+        "recovery": {
+          "baseDiskRevision": {
+            "kind": "present",
+            "revision": {
+              "contentHash": "fixture-content-hash",
+              "fileIdentityHint": "fixture-file-identity",
+              "modifiedAtUnixMs": 2000000000000,
+              "sizeBytes": 128,
+              "token": "fixture-revision-token"
+            }
+          },
+          "capturedAt": "2030-01-01T00:00:00Z",
+          "id": "fixture-recovery",
+          "locatorHint": {
+            "kind": "workspacePath",
+            "relativePath": "docs/fixture.md",
+            "workspaceId": "fixture-workspace"
+          },
+          "pendingSaveAsIntentId": "fixture-save-as",
+          "persistedSessionRevision": 19,
+          "quarantined": false,
+          "sessionRevision": 20,
+          "titleSnapshot": "Fixture recovery"
+        },
+        "restoredRevisions": {
+          "current": 20,
+          "persisted": 19
+        }
       },
       {
-        "descriptor": {},
+        "descriptor": {
+          "baseDiskRevision": {
+            "kind": "present",
+            "revision": {
+              "contentHash": "fixture-content-hash",
+              "fileIdentityHint": "fixture-file-identity",
+              "modifiedAtUnixMs": 2000000000000,
+              "sizeBytes": 128,
+              "token": "fixture-revision-token"
+            }
+          },
+          "capturedAt": "2030-01-01T00:00:00Z",
+          "id": "fixture-recovery",
+          "locatorHint": {
+            "kind": "workspacePath",
+            "relativePath": "docs/fixture.md",
+            "workspaceId": "fixture-workspace"
+          },
+          "pendingSaveAsIntentId": "fixture-save-as",
+          "persistedSessionRevision": 19,
+          "quarantined": false,
+          "sessionRevision": 20,
+          "titleSnapshot": "Fixture recovery"
+        },
         "kind": "safetyBlocked",
-        "report": {}
+        "report": {
+          "allowedActions": [
+            "extractDataImages"
+          ],
+          "detectedDataImageCount": 1,
+          "hasUtf8Bom": false,
+          "kind": "safetyBlocked",
+          "largestDataImageEstimateBytes": 16,
+          "lineCountEstimate": 4,
+          "maxLineBytes": 64,
+          "reasons": [
+            "largeDataImage"
+          ],
+          "sizeBytes": 128
+        }
       }
     ],
     "ResourceGrantOutcome": [
       {
-        "grantRequestId": "synthetic",
+        "grantRequestId": "fixture-grant-request",
         "kind": "resourceResolved",
-        "resolution": {}
+        "resolution": {
+          "documentId": "fixture-document",
+          "kind": "resolved",
+          "resource": {
+            "anchor": {
+              "kind": "heading",
+              "slug": "fixture-heading"
+            },
+            "kind": "markdown",
+            "locator": {
+              "kind": "workspacePath",
+              "relativePath": "docs/fixture.md",
+              "workspaceId": "fixture-workspace"
+            }
+          }
+        }
       },
       {
-        "grantRequestId": "synthetic",
+        "grantRequestId": "fixture-grant-request",
         "kind": "assetDirectoryGranted",
-        "owner": {},
-        "pasteIntentId": "synthetic"
+        "owner": {
+          "documentId": "fixture-document",
+          "kind": "document"
+        },
+        "pasteIntentId": "fixture-paste-intent"
       },
       {
-        "grantRequestId": "synthetic",
+        "grantRequestId": "fixture-grant-request",
         "kind": "cancelled"
       }
     ],
     "ResourcePreviewOutcome": [
       {
-        "excerpt": "synthetic",
+        "diskRevision": {
+          "kind": "present",
+          "revision": {
+            "contentHash": "fixture-content-hash",
+            "fileIdentityHint": "fixture-file-identity",
+            "modifiedAtUnixMs": 2000000000000,
+            "sizeBytes": 128,
+            "token": "fixture-revision-token"
+          }
+        },
+        "excerpt": "Fixture excerpt",
         "kind": "text",
-        "resource": {},
-        "title": "synthetic",
+        "resolvedAnchor": {
+          "kind": "heading",
+          "slug": "fixture-heading"
+        },
+        "resource": {
+          "anchor": {
+            "kind": "heading",
+            "slug": "fixture-heading"
+          },
+          "kind": "markdown",
+          "locator": {
+            "kind": "workspacePath",
+            "relativePath": "docs/fixture.md",
+            "workspaceId": "fixture-workspace"
+          }
+        },
+        "title": "Fixture title",
         "truncated": false
       },
       {
         "kind": "safetyBlocked",
-        "report": {},
-        "resource": {}
+        "report": {
+          "allowedActions": [
+            "extractDataImages"
+          ],
+          "detectedDataImageCount": 1,
+          "hasUtf8Bom": false,
+          "kind": "safetyBlocked",
+          "largestDataImageEstimateBytes": 16,
+          "lineCountEstimate": 4,
+          "maxLineBytes": 64,
+          "reasons": [
+            "largeDataImage"
+          ],
+          "sizeBytes": 128
+        },
+        "resource": {
+          "anchor": {
+            "kind": "heading",
+            "slug": "fixture-heading"
+          },
+          "kind": "markdown",
+          "locator": {
+            "kind": "workspacePath",
+            "relativePath": "docs/fixture.md",
+            "workspaceId": "fixture-workspace"
+          }
+        }
       },
       {
         "kind": "unsupported",
-        "report": {},
-        "resource": {}
+        "report": {
+          "allowedActions": [
+            "openExternal"
+          ],
+          "detectedDataImageCount": 0,
+          "hasUtf8Bom": false,
+          "kind": "unsupported",
+          "lineCountEstimate": 4,
+          "maxLineBytes": 64,
+          "reasons": [
+            "invalidUtf8"
+          ],
+          "sizeBytes": 128
+        },
+        "resource": {
+          "anchor": {
+            "kind": "heading",
+            "slug": "fixture-heading"
+          },
+          "kind": "markdown",
+          "locator": {
+            "kind": "workspacePath",
+            "relativePath": "docs/fixture.md",
+            "workspaceId": "fixture-workspace"
+          }
+        }
       }
     ],
     "ResourceRef": [
       {
+        "anchor": {
+          "kind": "heading",
+          "slug": "fixture-heading"
+        },
         "kind": "markdown",
-        "locator": {}
+        "locator": {
+          "kind": "workspacePath",
+          "relativePath": "docs/fixture.md",
+          "workspaceId": "fixture-workspace"
+        }
       },
       {
         "kind": "asset",
-        "relativePath": "synthetic",
-        "scope": {}
+        "mediaType": "image/png",
+        "relativePath": "assets/fixture.png",
+        "scope": {
+          "documentId": "fixture-document",
+          "kind": "document"
+        }
       },
       {
         "kind": "externalUrl",
-        "url": "synthetic"
+        "url": "https://example.invalid/fixture"
       },
       {
         "kind": "virtual",
-        "providerId": "synthetic",
-        "resourceId": "synthetic"
+        "params": {
+          "fixture-key": "fixture-value"
+        },
+        "providerId": "fixture-provider",
+        "resourceId": "fixture-resource"
       }
     ],
     "ResourceResolution": [
       {
+        "documentId": "fixture-document",
         "kind": "resolved",
-        "resource": {}
+        "resource": {
+          "anchor": {
+            "kind": "heading",
+            "slug": "fixture-heading"
+          },
+          "kind": "markdown",
+          "locator": {
+            "kind": "workspacePath",
+            "relativePath": "docs/fixture.md",
+            "workspaceId": "fixture-workspace"
+          }
+        }
       },
       {
-        "displayTarget": "synthetic",
-        "grantRequestId": "synthetic",
+        "displayTarget": "/fixture/outside.md",
+        "grantRequestId": "fixture-grant-request",
         "kind": "needsGrant",
-        "reason": "synthetic"
+        "reason": "outsideWorkspace"
       },
       {
-        "displayTarget": "synthetic",
+        "candidate": {
+          "anchor": {
+            "kind": "heading",
+            "slug": "fixture-heading"
+          },
+          "kind": "markdown",
+          "locator": {
+            "kind": "workspacePath",
+            "relativePath": "docs/fixture.md",
+            "workspaceId": "fixture-workspace"
+          }
+        },
+        "displayTarget": "missing.md",
         "kind": "missing"
       },
       {
-        "displayTarget": "synthetic",
-        "kind": "unsupported"
+        "displayTarget": "fixture://resource",
+        "kind": "unsupported",
+        "scheme": "fixture"
       },
       {
-        "error": {},
+        "error": {
+          "code": "ERR_IO",
+          "correlationId": "fixture-correlation",
+          "message": "Fixture I/O failure",
+          "messageKey": "fixture.io",
+          "recoveryActions": [
+            "retry",
+            "compare"
+          ],
+          "retryable": true
+        },
         "kind": "invalid"
       }
     ],
     "ResourceScope": [
       {
         "kind": "workspace",
-        "workspaceId": "synthetic"
+        "workspaceId": "fixture-workspace"
       },
       {
-        "documentId": "synthetic",
+        "documentId": "fixture-document",
         "kind": "document"
       },
       {
-        "draftId": "synthetic",
+        "draftId": "fixture-draft",
         "kind": "draft"
       }
     ],
     "RevealTarget": [
       {
         "kind": "workspaceRoot",
-        "workspaceId": "synthetic"
+        "workspaceId": "fixture-workspace"
       },
       {
         "kind": "workspaceEntry",
-        "relativePath": "synthetic",
-        "workspaceId": "synthetic"
+        "relativePath": "docs/fixture.md",
+        "workspaceId": "fixture-workspace"
       },
       {
-        "grantId": "synthetic",
+        "grantId": "fixture-grant",
         "kind": "grantedFile"
       },
       {
         "kind": "asset",
-        "relativePath": "synthetic",
-        "scope": {}
+        "relativePath": "docs/fixture.md",
+        "scope": {
+          "documentId": "fixture-document",
+          "kind": "document"
+        }
       }
     ],
     "SafetyReport": [
       {
-        "allowedActions": [],
-        "detectedDataImageCount": "synthetic",
+        "allowedActions": [
+          "extractDataImages"
+        ],
+        "detectedDataImageCount": 1,
         "hasUtf8Bom": false,
         "kind": "safetyBlocked",
-        "maxLineBytes": 1,
-        "reasons": [],
-        "sizeBytes": 1
+        "largestDataImageEstimateBytes": 16,
+        "lineCountEstimate": 4,
+        "maxLineBytes": 64,
+        "reasons": [
+          "largeDataImage"
+        ],
+        "sizeBytes": 128
       },
       {
-        "allowedActions": [],
-        "detectedDataImageCount": "synthetic",
+        "allowedActions": [
+          "openExternal"
+        ],
+        "detectedDataImageCount": 0,
         "hasUtf8Bom": false,
         "kind": "unsupported",
-        "maxLineBytes": 1,
-        "reasons": [],
-        "sizeBytes": 1
+        "lineCountEstimate": 4,
+        "maxLineBytes": 64,
+        "reasons": [
+          "invalidUtf8"
+        ],
+        "sizeBytes": 128
       }
     ],
     "SessionEditResult": [
       {
         "kind": "applied",
-        "newRevision": 1
+        "newRevision": 9
       },
       {
-        "actualRevision": 1,
+        "actualRevision": 10,
         "kind": "stale"
       },
       {
-        "error": {},
+        "error": {
+          "code": "ERR_IO",
+          "correlationId": "fixture-correlation",
+          "message": "Fixture I/O failure",
+          "messageKey": "fixture.io",
+          "recoveryActions": [
+            "retry",
+            "compare"
+          ],
+          "retryable": true
+        },
         "kind": "rejected"
       }
     ],
@@ -697,42 +1703,60 @@
     ],
     "WindowLayout": [
       {
-        "focusedPaneId": "synthetic",
+        "focusedPaneId": "fixture-pane-left",
         "kind": "single",
-        "pane": {}
+        "pane": {
+          "activeTabId": "fixture-tab",
+          "paneId": "fixture-pane-left",
+          "tabIds": [
+            "fixture-tab"
+          ]
+        }
       },
       {
-        "focusedPaneId": "synthetic",
+        "focusedPaneId": "fixture-pane-right",
         "kind": "split",
-        "left": {},
-        "ratio": 1,
-        "right": {}
+        "left": {
+          "activeTabId": "fixture-tab",
+          "paneId": "fixture-pane-left",
+          "tabIds": [
+            "fixture-tab"
+          ]
+        },
+        "ratio": 0.5,
+        "right": {
+          "activeTabId": "fixture-tab",
+          "paneId": "fixture-pane-right",
+          "tabIds": [
+            "fixture-tab"
+          ]
+        }
       }
     ],
     "WorkspaceFileChange": [
       {
         "kind": "created",
-        "relativePath": "synthetic"
+        "relativePath": "created.md"
       },
       {
         "kind": "modified",
-        "relativePath": "synthetic"
+        "relativePath": "modified.md"
       },
       {
         "kind": "removed",
-        "relativePath": "synthetic"
+        "relativePath": "removed.md"
       },
       {
-        "confidence": "synthetic",
-        "from": "synthetic",
+        "confidence": "certain",
+        "from": "before.md",
         "kind": "renamed",
-        "to": "synthetic"
+        "to": "after.md"
       }
     ],
     "WorkspacePickOutcome": [
       {
-        "displayPath": "synthetic",
-        "grantToken": "synthetic",
+        "displayPath": "/fixture/workspace",
+        "grantToken": "fixture-workspace-grant",
         "kind": "selected"
       },
       {
@@ -742,14 +1766,15 @@
     "WorkspaceRescanRequest": [
       {
         "kind": "start",
-        "knownGeneration": 1,
-        "workspaceId": "synthetic"
+        "knownGeneration": 12,
+        "requestedPageEntries": 100,
+        "workspaceId": "fixture-workspace"
       },
       {
-        "cursor": "synthetic",
+        "cursor": "fixture-cursor",
         "kind": "next",
-        "scanId": "synthetic",
-        "workspaceId": "synthetic"
+        "scanId": "fixture-scan",
+        "workspaceId": "fixture-workspace"
       }
     ],
     "WorkspaceState": [
@@ -761,11 +1786,21 @@
       },
       {
         "kind": "rescanning",
-        "operationId": "synthetic"
+        "operationId": "fixture-operation"
       },
       {
         "kind": "degraded",
-        "reason": "synthetic"
+        "reason": {
+          "code": "ERR_IO",
+          "correlationId": "fixture-correlation",
+          "message": "Fixture I/O failure",
+          "messageKey": "fixture.io",
+          "recoveryActions": [
+            "retry",
+            "compare"
+          ],
+          "retryable": true
+        }
       },
       {
         "kind": "closing"

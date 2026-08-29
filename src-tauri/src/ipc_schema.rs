@@ -4,12 +4,15 @@
 //! This module is its executable Rust mapping. It intentionally does not register
 //! Tauri commands or implement any Phase 1 behavior.
 
-mod typescript;
+mod fixtures;
+mod runtime;
+mod rust_typescript;
 
 use std::collections::BTreeMap;
 
+use crate::domain::KNOWN_APP_ERROR_CODES;
 use serde::Serialize;
-use serde_json::{json, Map, Value};
+use serde_json::Value;
 
 pub const IPC_API_VERSION: &str = "1.0";
 pub const IPC_SCHEMA_STATUS: &str = "1.0-draft";
@@ -319,6 +322,7 @@ pub struct EventSpec {
     pub id: &'static str,
     pub event_type: &'static str,
     pub payload_type: &'static str,
+    pub scope_kind: &'static str,
 }
 
 pub const EVENTS: &[EventSpec] = &[
@@ -326,69 +330,50 @@ pub const EVENTS: &[EventSpec] = &[
         id: "IPC-EVT-010",
         event_type: "workspace.filesChanged",
         payload_type: "WorkspaceFilesChanged",
+        scope_kind: "workspace",
     },
     EventSpec {
         id: "IPC-EVT-011",
         event_type: "workspace.capabilityChanged",
         payload_type: "WorkspaceCapabilityChanged",
+        scope_kind: "workspace",
     },
     EventSpec {
         id: "IPC-EVT-020",
         event_type: "document.externalChanged",
         payload_type: "DocumentExternalChanged",
+        scope_kind: "document",
     },
     EventSpec {
         id: "IPC-EVT-030",
         event_type: "task.progress",
         payload_type: "TaskProgress",
+        scope_kind: "operation",
     },
     EventSpec {
         id: "IPC-EVT-031",
         event_type: "task.finished",
         payload_type: "TaskFinished",
+        scope_kind: "operation",
     },
     EventSpec {
         id: "IPC-EVT-040",
         event_type: "recovery.snapshotFailed",
         payload_type: "RecoverySnapshotFailed",
+        scope_kind: "document",
     },
     EventSpec {
         id: "IPC-EVT-050",
         event_type: "app.closeRequested",
         payload_type: "AppCloseRequest",
+        scope_kind: "app",
     },
     EventSpec {
         id: "IPC-EVT-060",
         event_type: "app.openResourcesRequested",
         payload_type: "NativeOpenResourcesRequested",
+        scope_kind: "app",
     },
-];
-
-pub const KNOWN_APP_ERROR_CODES: &[&str] = &[
-    "ERR_API_VERSION_MISMATCH",
-    "ERR_INVALID_REQUEST",
-    "ERR_INVALID_PATH",
-    "ERR_PATH_OUTSIDE_SCOPE",
-    "ERR_GRANT_REQUIRED",
-    "ERR_NOT_FOUND",
-    "ERR_PERMISSION_DENIED",
-    "ERR_INVALID_UTF8",
-    "ERR_UNSAFE_CONTENT",
-    "ERR_FILE_TOO_LARGE",
-    "ERR_REVISION_CONFLICT",
-    "ERR_DOCUMENT_BUSY",
-    "ERR_CANCELLED",
-    "ERR_CLIPBOARD_NO_IMAGE",
-    "ERR_UNSUPPORTED_IMAGE",
-    "ERR_ASSET_WRITE_FAILED",
-    "ERR_WATCH_OVERFLOW",
-    "ERR_IO",
-    "ERR_UNSUPPORTED",
-    "ERR_INTERNAL",
-    "ERR_INVALID_STATE",
-    "ERR_STALE_TOKEN",
-    "ERR_ASSET_MIGRATION_FAILED",
-    "ERR_RECOVERY_CORRUPT",
 ];
 
 pub const KNOWN_WRITE_ACTIONS: &[&str] = &[
@@ -402,594 +387,6 @@ pub const KNOWN_WRITE_ACTIONS: &[&str] = &[
     "userCancelled",
     "superseded",
     "recoveryAbandoned",
-];
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct VariantSpec {
-    pub tag: &'static str,
-    pub required_fields: &'static [&'static str],
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct UnionSpec {
-    pub name: &'static str,
-    pub discriminator: &'static str,
-    pub variants: &'static [VariantSpec],
-}
-
-macro_rules! variant {
-    ($tag:literal $(, $field:literal)*) => {
-        VariantSpec { tag: $tag, required_fields: &[$($field),*] }
-    };
-}
-
-pub const UNION_SPECS: &[UnionSpec] = &[
-    UnionSpec {
-        name: "CommandResponse",
-        discriminator: "ok",
-        variants: &[
-            variant!("true", "apiVersion", "requestId", "ok", "payload"),
-            variant!("false", "apiVersion", "requestId", "ok", "error"),
-        ],
-    },
-    UnionSpec {
-        name: "AppOpenResourcesAckOutcome",
-        discriminator: "kind",
-        variants: &[
-            variant!("acknowledged", "kind"),
-            variant!("alreadyAcknowledged", "kind"),
-            variant!("unknown", "kind"),
-        ],
-    },
-    UnionSpec {
-        name: "AppCloseRespondOutcome",
-        discriminator: "kind",
-        variants: &[
-            variant!("cancelled", "kind"),
-            variant!("closing", "kind"),
-            variant!("alreadyResolved", "kind"),
-            variant!("unknown", "kind"),
-        ],
-    },
-    UnionSpec {
-        name: "WorkspacePickOutcome",
-        discriminator: "kind",
-        variants: &[
-            variant!("selected", "kind", "grantToken", "displayPath"),
-            variant!("cancelled", "kind"),
-        ],
-    },
-    UnionSpec {
-        name: "DocumentPickOutcome",
-        discriminator: "kind",
-        variants: &[
-            variant!("selected", "kind", "resource"),
-            variant!("cancelled", "kind"),
-        ],
-    },
-    UnionSpec {
-        name: "WorkspaceState",
-        discriminator: "kind",
-        variants: &[
-            variant!("opening", "kind"),
-            variant!("ready", "kind"),
-            variant!("rescanning", "kind", "operationId"),
-            variant!("degraded", "kind", "reason"),
-            variant!("closing", "kind"),
-            variant!("closed", "kind"),
-        ],
-    },
-    UnionSpec {
-        name: "DocumentLocator",
-        discriminator: "kind",
-        variants: &[
-            variant!("workspacePath", "kind", "workspaceId", "relativePath"),
-            variant!("draft", "kind", "draftId"),
-            variant!("grantedFile", "kind", "grantId", "displayName"),
-        ],
-    },
-    UnionSpec {
-        name: "DocumentAnchor",
-        discriminator: "kind",
-        variants: &[
-            variant!("heading", "kind", "slug"),
-            variant!("block", "kind", "blockId"),
-            variant!("sourcePosition", "kind", "line"),
-        ],
-    },
-    UnionSpec {
-        name: "ResourceScope",
-        discriminator: "kind",
-        variants: &[
-            variant!("workspace", "kind", "workspaceId"),
-            variant!("document", "kind", "documentId"),
-            variant!("draft", "kind", "draftId"),
-        ],
-    },
-    UnionSpec {
-        name: "AssetOwner",
-        discriminator: "kind",
-        variants: &[
-            variant!("document", "kind", "documentId"),
-            variant!("draft", "kind", "draftId"),
-        ],
-    },
-    UnionSpec {
-        name: "ResourceRef",
-        discriminator: "kind",
-        variants: &[
-            variant!("markdown", "kind", "locator"),
-            variant!("asset", "kind", "scope", "relativePath"),
-            variant!("externalUrl", "kind", "url"),
-            variant!("virtual", "kind", "providerId", "resourceId"),
-        ],
-    },
-    UnionSpec {
-        name: "RevealTarget",
-        discriminator: "kind",
-        variants: &[
-            variant!("workspaceRoot", "kind", "workspaceId"),
-            variant!("workspaceEntry", "kind", "workspaceId", "relativePath"),
-            variant!("grantedFile", "kind", "grantId"),
-            variant!("asset", "kind", "scope", "relativePath"),
-        ],
-    },
-    UnionSpec {
-        name: "ResourceResolution",
-        discriminator: "kind",
-        variants: &[
-            variant!("resolved", "kind", "resource"),
-            variant!(
-                "needsGrant",
-                "kind",
-                "grantRequestId",
-                "displayTarget",
-                "reason"
-            ),
-            variant!("missing", "kind", "displayTarget"),
-            variant!("unsupported", "kind", "displayTarget"),
-            variant!("invalid", "kind", "error"),
-        ],
-    },
-    UnionSpec {
-        name: "ResourcePreviewOutcome",
-        discriminator: "kind",
-        variants: &[
-            variant!("text", "kind", "resource", "title", "excerpt", "truncated"),
-            variant!("safetyBlocked", "kind", "resource", "report"),
-            variant!("unsupported", "kind", "resource", "report"),
-        ],
-    },
-    UnionSpec {
-        name: "ExpectedDiskRevision",
-        discriminator: "kind",
-        variants: &[
-            variant!("present", "kind", "revision"),
-            variant!("absent", "kind"),
-        ],
-    },
-    UnionSpec {
-        name: "DocumentLoadState",
-        discriminator: "kind",
-        variants: &[
-            variant!("loading", "kind", "resource", "operationId"),
-            variant!(
-                "safetyBlocked",
-                "kind",
-                "resource",
-                "descriptor",
-                "report",
-                "repairToken",
-                "diskRevision"
-            ),
-            variant!("unsupported", "kind", "resource", "report"),
-            variant!("failed", "kind", "resource", "error"),
-        ],
-    },
-    UnionSpec {
-        name: "DiscardReturnState",
-        discriminator: "kind",
-        variants: &[
-            variant!("dirty", "kind"),
-            variant!("conflict", "kind", "expected", "actual", "reason"),
-            variant!("missing", "kind", "lastKnown"),
-            variant!("saveError", "kind", "error"),
-            variant!("reloadError", "kind", "error"),
-        ],
-    },
-    UnionSpec {
-        name: "PersistenceState",
-        discriminator: "kind",
-        variants: &[
-            variant!("clean", "kind"),
-            variant!("dirty", "kind"),
-            variant!("reloading", "kind", "operationId", "previousDiskRevision"),
-            variant!(
-                "saving",
-                "kind",
-                "operationId",
-                "snapshotSessionRevision",
-                "expectedDiskRevision",
-                "editOccurredAfterSnapshot"
-            ),
-            variant!("conflict", "kind", "expected", "actual", "reason"),
-            variant!("missing", "kind", "lastKnown"),
-            variant!("saveError", "kind", "error"),
-            variant!("reloadError", "kind", "error"),
-            variant!(
-                "discarding",
-                "kind",
-                "operationId",
-                "discardIntentId",
-                "snapshotSessionRevision",
-                "previous"
-            ),
-        ],
-    },
-    UnionSpec {
-        name: "SessionEditResult",
-        discriminator: "kind",
-        variants: &[
-            variant!("applied", "kind", "newRevision"),
-            variant!("stale", "kind", "actualRevision"),
-            variant!("rejected", "kind", "error"),
-        ],
-    },
-    UnionSpec {
-        name: "AssetState",
-        discriminator: "kind",
-        variants: &[
-            variant!("staging", "kind"),
-            variant!("committing", "kind", "operationId"),
-            variant!("committed", "kind"),
-            variant!("orphaned", "kind", "retainUntilUnixMs"),
-            variant!("deleted", "kind"),
-            variant!("failed", "kind", "error"),
-        ],
-    },
-    UnionSpec {
-        name: "SafetyReport",
-        discriminator: "kind",
-        variants: &[
-            variant!(
-                "safetyBlocked",
-                "kind",
-                "sizeBytes",
-                "maxLineBytes",
-                "hasUtf8Bom",
-                "detectedDataImageCount",
-                "reasons",
-                "allowedActions"
-            ),
-            variant!(
-                "unsupported",
-                "kind",
-                "sizeBytes",
-                "maxLineBytes",
-                "hasUtf8Bom",
-                "detectedDataImageCount",
-                "reasons",
-                "allowedActions"
-            ),
-        ],
-    },
-    UnionSpec {
-        name: "WorkspaceRescanRequest",
-        discriminator: "kind",
-        variants: &[
-            variant!("start", "kind", "workspaceId", "knownGeneration"),
-            variant!("next", "kind", "workspaceId", "scanId", "cursor"),
-        ],
-    },
-    UnionSpec {
-        name: "ResourceGrantOutcome",
-        discriminator: "kind",
-        variants: &[
-            variant!("resourceResolved", "kind", "grantRequestId", "resolution"),
-            variant!(
-                "assetDirectoryGranted",
-                "kind",
-                "grantRequestId",
-                "owner",
-                "pasteIntentId"
-            ),
-            variant!("cancelled", "kind", "grantRequestId"),
-        ],
-    },
-    UnionSpec {
-        name: "DocumentOpenOutcome",
-        discriminator: "kind",
-        variants: &[
-            variant!("editable", "kind", "document"),
-            variant!(
-                "safetyBlocked",
-                "kind",
-                "descriptor",
-                "report",
-                "repairToken",
-                "diskRevision"
-            ),
-            variant!("unsupported", "kind", "report"),
-        ],
-    },
-    UnionSpec {
-        name: "DocumentSaveOutcome",
-        discriminator: "kind",
-        variants: &[
-            variant!(
-                "saved",
-                "kind",
-                "documentId",
-                "savedSessionRevision",
-                "newDiskRevision",
-                "writeId",
-                "bytesWritten"
-            ),
-            variant!(
-                "noop",
-                "kind",
-                "documentId",
-                "savedSessionRevision",
-                "diskRevision"
-            ),
-        ],
-    },
-    UnionSpec {
-        name: "ConflictResolutionRequest",
-        discriminator: "action",
-        variants: &[
-            variant!("reload", "action", "documentId", "observedDiskRevision"),
-            variant!(
-                "overwrite",
-                "action",
-                "documentId",
-                "content",
-                "format",
-                "snapshotSessionRevision",
-                "observedDiskRevision"
-            ),
-            variant!(
-                "recreate",
-                "action",
-                "documentId",
-                "content",
-                "format",
-                "snapshotSessionRevision",
-                "observedDiskRevision"
-            ),
-        ],
-    },
-    UnionSpec {
-        name: "ConflictResolutionOutcome",
-        discriminator: "kind",
-        variants: &[
-            variant!("reloadChecked", "kind", "outcome"),
-            variant!("saved", "kind", "result"),
-        ],
-    },
-    UnionSpec {
-        name: "DocumentPrepareSaveAsOutcome",
-        discriminator: "kind",
-        variants: &[
-            variant!("cancelled", "kind", "saveAsIntentId"),
-            variant!("sameDocument", "kind", "saveAsIntentId", "documentId"),
-            variant!("targetAlreadyOpen", "kind", "saveAsIntentId", "target"),
-            variant!(
-                "prepared",
-                "kind",
-                "saveAsIntentId",
-                "saveAsToken",
-                "newDescriptor",
-                "targetExpectedDiskRevision",
-                "uriReplacements",
-                "relativeLinkImpact"
-            ),
-        ],
-    },
-    UnionSpec {
-        name: "DocumentSaveAsAbortOutcome",
-        discriminator: "kind",
-        variants: &[
-            variant!("aborted", "kind"),
-            variant!("alreadyAborted", "kind"),
-            variant!("unknown", "kind"),
-        ],
-    },
-    UnionSpec {
-        name: "DocumentSaveAsStatusOutcome",
-        discriminator: "kind",
-        variants: &[
-            variant!("unknown", "kind", "saveAsIntentId"),
-            variant!("prepared", "kind", "saveAsIntentId", "documentId"),
-            variant!("committing", "kind", "saveAsIntentId", "documentId"),
-            variant!("committed", "kind", "outcome"),
-            variant!("rolledBack", "kind", "saveAsIntentId", "documentId"),
-            variant!("acknowledged", "kind", "saveAsIntentId", "documentId"),
-        ],
-    },
-    UnionSpec {
-        name: "DocumentSaveAsAckOutcome",
-        discriminator: "kind",
-        variants: &[
-            variant!("acknowledged", "kind"),
-            variant!("alreadyAcknowledged", "kind"),
-            variant!("unknown", "kind"),
-        ],
-    },
-    UnionSpec {
-        name: "DocumentCompareOutcome",
-        discriminator: "kind",
-        variants: &[
-            variant!("snapshot", "kind", "content", "format", "diskRevision"),
-            variant!("safetyBlocked", "kind", "report", "diskRevision"),
-            variant!("unsupported", "kind", "report", "diskRevision"),
-        ],
-    },
-    UnionSpec {
-        name: "DocumentRepairAction",
-        discriminator: "kind",
-        variants: &[
-            variant!("extractDataImages", "kind", "assetDirectoryName"),
-            variant!("deleteDataImages", "kind"),
-        ],
-    },
-    UnionSpec {
-        name: "AssetImportClipboardOutcome",
-        discriminator: "kind",
-        variants: &[
-            variant!("imported", "kind", "asset"),
-            variant!(
-                "needsGrant",
-                "kind",
-                "grantRequestId",
-                "owner",
-                "pasteIntentId",
-                "displayTarget",
-                "reason"
-            ),
-        ],
-    },
-    UnionSpec {
-        name: "RecoveryInitialPersistence",
-        discriminator: "kind",
-        variants: &[
-            variant!("clean", "kind"),
-            variant!("dirty", "kind"),
-            variant!("conflict", "kind", "expected", "actual", "reason"),
-        ],
-    },
-    UnionSpec {
-        name: "RecoveryOpenOutcome",
-        discriminator: "kind",
-        variants: &[
-            variant!(
-                "editable",
-                "kind",
-                "recovery",
-                "document",
-                "restoredRevisions",
-                "initialPersistence"
-            ),
-            variant!("safetyBlocked", "kind", "descriptor", "report"),
-        ],
-    },
-    UnionSpec {
-        name: "WindowLayout",
-        discriminator: "kind",
-        variants: &[
-            variant!("single", "kind", "pane", "focusedPaneId"),
-            variant!("split", "kind", "left", "right", "ratio", "focusedPaneId"),
-        ],
-    },
-    UnionSpec {
-        name: "EventScope",
-        discriminator: "kind",
-        variants: &[
-            variant!("app", "kind"),
-            variant!("workspace", "kind", "workspaceId"),
-            variant!("document", "kind", "documentId"),
-            variant!("operation", "kind", "operationId"),
-        ],
-    },
-    UnionSpec {
-        name: "WorkspaceFileChange",
-        discriminator: "kind",
-        variants: &[
-            variant!("created", "kind", "relativePath"),
-            variant!("modified", "kind", "relativePath"),
-            variant!("removed", "kind", "relativePath"),
-            variant!("renamed", "kind", "from", "to", "confidence"),
-        ],
-    },
-    UnionSpec {
-        name: "DocumentChangeProvenance",
-        discriminator: "source",
-        variants: &[
-            variant!("external", "source"),
-            variant!("ownWrite", "source", "writeId"),
-        ],
-    },
-    UnionSpec {
-        name: "DocumentExternalChanged",
-        discriminator: "change",
-        variants: &[
-            variant!(
-                "modified",
-                "documentId",
-                "change",
-                "observedDiskRevision",
-                "source"
-            ),
-            variant!(
-                "deleted",
-                "documentId",
-                "change",
-                "observedDiskRevision",
-                "source"
-            ),
-            variant!(
-                "replaced",
-                "documentId",
-                "change",
-                "observedDiskRevision",
-                "source"
-            ),
-            variant!(
-                "metadataOnly",
-                "documentId",
-                "change",
-                "observedDiskRevision",
-                "source"
-            ),
-            variant!(
-                "permissionChanged",
-                "documentId",
-                "change",
-                "readOnly",
-                "capabilityEpoch",
-                "source"
-            ),
-        ],
-    },
-    UnionSpec {
-        name: "NativeOpenTarget",
-        discriminator: "kind",
-        variants: &[
-            variant!("workspace", "kind", "grantToken", "displayPath"),
-            variant!("document", "kind", "resource"),
-        ],
-    },
-    UnionSpec {
-        name: "AppErrorDetails",
-        discriminator: "kind",
-        variants: &[
-            variant!("path", "kind"),
-            variant!("conflict", "kind", "expected", "actual"),
-            variant!("safety", "kind", "report"),
-            variant!("validation", "kind", "reason"),
-            variant!("operation", "kind", "operationId"),
-            variant!(
-                "grant",
-                "kind",
-                "grantRequestId",
-                "purpose",
-                "displayTarget"
-            ),
-            variant!("assetWrite", "kind", "cause", "owner"),
-            variant!("io", "kind", "operation", "cause"),
-        ],
-    },
-    UnionSpec {
-        name: "TaskCancelOutcome",
-        discriminator: "kind",
-        variants: &[
-            variant!("requested", "kind"),
-            variant!("notFound", "kind"),
-            variant!("pastCommitPoint", "kind"),
-        ],
-    },
 ];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
@@ -1247,18 +644,51 @@ pub fn render_typescript() -> String {
     let events = serde_json::to_string_pretty(EVENTS).expect("event schema serializes");
     let errors = serde_json::to_string_pretty(KNOWN_APP_ERROR_CODES).expect("errors serialize");
     let writes = serde_json::to_string_pretty(KNOWN_WRITE_ACTIONS).expect("actions serialize");
-    let unions = serde_json::to_string_pretty(UNION_SPECS).expect("union schema serializes");
+    let union_fixtures = render_union_fixtures();
+    let command_map = render_command_map();
+    let event_map = render_event_map();
 
     format!(
-        "// @generated by src-tauri/src/bin/generate_ipc.rs from src-tauri/src/ipc_schema.rs.\n// Do not edit by hand. Canonical semantics: docs/design/03-domain-model-and-contracts.md.\n\n{}\n\nexport const IPC_COMMAND_SPECS = {} as const;\n\nexport const IPC_EVENT_SPECS = {} as const;\n\nexport const KNOWN_APP_ERROR_CODES = {} as const;\n\nexport const KNOWN_WRITE_ACTIONS = {} as const;\n\nexport const CONTRACT_UNION_SPECS = {} as const;\n\n{}",
-        typescript::TYPESCRIPT_BINDINGS.trim(),
+        "// @generated by src-tauri/src/bin/generate_ipc.rs from Rust serde + ts-rs types.\n// Do not edit by hand. Canonical semantics: docs/design/03-domain-model-and-contracts.md.\n\nexport const IPC_API_VERSION = \"{}\" as const;\n\n{}\n\n{}\n\n{}\n\nexport const IPC_COMMAND_SPECS = {} as const;\n\nexport const IPC_EVENT_SPECS = {} as const;\n\nexport const KNOWN_APP_ERROR_CODES = {} as const;\n\nexport const KNOWN_WRITE_ACTIONS = {} as const;\n\nexport const CONTRACT_UNION_FIXTURES = {} as const;\n\n{}",
+        IPC_API_VERSION,
+        rust_typescript::render_declarations().trim(),
+        command_map,
+        event_map,
         commands,
         events,
         errors,
         writes,
-        unions,
-        typescript::TYPESCRIPT_RUNTIME.trim(),
+        union_fixtures.trim(),
+        runtime::TYPESCRIPT_RUNTIME.trim(),
     )
+}
+
+fn render_command_map() -> String {
+    let mut output = String::from("export interface IpcCommandMap {\n");
+    for command in COMMANDS {
+        output.push_str(&format!(
+            "  {}: {{ request: {}; response: {} }};\n",
+            command.name, command.request_type, command.response_type
+        ));
+    }
+    output.push_str(
+        "}\n\nexport type IpcCommandName = keyof IpcCommandMap;\n\
+         export type IpcCommandRequest<Name extends IpcCommandName> = IpcCommandMap[Name][\"request\"];\n\
+         export type IpcCommandResponse<Name extends IpcCommandName> = IpcCommandMap[Name][\"response\"];",
+    );
+    output
+}
+
+fn render_event_map() -> String {
+    let mut output = String::from("export interface IpcEventMap {\n");
+    for event in EVENTS {
+        output.push_str(&format!(
+            "  \"{}\": {};\n",
+            event.event_type, event.payload_type
+        ));
+    }
+    output.push_str("}\n\nexport type IpcEventType = keyof IpcEventMap;");
+    output
 }
 
 pub fn render_contract_manifest() -> String {
@@ -1278,111 +708,15 @@ pub fn render_contract_manifest() -> String {
 }
 
 pub fn render_union_fixtures() -> String {
-    let unions = UNION_SPECS
-        .iter()
-        .map(|union| {
-            let fixtures = union
-                .variants
-                .iter()
-                .map(|variant| shape_fixture(union.discriminator, variant))
-                .collect::<Vec<_>>();
-            (union.name, fixtures)
-        })
-        .collect::<BTreeMap<_, _>>();
     let fixture_set = UnionFixtureSet {
         schema_version: 1,
         api_version: IPC_API_VERSION,
-        generated_by: "src-tauri/src/ipc_schema.rs",
-        unions,
+        generated_by: "src-tauri/src/ipc_schema/fixtures.rs",
+        unions: fixtures::concrete_union_fixtures(),
     };
     let mut rendered = serde_json::to_string_pretty(&fixture_set).expect("fixtures serialize");
     rendered.push('\n');
     rendered
-}
-
-fn shape_fixture(discriminator: &str, variant: &VariantSpec) -> Value {
-    let mut fields = Map::new();
-    for field in variant.required_fields {
-        fields.insert((*field).to_owned(), placeholder(field));
-    }
-    fields.insert(
-        discriminator.to_owned(),
-        if discriminator == "ok" {
-            Value::Bool(variant.tag == "true")
-        } else {
-            Value::String(variant.tag.to_owned())
-        },
-    );
-    Value::Object(fields)
-}
-
-fn placeholder(field: &str) -> Value {
-    if field.starts_with("is")
-        || matches!(
-            field,
-            "ok" | "pinned"
-                | "readOnly"
-                | "truncated"
-                | "overflow"
-                | "complete"
-                | "hasUtf8Bom"
-                | "editOccurredAfterSnapshot"
-        )
-    {
-        return Value::Bool(false);
-    }
-    if field.ends_with("Bytes")
-        || field.ends_with("Revision")
-        || field.ends_with("Generation")
-        || field.ends_with("Epoch")
-        || field.ends_with("Units")
-        || field.ends_with("At")
-        || field.ends_with("AtUnixMs")
-        || matches!(
-            field,
-            "line" | "column" | "sequence" | "bytesWritten" | "ratio"
-        )
-    {
-        return json!(1);
-    }
-    if field.ends_with("s") || matches!(field, "reasons" | "allowedActions" | "uriReplacements") {
-        return json!([]);
-    }
-    if field == "kind" || field == "action" {
-        return Value::Null;
-    }
-    if matches!(
-        field,
-        "resource"
-            | "target"
-            | "locator"
-            | "scope"
-            | "owner"
-            | "descriptor"
-            | "report"
-            | "error"
-            | "format"
-            | "diskRevision"
-            | "expected"
-            | "actual"
-            | "previous"
-            | "outcome"
-            | "result"
-            | "document"
-            | "recovery"
-            | "restoredRevisions"
-            | "initialPersistence"
-            | "pane"
-            | "left"
-            | "right"
-            | "payload"
-            | "resolution"
-            | "newDiskRevision"
-            | "targetExpectedDiskRevision"
-    ) {
-        return json!({});
-    }
-    Value::String("synthetic".to_owned())
 }
 
 pub fn validate_catalog() -> Result<(), String> {
@@ -1423,6 +757,11 @@ pub fn validate_catalog() -> Result<(), String> {
 }
 
 fn validate_canonical_document() -> Result<(), String> {
+    let generated_typescript = rust_typescript::render_declarations();
+    if generated_typescript.contains("bigint") {
+        return Err("wire declarations must use JS-safe numbers, never bigint".to_owned());
+    }
+
     let canonical_commands = parse_table_entries("IPC-CMD-");
     let executable_commands = COMMANDS
         .iter()
@@ -1460,7 +799,7 @@ fn validate_canonical_document() -> Result<(), String> {
             ));
         }
         for type_name in [command.request_type, command.response_type] {
-            if type_name != "EmptyRequest" && !typescript_has_declaration(type_name) {
+            if !typescript_has_declaration(&generated_typescript, type_name) {
                 return Err(format!(
                     "{} references {type_name}, but generated bindings do not declare it",
                     command.name
@@ -1487,69 +826,27 @@ fn validate_canonical_document() -> Result<(), String> {
         }
     }
 
-    for union in UNION_SPECS {
-        let generated_declaration = generated_union_declaration(union.name)?;
-        for variant in union.variants {
-            if !CANONICAL_CONTRACT_DOCUMENT.contains(variant.tag) {
-                return Err(format!(
-                    "{}.{} tag is absent from canonical chapter 03",
-                    union.name, variant.tag
-                ));
-            }
-            if !generated_declaration.contains(variant.tag) {
-                return Err(format!(
-                    "generated {} declaration omits canonical tag {}",
-                    union.name, variant.tag
-                ));
-            }
-            for field in variant.required_fields {
-                if !CANONICAL_CONTRACT_DOCUMENT.contains(field) {
-                    return Err(format!(
-                        "{}.{} field {field} is absent from canonical chapter 03",
-                        union.name, variant.tag
-                    ));
-                }
-                if !generated_declaration.contains(field) {
-                    return Err(format!(
-                        "generated {} declaration omits canonical field {field}",
-                        union.name
-                    ));
-                }
-            }
+    for event in EVENTS {
+        if !typescript_has_declaration(&generated_typescript, event.payload_type) {
+            return Err(format!(
+                "{} references {}, but generated bindings do not declare it",
+                event.event_type, event.payload_type
+            ));
         }
+    }
+
+    let fixtures = fixtures::concrete_union_fixtures();
+    if fixtures.len() != 44 || fixtures.values().any(Vec::is_empty) {
+        return Err(format!(
+            "expected 44 non-empty concrete union fixture groups, found {}",
+            fixtures.len()
+        ));
     }
     Ok(())
 }
 
-fn typescript_has_declaration(name: &str) -> bool {
-    typescript::TYPESCRIPT_BINDINGS.contains(&format!("export type {name}"))
-        || typescript::TYPESCRIPT_BINDINGS.contains(&format!("export interface {name}"))
-}
-
-fn generated_union_declaration(name: &str) -> Result<&'static str, String> {
-    if name == "SafetyReport" {
-        let start = typescript::TYPESCRIPT_BINDINGS
-            .find("export interface PreflightReport")
-            .ok_or_else(|| "generated PreflightReport declaration is missing".to_owned())?;
-        let end = typescript::TYPESCRIPT_BINDINGS[start..]
-            .find("export type OpenMode")
-            .map(|offset| start + offset)
-            .ok_or_else(|| "generated safety report declarations are unterminated".to_owned())?;
-        return Ok(&typescript::TYPESCRIPT_BINDINGS[start..end]);
-    }
-
-    let type_marker = format!("export type {name}");
-    let interface_marker = format!("export interface {name}");
-    let start = typescript::TYPESCRIPT_BINDINGS
-        .find(&type_marker)
-        .or_else(|| typescript::TYPESCRIPT_BINDINGS.find(&interface_marker))
-        .ok_or_else(|| format!("generated TypeScript source has no declaration for {name}"))?;
-    let after_start = start + 1;
-    let end = typescript::TYPESCRIPT_BINDINGS[after_start..]
-        .find("\nexport ")
-        .map(|offset| after_start + offset)
-        .unwrap_or(typescript::TYPESCRIPT_BINDINGS.len());
-    Ok(&typescript::TYPESCRIPT_BINDINGS[start..end])
+fn typescript_has_declaration(source: &str, name: &str) -> bool {
+    source.contains(&format!("type {name} =")) || source.contains(&format!("interface {name} "))
 }
 
 fn parse_table_entries(prefix: &str) -> Vec<(&'static str, &'static str)> {
@@ -1643,30 +940,47 @@ mod tests {
     }
 
     #[test]
-    fn contract_002_every_union_variant_has_a_shape_fixture() {
+    fn contract_002_every_union_fixture_is_concrete_and_nested() {
         let rendered = render_union_fixtures();
         let fixtures: Value = serde_json::from_str(&rendered).expect("fixture JSON parses");
-        for union in UNION_SPECS {
-            let fixture_variants = fixtures["unions"][union.name]
-                .as_array()
-                .expect("union fixture list exists");
-            assert_eq!(
-                fixture_variants.len(),
-                union.variants.len(),
-                "{}",
-                union.name
-            );
-            for (fixture, variant) in fixture_variants.iter().zip(union.variants) {
-                for field in variant.required_fields {
-                    assert!(
-                        fixture.get(field).is_some(),
-                        "{}.{} missing {field}",
-                        union.name,
-                        variant.tag
-                    );
-                }
-            }
-        }
+        let unions = fixtures["unions"]
+            .as_object()
+            .expect("fixture unions exist");
+        assert_eq!(unions.len(), 44);
+        assert_eq!(unions["WorkspaceState"][2]["kind"], "rescanning");
+        assert_eq!(
+            unions["ResourcePreviewOutcome"][0]["resource"]["locator"]["kind"],
+            "workspacePath"
+        );
+        assert_eq!(
+            unions["PersistenceState"][5]["lastKnown"],
+            Value::Null,
+            "required nullable fields serialize explicit null"
+        );
+        assert_eq!(unions["DocumentExternalChanged"][2]["source"], "ownWrite");
+        assert_eq!(
+            unions["DocumentExternalChanged"][2]["writeId"],
+            "fixture-write"
+        );
+    }
+
+    #[test]
+    fn contract_002_serde_discriminators_and_nullability_drive_generated_typescript() {
+        let generated = rust_typescript::render_declarations();
+        let normalized = generated
+            .replace("\"kind\"", "kind")
+            .replace("\"type\"", "type")
+            .replace("\"lastKnown\"", "lastKnown")
+            .replace("\"suggestedName\"", "suggestedName");
+        assert!(normalized.contains("type WorkspaceState ="));
+        assert!(normalized.contains("{ kind: \"opening\" }"));
+        assert!(normalized.contains("{ kind: \"ready\" }"));
+        assert!(!normalized.contains("{ type: \"opening\" }"));
+        assert!(normalized.contains("kind: \"missing\""));
+        assert!(normalized.contains("lastKnown: RequiredNullable<DiskRevision>"));
+        assert!(!normalized.contains("lastKnown?: RequiredNullable<DiskRevision>"));
+        assert!(normalized.contains("suggestedName?: string"));
+        assert!(!normalized.contains("bigint"));
     }
 
     #[test]
