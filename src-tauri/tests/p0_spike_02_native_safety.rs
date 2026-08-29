@@ -1162,22 +1162,28 @@ fn file_001_crash_temp_is_scoped_and_stale_cleanup_is_selective() {
         .expect("run crash helper");
     assert_eq!(child.status.code(), Some(CRASH_EXIT_CODE));
     assert_eq!(fs::read(&target).expect("read original after crash"), old);
-    assert_eq!(
-        count_task_temporaries(&target).expect("count crash temporary"),
-        1
-    );
 
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs();
+    let recent = temporary_path_for(&target, now + 60).expect("create recent temp path");
+    fs::write(&recent, b"recent-must-not-delete").expect("write recent task temp");
+    assert_eq!(
+        count_task_temporaries(&target).expect("count crash and recent temporaries"),
+        2
+    );
     assert_eq!(
         cleanup_stale_temporaries(&target, now).expect("clean stale task temp"),
         1
     );
     assert_eq!(
         count_task_temporaries(&target).expect("count after cleanup"),
-        0
+        1
+    );
+    assert_eq!(
+        fs::read(&recent).expect("read retained recent temp"),
+        b"recent-must-not-delete"
     );
     assert_eq!(fs::read(&target).expect("read original after cleanup"), old);
     assert_eq!(
