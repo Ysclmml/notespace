@@ -6,6 +6,9 @@ edition = "2021"
 license = "UNLICENSED"
 publish = false
 
+[features]
+ipc-transport-spike = []
+
 [lib]
 name = "markdown_workspace_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
