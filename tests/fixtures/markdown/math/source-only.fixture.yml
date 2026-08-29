@@ -6,5 +6,9 @@ newline: lf
 expectedMode: editable/normal
 sensitive: false
 generatedBy: committed-synthetic
+ownerIntent:
+  owner: QA
+  evidenceIds: [AC-MATH-001]
+  consumerTasks: [P4-MATH-01]
 files:
   - source-only.md

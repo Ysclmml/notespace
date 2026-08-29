@@ -6,6 +6,10 @@ newline: lf
 expectedMode: editable/normal
 sensitive: false
 generatedBy: committed-synthetic
+ownerIntent:
+  owner: QA
+  evidenceIds: [FILE-004, CONTRACT-008]
+  consumerTasks: [P5-CONFLICT-01]
 files:
   - original.md
   - external.md

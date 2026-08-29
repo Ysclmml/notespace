@@ -1,12 +1,14 @@
 fixtureVersion: 1
 id: markdown.images.relative-001
-purpose: Relative SVG, corrupt image bytes, title text, and remote URL source
+purpose: Relative image links, title text, and remote URL source
 encoding: utf-8
 newline: lf
 expectedMode: editable/normal
 sensitive: false
 generatedBy: committed-synthetic
+ownerIntent:
+  owner: QA
+  evidenceIds: [ASSET-001, SEC-003]
+  consumerTasks: [P3-ASSET-01, P5-SECURITY-01]
 files:
   - relative-images.md
-  - ../../assets/transparent.svg
-  - ../../assets/corrupt.png

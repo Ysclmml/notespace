@@ -16,3 +16,9 @@ flowchart LR
   A --> B
   click B "javascript:alert('blocked')" "unsafe link"
 ```
+
+```mermaid
+%%{init: {"securityLevel": "loose"}}%%
+flowchart LR
+  HTML["<img src=x onerror=alert('blocked')>"] --> SVG["<svg onload=alert('blocked')></svg>"]
+```

@@ -6,5 +6,9 @@ newline: lf
 expectedMode: editable/normal
 sensitive: false
 generatedBy: committed-synthetic
+ownerIntent:
+  owner: QA
+  evidenceIds: [RT-002]
+  consumerTasks: [P1-E2E-01, P4-LIVE-01]
 files:
   - unknown-syntax.md

@@ -6,6 +6,10 @@ newline: lf
 expectedMode: editable/normal
 sensitive: false
 generatedBy: committed-synthetic
+ownerIntent:
+  owner: QA
+  evidenceIds: [LINK-001, WORKSPACE-001]
+  consumerTasks: [P2-LINK-01, P2-INDEX-01]
 files:
   - 中文 空格/index.md
   - 中文 空格/目标 page.md
