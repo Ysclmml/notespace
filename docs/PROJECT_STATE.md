@@ -81,7 +81,7 @@
 | 里程碑 | 状态 | 准入条件 |
 |---|---|---|
 | Design baseline 0.1 | DONE | 本文档包冻结并通过文档校验 |
-| Phase 0 / F0 | IN_PROGRESS | `P0-BOOT-01` 已在 `main` 集成并通过门禁；契约、CI、夹具和两项技术 Spike 尚待完成，F0 尚未发布 |
+| Phase 0 / F0 | IN_PROGRESS | 应用壳、本地 CI 门禁与 Rust 单源 IPC 契约已在 `main` 集成并通过；hosted CI、typed flags、夹具与技术 Spike 尚待收口，F0 尚未发布 |
 | Phase 1–6 | NOT_STARTED | 严格按 `IMPLEMENTATION_PLAN.md` 的依赖和 Freeze Gate |
 
 实施任务 ledger（claim/交接时只修改自己的一行，详细证据在 task note）：
@@ -90,7 +90,8 @@
 |---|---|---|---|---|---|
 | `P0-BOOT-01` | DONE | Integration / none | `7f98624` / `52dc387` | `OPS-BUILD-001`、`OPS-CONTEXT-001` / Git baseline + desktop shell | [`P0-BOOT-01.md`](tasks/P0-BOOT-01.md)；主线文档门禁与 `pnpm verify` PASS |
 | `P0-CI-01` | REVIEW | Integration/QA / Integration | `576a435` / `2cdc7df` | `OPS-CI-001`、`OPS-BUILD-001`、`OPS-CONTEXT-001` / pinned CI quality gates and artifact build | [`P0-CI-01.md`](tasks/P0-CI-01.md)；本地等价门禁与 artifact PASS；合并后等待首次 GitHub hosted run 补证 |
-| `P0-CONTRACT-01` | REVIEW | Contract/Domain (`/root/p0_contract_01`) / Integration | fourth-review base `556b279` / implementation `154d48c` | `DATA-REVISION-001`、`SAFE-IPC-001`、`EXT-ROUTER-001`、`EXT-COMMAND-001` / IPC `1.0-draft` Rust-derived AppError/runtime policy | [`P0-CONTRACT-01.md`](tasks/P0-CONTRACT-01.md)；standalone AppError schema、Rust 单源 recovery registries、direct/nested parity 与字段 mutation PASS；独立终审 MERGE；下一步由 Integration 接入 canonical runner 并重跑主线门禁，`004`–`024` 保持 frozen ports |
+| `P0-CONTRACT-01` | DONE | Integration / none | merge `9b0ea10` / gate `055084b` | `DATA-REVISION-001`、`SAFE-IPC-001`、`EXT-ROUTER-001`、`EXT-COMMAND-001` / IPC `1.0-draft` Rust single-source contract | [`P0-CONTRACT-01.md`](tasks/P0-CONTRACT-01.md)；独立终审 MERGE；canonical runner 已纳入 root `verify`/CI；main Rust 15/15 + TS 29/29、full verify PASS；`004`–`024` 保持 frozen ports |
+| `P0-FLAG-01` | READY | unowned | `055084b` / — | `DATA-REVISION-001`、`SAFE-IPC-001`、`EXT-ROUTER-001`、`EXT-COMMAND-001`、`UX-EXT-001` / typed feature registry | 从已集成契约的 main 领取；实现 production defaults、test overrides、dependency/capability validation 与脱敏 diagnostics |
 | `P0-FIXTURE-01` | READY | unowned | `52dc387` / — | `DATA-ROUNDTRIP-001`、`DATA-UNKNOWN-001`、`EDIT-IME-001`、`EDIT-TABLE-001` / privacy-safe fixtures | 领取后创建 task note；危险大夹具只允许运行时生成 |
 | `P0-SPIKE-01` | READY | unowned | `52dc387` / — | `EDIT-IME-001`、`EDIT-TABLE-001`、`PERF-LARGE-001` / CodeMirror feasibility | 领取后创建 task note；仅 spike/测量，不实现 Phase 1 编辑器 |
 | `P0-SPIKE-02` | READY | unowned | `52dc387` / — | `FILE-PREFLIGHT-001`、`PERF-LARGE-001`、`SAFE-DATAURI-001`、`SAFE-IPC-001` / native safety feasibility | 领取后创建 task note；仅 spike/测量，不实现 Phase 1 file open |
@@ -99,10 +100,10 @@
 
 ## 7. 下一步（精确到可执行）
 
-1. 从 `main` 的集成检查点为 `P0-CI-01`、`P0-CONTRACT-01`、`P0-SPIKE-01`、`P0-SPIKE-02` 建立独立 branch/worktree；各 owner 先写 task note 并把自己的 ledger 行改为 `CLAIMED`。
-2. QA 空闲时领取独立的 `P0-FIXTURE-01`；禁止提交超大 Base64/单行 blob。
-3. 每个 feature owner 在本分支验证后交 `REVIEW`；Integration 逐一集成并重跑全门禁。
-4. `P0-CONTRACT-01` 初始生成契约落地后才释放 `P0-FLAG-01`。
+1. 从 `055084b` 集成检查点领取 `P0-FLAG-01`，不改动已生成 IPC 契约。
+2. 按固定顺序集成已复审的 fixture、editor spike、native safety 与 real transport；每次保留其他 ledger 行并重跑全门禁。
+3. 完成 host release 可信证据修复的独立终审和真实系统拼音/菜单/chooser 人工验证。
+4. 获取 GitHub hosted `macos-15` 精确提交的 workflow/artifact 证据；当前无 remote，未获得前不得宣称 `P0-CI-01` DONE。
 5. 只有 Phase 0 出口全部满足时由 Integration 发布 F0；F0 之前禁止进入 Phase 1 功能实现。
 
 ## 8. 验证记录
@@ -114,6 +115,7 @@
 - 两个独立只读审计从“语义一致性”和“无聊天冷接手”视角复核最终规范，均无剩余 blocker/major。此结论只覆盖设计包，不冒充尚不存在的应用构建、单测或 E2E。
 - 2026-08-30 `P0-BOOT-01` 在任务分支和系统临时目录中的全新 clone 均执行 `pnpm verify` 并 PASS；Tauri debug `.app` 通过原生窗口 smoke，未读取或提交用户文档。详细命令与证据见 [`P0-BOOT-01.md`](tasks/P0-BOOT-01.md)。
 - 2026-08-30 Integration fast-forward 合并 `P0-BOOT-01` 到 `main` revision `52dc387`；`ruby scripts/validate_design_docs.rb` PASS（snapshot `3be99dea...`），补齐已记录的 Rustup `PATH` 前提后 `pnpm verify` 全部 PASS。
+- 2026-08-30 Integration no-ff 合并 `P0-CONTRACT-01` 到 `main` revision `9b0ea10`，并以 `055084b` 把 `contracts/run.mjs` 接入 root `check`/`verify`/CI；design snapshot `a9644030...`、repository hygiene、cargo audit、canonical Rust 15/15 + TS 29/29、full Vitest 32/32 + Rust 17/17、Vite/Tauri debug build 全部 PASS。
 
 ## 9. 标准任务交接
 

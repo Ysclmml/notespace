@@ -1,8 +1,8 @@
 # P0-CONTRACT-01 — IPC v1 契约冻结与生成绑定
 
-- Status: REVIEW
-- Owner / next owner: Contract/Domain (`/root/p0_contract_01`) / Integration + independent Contract reviewer
-- Base revision / head revision: original base `576a435`; fourth-review base `556b279`; claim checkpoint `f346e83`; implementation `154d48ce2b61cf4f1db0b9d8df9df7687c6ffdfa`; handoff revision is the final REVIEW checkpoint commit containing this note
+- Status: DONE
+- Owner / next owner: Integration / none
+- Base revision / head revision: original base `576a435`; implementation `154d48ce2b61cf4f1db0b9d8df9df7687c6ffdfa`; reviewed handoff `4e3ad688c86ff3789da6f9549af7f4ad89db8681`; main merge `9b0ea10`; integration gate `055084bf3aef9bc1371189f76efcd7deb7f0d6e4`
 - Requirement IDs: `DATA-REVISION-001`, `SAFE-IPC-001`, `EXT-ROUTER-001`, `EXT-COMMAND-001`, `OPS-CONTEXT-001`, `OPS-HANDOFF-001`
 - Product UX IDs: `UX-EXT-001`
 - Test / acceptance IDs: `CORE-001`, `SEC-001`, `EXT-001`, `EXT-002`, `CONTRACT-001`–`CONTRACT-024`, `PROC-001`, `PROC-002`; supporting clean-checkout evidence for `BUILD-001`
@@ -62,23 +62,20 @@ Environment: macOS/Darwin 25.6.0 arm64; Node `v24.14.0`; pnpm `10.32.1`; Rust/Ca
 | Full formatter/lint/type/Rust/build | `PATH="${CARGO_BIN_DIR}:$PATH" pnpm verify` at `154d48c` | PASS; Prettier, ESLint, TypeScript, Vitest 32/32, Rust fmt, Clippy `-D warnings`, Rust 17/17, Vite build, Tauri debug no-bundle build | Local ignored output under `dist/` and `src-tauri/target/` |
 | `BUILD-001`, clean checkout | `git clone --local --branch task/P0-CONTRACT-01-ipc-v1 --single-branch <source> "${CLEAN_CLONE}"`; `pnpm install --frozen-lockfile`; docs validator; canonical runner; `PATH="${CARGO_BIN_DIR}:$PATH" pnpm verify` | PASS at `154d48c`; canonical Rust 15/15 + TS 29/29; full Vitest 32/32 + Rust 17/17; Tauri debug build succeeded | Clean clone moved recoverably to system Trash after verification |
 | Documentation gate | `ruby scripts/validate_design_docs.rb` | PASS; 22 Markdown files, 37 IPC commands, no link/fence/ID/privacy violation | Final checkpoint snapshot is emitted by the validator run immediately before handoff commit |
+| Integration / main gate | `ruby scripts/validate_design_docs.rb`; `ruby scripts/check_repository_hygiene.rb`; `PATH="${CARGO_BIN_DIR}:$PATH" pnpm verify` after merge `9b0ea10` and gate commit `055084b` | PASS; design snapshot `a9644030db6a9c548948d71513707336cdcdbe7eb3d359a1b8e0d4aa8d70e01a`; 104 tracked files privacy-safe; canonical Rust 15/15 + TS 29/29; full Vitest 32/32 + Rust 17/17; Vite and Tauri debug build PASS | `contracts:check` is now an authoritative step inside root `check` / `verify` and therefore the pinned CI workflow |
 | Dependency/license/security | `cargo metadata --locked ...`; `cargo tree --locked ... -i schemars@1.2.2`; `cargo audit --file src-tauri/Cargo.lock`; `git diff --exit-code f346e83 -- package.json pnpm-lock.yaml src-tauri/Cargo.toml src-tauri/Cargo.lock` | PASS; no dependency/lock delta; exact direct `schemars 1.2.2` edge remains derive-only; audit exit 0 with 17 pre-existing allowed warnings and no vulnerability finding | Existing licenses remain `schemars`/derive MIT and serde internals MIT OR Apache-2.0; no npm manifest/lock diff |
 | Scope/privacy guard | Scoped `rg` for personal absolute paths, embedded Base64, private keys, Tauri commands, `invoke`, and `listen`; `git diff --check` | PASS; no match and no whitespace failure | No user document, clipboard data, secret, binary, handler, or Phase 1 code added |
 
 ## Open questions and blockers
 
-There is no Contract/Domain implementation blocker.
+There is no Contract/Domain implementation blocker. Independent final review returned `MERGE`, Integration connected the canonical runner to the root gate, and the merged main gate passed.
 
-- Owner: Integration + independent Contract reviewer. Action: review `154d48c` and the final REVIEW checkpoint, rerun the canonical runner, then connect `contracts/run.mjs` to the Integration-owned global verify/CI path. Affected tasks: `P0-CONTRACT-01`, `P0-CI-01`, downstream `P0-FLAG-01`. Only Integration may mark `DONE` or publish F0.
 - Owner: Integration/Release dependency policy. Action: disposition the 17 allowed pre-existing RustSec warnings in the Tauri lock graph before release. None is introduced by this iteration or names `schemars 1.2.2`/`schemars_derive 1.2.2`.
 - Owner: future Contract/Domain schema owners. Maintenance rule: accepted `AppError`, `AppErrorDetails`, or `RecoveryAction` changes must be made in Rust and regenerated. Editing generated TypeScript or adding a parallel runtime field/action list is forbidden.
 
 ## Remaining numbered steps
 
-1. Integration and an independent Contract reviewer inspect implementation `154d48c` plus the final REVIEW checkpoint and rerun `pnpm exec node contracts/run.mjs`.
-2. Integration wires the canonical runner into its owned global verify/CI entry point without changing contract semantics.
-3. If every Phase 0 gate passes, Integration merges the branch, publishes F0, marks this task `DONE`, and releases `P0-FLAG-01`.
-4. Future feature owners implement only their mapped `CONTRACT-004`–`CONTRACT-024` ports after F0; no Phase 1 work starts from this branch.
+No work remains in `P0-CONTRACT-01`. `P0-FLAG-01` is released; future feature owners implement only their mapped `CONTRACT-004`–`CONTRACT-024` ports after F0.
 
 ## Data safety, recovery, and temporary artifacts
 
@@ -88,4 +85,4 @@ The clean verification clone was moved to system Trash rather than recursively d
 
 ## Single recommended next action
 
-Integration should assign an independent Contract reviewer to `154d48c`, rerun `pnpm exec node contracts/run.mjs`, and merge only if the direct/nested AppError schema-parity review passes.
+Claim `P0-FLAG-01` from integrated main; do not publish F0 until the remaining Phase 0 tasks and hosted CI evidence satisfy their own exit criteria.
