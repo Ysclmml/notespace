@@ -7,11 +7,6 @@ license = "UNLICENSED"
 publish = false
 default-run = "markdown-workspace"
 
-[features]
-default = []
-host-release-smoke = []
-ipc-transport-spike = []
-
 [lib]
 name = "markdown_workspace_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
@@ -25,6 +20,3 @@ serde = { version = "=1.0.229", features = ["derive"] }
 serde_json = { version = "=1.0.151", features = [] }
 tauri = { version = "=2.11.5", features = [] }
 ts-rs = { version = "=12.0.1", default-features = false, features = ["serde-compat"] }
-
-[dev-dependencies]
-uuid = { version = "=1.26.0", features = ["v4"] }
