@@ -17,6 +17,7 @@
     "lint": "eslint . --max-warnings=0",
     "typecheck": "tsc -b",
     "test": "vitest run",
+    "test:editor-spike:measure": "vitest run --config src/features/editor/spike/vitest.measure.config.ts",
     "test:watch": "vitest",
     "fixtures:check": "ruby scripts/validate_fixtures.rb",
     "rust:fmt": "cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check",
@@ -35,6 +36,11 @@
     "react-dom": "19.1.0"
   },
   "devDependencies": {
+    "@codemirror/commands": "6.11.0",
+    "@codemirror/lang-markdown": "6.5.2",
+    "@codemirror/language": "6.12.4",
+    "@codemirror/state": "6.7.1",
+    "@codemirror/view": "6.43.9",
     "@eslint/js": "9.39.5",
     "@tauri-apps/cli": "2.11.4",
     "@testing-library/jest-dom": "6.10.0",
