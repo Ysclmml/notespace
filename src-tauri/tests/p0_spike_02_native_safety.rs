@@ -181,13 +181,25 @@ impl DataImageDetector {
                     self.quarantine_candidate();
                     DataImageStage::Quarantined
                 } else if is_data_uri_terminator(byte) {
-                    seeking_stage_for(byte)
-                } else if byte == b',' && suffix_matched == 0 {
-                    // A non-base64 or obfuscated image data URI has no bounded
-                    // decoded-size proof in this spike. Fail closed rather than
-                    // treating the comma as ordinary prose and seeking anew.
+                    // Once the exact data-image prefix has been observed, an
+                    // incomplete header is still an unprovable candidate.
                     self.quarantine_candidate();
-                    DataImageStage::Quarantined
+                    seeking_stage_for(byte)
+                } else if byte == b',' {
+                    let next =
+                        advance_ascii_case_insensitive(Self::BASE64_SUFFIX, suffix_matched, byte);
+                    if next == Self::BASE64_SUFFIX.len() {
+                        self.detected_count += 1;
+                        DataImageStage::Payload {
+                            encoded_chars: 0,
+                            padding_chars: 0,
+                        }
+                    } else {
+                        // A non-base64, partial, or obfuscated image data URI
+                        // has no bounded decoded-size proof in this spike.
+                        self.quarantine_candidate();
+                        DataImageStage::Quarantined
+                    }
                 } else if byte.is_ascii_whitespace() {
                     // MIME/data URI implementations may accept folded or stray
                     // ASCII whitespace. Ignore it for matching while retaining
@@ -255,14 +267,15 @@ impl DataImageDetector {
     }
 
     fn finish(&mut self) {
-        if let DataImageStage::Payload {
-            encoded_chars,
-            padding_chars,
-        } = self.stage
-        {
-            self.record_payload(encoded_chars, padding_chars);
-            self.stage = DataImageStage::Seeking(0);
+        match self.stage {
+            DataImageStage::Payload {
+                encoded_chars,
+                padding_chars,
+            } => self.record_payload(encoded_chars, padding_chars),
+            DataImageStage::Header { .. } => self.quarantine_candidate(),
+            DataImageStage::Seeking(_) | DataImageStage::Quarantined => {}
         }
+        self.stage = DataImageStage::Seeking(0);
     }
 
     fn quarantine_candidate(&mut self) {
@@ -1368,6 +1381,9 @@ fn safe_003_ambiguous_data_image_candidates_fail_closed() {
         b"![x](data:image/png%3Bbase64%2CAAAAAAAAAAAA)".to_vec(),
         b"![x](data:image/png;base64,AAAA%2FAAAAAAAA)".to_vec(),
         b"![x](data:image/png;base64,A)".to_vec(),
+        b"![x](data:image/png;bas,AAAAAAAAAAAA)".to_vec(),
+        b"![x](data:image/png;base64)".to_vec(),
+        b"truncated data:image/png;base64".to_vec(),
     ];
 
     for candidate in candidates {
