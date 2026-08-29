@@ -1,8 +1,8 @@
 # P0-SPIKE-01 — CodeMirror editor feasibility spike
 
-- Status: CLAIMED
-- Owner / next owner: Editor (`/root/p0_spike_01`) / same owner until REVIEW
-- Base revision / head revision: `576a435` / working tree
+- Status: REVIEW
+- Owner / next owner: Editor (`/root/p0_spike_01`) / Integration
+- Base revision / head revision: `576a435` / `25ce6e4`
 - Requirement IDs: `DATA-SOURCE-001`, `DATA-ROUNDTRIP-001`, `DATA-UNKNOWN-001`, `EDIT-LIVE-001`, `EDIT-UNDO-001`, `EDIT-IME-001`, `EDIT-TABLE-001`, `PERF-VIEWPORT-001`, `PERF-LARGE-001`
 - Product UX IDs: none; this is a disposable Phase 0 feasibility spike and cannot complete product acceptance
 - Test / acceptance IDs: `RT-001`, `RT-002`, `EDT-LIVE-001`, `EDT-UNDO-001`, `IME-001`, `TABLE-001`, `PERF-001`, `PERF-010`, `PROC-002`
@@ -78,9 +78,8 @@ This task does not implement the Phase 1 editor, does not connect CodeMirror to 
 
 ## Remaining numbered steps
 
-1. Commit the verified spike and record its exact revision.
-2. Integration reviews the feasibility claims and dependency footprint, merges the branch in Phase 0 order, and reruns the full gate plus the then-current schema-drift runner.
-3. `P1-EDITOR-01` consumes the findings only after F0; it must not treat this disposable harness as the frozen editor/session adapter.
+1. Integration reviews the feasibility claims and dependency footprint, merges the branch in Phase 0 order, and reruns the full gate plus the then-current schema-drift runner.
+2. `P1-EDITOR-01` consumes the findings only after F0; it must not treat this disposable harness as the frozen editor/session adapter.
 
 ## Data safety, recovery, and temporary artifacts
 
