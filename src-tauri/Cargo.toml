@@ -15,3 +15,6 @@ tauri-build = { version = "=2.6.3", features = [] }
 
 [dependencies]
 tauri = { version = "=2.11.5", features = [] }
+
+[dev-dependencies]
+uuid = { version = "=1.26.0", features = ["v4"] }

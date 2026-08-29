@@ -20,7 +20,9 @@ use std::time::{Duration, Instant};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 #[cfg(target_os = "macos")]
-use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
+use std::os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt};
+#[cfg(target_os = "macos")]
+use uuid::Uuid;
 
 const KIB: u64 = 1024;
 const MIB: u64 = 1024 * KIB;
@@ -31,8 +33,6 @@ const SCRATCH_PREFIX: &str = "markdown-workspace-p0-spike-02-";
 const CRASH_EXIT_CODE: i32 = 86;
 
 static SCRATCH_SEQUENCE: AtomicU64 = AtomicU64::new(0);
-#[cfg(target_os = "macos")]
-static TEMP_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Clone, Copy, Debug)]
 struct SpikePolicy {
@@ -155,7 +155,12 @@ impl DataImageDetector {
     fn feed(&mut self, byte: u8) {
         self.stage = match self.stage {
             DataImageStage::Seeking(matched) => {
-                if matched >= Self::MEDIA_TYPE_STEM.len()
+                if matched > 0 && is_url_ignored_ascii_whitespace(byte) {
+                    // The URL parser strips ASCII TAB/LF/CR before parsing.
+                    // Keep the partial prefix so `data:im\tage/` cannot evade
+                    // detection merely by crossing a scanner chunk boundary.
+                    DataImageStage::Seeking(matched)
+                } else if matched >= Self::MEDIA_TYPE_STEM.len()
                     && (byte == b'%' || byte.is_ascii_whitespace())
                 {
                     self.quarantine_candidate();
@@ -335,6 +340,10 @@ fn seeking_stage_for(byte: u8) -> DataImageStage {
 
 fn is_base64_alphabet(byte: u8) -> bool {
     byte.is_ascii_alphanumeric() || matches!(byte, b'+' | b'/')
+}
+
+fn is_url_ignored_ascii_whitespace(byte: u8) -> bool {
+    matches!(byte, b'\t' | b'\n' | b'\r')
 }
 
 fn is_data_uri_terminator(byte: u8) -> bool {
@@ -806,52 +815,114 @@ enum ReplaceFault {
 }
 
 #[cfg(target_os = "macos")]
-const TEMP_NAME_VERSION: &str = "v1";
+const TEMP_NAME_VERSION: &str = "v2";
 #[cfg(target_os = "macos")]
-const TEMP_TIMESTAMP_DIGITS: usize = 20;
+const MANIFEST_VERSION: &str = "mdapp-spike-manifest-v1";
 #[cfg(target_os = "macos")]
-const TEMP_U32_DIGITS: usize = 10;
+const MANIFEST_FILE_PREFIX: &str = "mdapp-spike-v1-";
 #[cfg(target_os = "macos")]
-const TEMP_SEQUENCE_DIGITS: usize = 20;
+const MANIFEST_MAX_BYTES: u64 = 4 * 1024;
+#[cfg(target_os = "macos")]
+const U32_DIGITS: usize = 10;
+#[cfg(target_os = "macos")]
+const U64_DIGITS: usize = 20;
 
 #[cfg(target_os = "macos")]
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct OwnedTemporaryName {
-    timestamp: u64,
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct OperationManifest {
+    operation_id: Uuid,
+    target_file_name: String,
     owner_uid: u32,
+    target_dev: u64,
+    target_ino: u64,
+    temporary_dev: u64,
+    temporary_ino: u64,
+    issued_at_epoch_seconds: u64,
 }
 
 #[cfg(target_os = "macos")]
-fn format_temporary_file_name(
-    target_file_name: &str,
-    timestamp: u64,
-    owner_uid: u32,
-    pid: u32,
-    sequence: u64,
-) -> String {
-    format!(
-        ".{target_file_name}.mdapp-spike-{TEMP_NAME_VERSION}-{timestamp:020}-{owner_uid:010}-{pid:010}-{sequence:020}.tmp"
-    )
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct LoadedManifest {
+    manifest: OperationManifest,
+    file_dev: u64,
+    file_ino: u64,
 }
 
 #[cfg(target_os = "macos")]
-fn temporary_path_for(target: &Path, timestamp: u64) -> io::Result<PathBuf> {
-    let parent = target
-        .parent()
-        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "target has no parent"))?;
-    let file_name = target
-        .file_name()
-        .and_then(|name| name.to_str())
-        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "target has no file name"))?;
-    let owner_uid = fs::symlink_metadata(target)?.uid();
-    let sequence = TEMP_SEQUENCE.fetch_add(1, Ordering::Relaxed);
-    Ok(parent.join(format_temporary_file_name(
-        file_name,
-        timestamp,
-        owner_uid,
-        process::id(),
-        sequence,
-    )))
+#[derive(Debug)]
+struct IssuedTemporary {
+    file: File,
+    temporary_path: PathBuf,
+    manifest_path: PathBuf,
+    manifest: OperationManifest,
+}
+
+#[cfg(target_os = "macos")]
+#[derive(Debug)]
+struct RecoveryStore {
+    journal_directory: PathBuf,
+    quarantine_directory: PathBuf,
+}
+
+#[cfg(target_os = "macos")]
+#[derive(Debug)]
+struct QuarantinedMismatch {
+    operation_id: Uuid,
+    path: PathBuf,
+}
+
+#[cfg(target_os = "macos")]
+#[derive(Debug, Default)]
+struct CleanupReport {
+    removed: usize,
+    quarantined_mismatches: Vec<QuarantinedMismatch>,
+}
+
+#[cfg(target_os = "macos")]
+impl RecoveryStore {
+    fn create(root: &Path, target: &Path) -> io::Result<Self> {
+        let target_metadata = fs::symlink_metadata(target)?;
+        let target_parent = target
+            .parent()
+            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "target has no parent"))?;
+        let journal_directory = root.join(".mdapp-spike-journal-v1");
+        let quarantine_directory = target_parent.join(".mdapp-spike-quarantine-v1");
+        create_private_directory(&journal_directory, target_metadata.uid())?;
+        create_private_directory(&quarantine_directory, target_metadata.uid())?;
+        let parent_metadata = fs::symlink_metadata(target_parent)?;
+        let quarantine_metadata = fs::symlink_metadata(&quarantine_directory)?;
+        if parent_metadata.dev() != quarantine_metadata.dev() {
+            return Err(io::Error::other(
+                "quarantine must share the target filesystem",
+            ));
+        }
+        Ok(Self {
+            journal_directory,
+            quarantine_directory,
+        })
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn create_private_directory(path: &Path, expected_uid: u32) -> io::Result<()> {
+    let mut builder = fs::DirBuilder::new();
+    builder.mode(0o700);
+    match builder.create(path) {
+        Ok(()) => {}
+        Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {}
+        Err(error) => return Err(error),
+    }
+    let metadata = fs::symlink_metadata(path)?;
+    if !metadata.file_type().is_dir()
+        || metadata.uid() != expected_uid
+        || metadata.mode() & 0o077 != 0
+    {
+        return Err(io::Error::new(
+            io::ErrorKind::PermissionDenied,
+            "recovery directory is not private and owner-matched",
+        ));
+    }
+    Ok(())
 }
 
 #[cfg(target_os = "macos")]
@@ -862,26 +933,118 @@ fn parse_fixed_decimal<T: std::str::FromStr>(value: &str, digits: usize) -> Opti
 }
 
 #[cfg(target_os = "macos")]
-fn parse_owned_temporary_name(
-    target_file_name: &str,
-    candidate: &str,
-) -> Option<OwnedTemporaryName> {
-    let prefix = format!(".{target_file_name}.mdapp-spike-");
-    let remainder = candidate.strip_prefix(&prefix)?.strip_suffix(".tmp")?;
-    let mut components = remainder.split('-');
-    if components.next()? != TEMP_NAME_VERSION {
+fn parse_uuid_v4(value: &str) -> Option<Uuid> {
+    let parsed = Uuid::parse_str(value).ok()?;
+    if parsed.hyphenated().to_string() != value
+        || parsed.as_bytes()[6] & 0xf0 != 0x40
+        || parsed.as_bytes()[8] & 0xc0 != 0x80
+    {
         return None;
     }
-    let timestamp = parse_fixed_decimal(components.next()?, TEMP_TIMESTAMP_DIGITS)?;
-    let owner_uid = parse_fixed_decimal(components.next()?, TEMP_U32_DIGITS)?;
-    let pid: u32 = parse_fixed_decimal(components.next()?, TEMP_U32_DIGITS)?;
-    let _sequence: u64 = parse_fixed_decimal(components.next()?, TEMP_SEQUENCE_DIGITS)?;
-    if components.next().is_some() || pid == 0 {
+    Some(parsed)
+}
+
+#[cfg(target_os = "macos")]
+fn format_temporary_file_name(target_file_name: &str, operation_id: Uuid) -> String {
+    format!(".{target_file_name}.mdapp-spike-{TEMP_NAME_VERSION}-{operation_id}.tmp")
+}
+
+#[cfg(target_os = "macos")]
+fn parse_temporary_file_name(target_file_name: &str, candidate: &str) -> Option<Uuid> {
+    let prefix = format!(".{target_file_name}.mdapp-spike-{TEMP_NAME_VERSION}-");
+    parse_uuid_v4(candidate.strip_prefix(&prefix)?.strip_suffix(".tmp")?)
+}
+
+#[cfg(target_os = "macos")]
+fn manifest_path_for(store: &RecoveryStore, operation_id: Uuid) -> PathBuf {
+    store
+        .journal_directory
+        .join(format!("{MANIFEST_FILE_PREFIX}{operation_id}.manifest"))
+}
+
+#[cfg(target_os = "macos")]
+fn parse_manifest_file_name(candidate: &str) -> Option<Uuid> {
+    parse_uuid_v4(
+        candidate
+            .strip_prefix(MANIFEST_FILE_PREFIX)?
+            .strip_suffix(".manifest")?,
+    )
+}
+
+#[cfg(target_os = "macos")]
+fn hex_encode(bytes: &[u8]) -> String {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let mut encoded = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        encoded.push(HEX[(byte >> 4) as usize] as char);
+        encoded.push(HEX[(byte & 0x0f) as usize] as char);
+    }
+    encoded
+}
+
+#[cfg(target_os = "macos")]
+fn hex_decode(value: &str) -> Option<Vec<u8>> {
+    if !value.len().is_multiple_of(2) {
         return None;
     }
-    Some(OwnedTemporaryName {
-        timestamp,
+
+    let (pairs, remainder) = value.as_bytes().as_chunks::<2>();
+    debug_assert!(remainder.is_empty());
+    pairs
+        .iter()
+        .map(|pair| {
+            let high = (pair[0] as char).to_digit(16)? as u8;
+            let low = (pair[1] as char).to_digit(16)? as u8;
+            Some((high << 4) | low)
+        })
+        .collect()
+}
+
+#[cfg(target_os = "macos")]
+fn serialize_manifest(manifest: &OperationManifest) -> String {
+    format!(
+        "{MANIFEST_VERSION}\noperation_id={}\ntarget_name_hex={}\nowner_uid={:010}\ntarget_dev={:020}\ntarget_ino={:020}\ntemporary_dev={:020}\ntemporary_ino={:020}\nissued_at={:020}\n",
+        manifest.operation_id,
+        hex_encode(manifest.target_file_name.as_bytes()),
+        manifest.owner_uid,
+        manifest.target_dev,
+        manifest.target_ino,
+        manifest.temporary_dev,
+        manifest.temporary_ino,
+        manifest.issued_at_epoch_seconds,
+    )
+}
+
+#[cfg(target_os = "macos")]
+fn parse_manifest(contents: &str) -> Option<OperationManifest> {
+    let mut lines = contents.lines();
+    if lines.next()? != MANIFEST_VERSION {
+        return None;
+    }
+    let operation_id = parse_uuid_v4(lines.next()?.strip_prefix("operation_id=")?)?;
+    let target_file_name =
+        String::from_utf8(hex_decode(lines.next()?.strip_prefix("target_name_hex=")?)?).ok()?;
+    let owner_uid = parse_fixed_decimal(lines.next()?.strip_prefix("owner_uid=")?, U32_DIGITS)?;
+    let target_dev = parse_fixed_decimal(lines.next()?.strip_prefix("target_dev=")?, U64_DIGITS)?;
+    let target_ino = parse_fixed_decimal(lines.next()?.strip_prefix("target_ino=")?, U64_DIGITS)?;
+    let temporary_dev =
+        parse_fixed_decimal(lines.next()?.strip_prefix("temporary_dev=")?, U64_DIGITS)?;
+    let temporary_ino =
+        parse_fixed_decimal(lines.next()?.strip_prefix("temporary_ino=")?, U64_DIGITS)?;
+    let issued_at_epoch_seconds =
+        parse_fixed_decimal(lines.next()?.strip_prefix("issued_at=")?, U64_DIGITS)?;
+    if lines.next().is_some() {
+        return None;
+    }
+    Some(OperationManifest {
+        operation_id,
+        target_file_name,
         owner_uid,
+        target_dev,
+        target_ino,
+        temporary_dev,
+        temporary_ino,
+        issued_at_epoch_seconds,
     })
 }
 
@@ -895,6 +1058,99 @@ fn create_owned_temporary(path: &Path) -> io::Result<File> {
 }
 
 #[cfg(target_os = "macos")]
+fn persist_manifest(store: &RecoveryStore, manifest: &OperationManifest) -> io::Result<PathBuf> {
+    let path = manifest_path_for(store, manifest.operation_id);
+    let result = (|| {
+        let mut file = OpenOptions::new()
+            .create_new(true)
+            .write(true)
+            .mode(0o600)
+            .open(&path)?;
+        file.write_all(serialize_manifest(manifest).as_bytes())?;
+        file.flush()?;
+        file.sync_all()?;
+        sync_directory(&store.journal_directory)
+    })();
+    if result.is_err() {
+        let _ = fs::remove_file(&path);
+    }
+    result.map(|()| path)
+}
+
+#[cfg(target_os = "macos")]
+fn issue_owned_temporary(
+    target: &Path,
+    store: &RecoveryStore,
+    issued_at_epoch_seconds: u64,
+) -> io::Result<IssuedTemporary> {
+    let target_metadata = fs::symlink_metadata(target)?;
+    if !target_metadata.file_type().is_file() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "target must be a regular file",
+        ));
+    }
+    let parent = target
+        .parent()
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "target has no parent"))?;
+    let target_file_name = target
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "target has no file name"))?;
+
+    for _ in 0..8 {
+        let operation_id = Uuid::new_v4();
+        let temporary_path =
+            parent.join(format_temporary_file_name(target_file_name, operation_id));
+        let file = match create_owned_temporary(&temporary_path) {
+            Ok(file) => file,
+            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => continue,
+            Err(error) => return Err(error),
+        };
+        let temporary_metadata = fs::symlink_metadata(&temporary_path)?;
+        let manifest = OperationManifest {
+            operation_id,
+            target_file_name: target_file_name.to_owned(),
+            owner_uid: target_metadata.uid(),
+            target_dev: target_metadata.dev(),
+            target_ino: target_metadata.ino(),
+            temporary_dev: temporary_metadata.dev(),
+            temporary_ino: temporary_metadata.ino(),
+            issued_at_epoch_seconds,
+        };
+        if !temporary_identity_matches(&manifest, &temporary_metadata)
+            || temporary_metadata.dev() != target_metadata.dev()
+        {
+            drop(file);
+            let _ = fs::remove_file(&temporary_path);
+            return Err(io::Error::new(
+                io::ErrorKind::PermissionDenied,
+                "issued temporary is not private, owner-matched, and on the target filesystem",
+            ));
+        }
+        match persist_manifest(store, &manifest) {
+            Ok(manifest_path) => {
+                return Ok(IssuedTemporary {
+                    file,
+                    temporary_path,
+                    manifest_path,
+                    manifest,
+                });
+            }
+            Err(error) => {
+                drop(file);
+                let _ = fs::remove_file(&temporary_path);
+                return Err(error);
+            }
+        }
+    }
+    Err(io::Error::new(
+        io::ErrorKind::AlreadyExists,
+        "could not allocate a unique operation UUID",
+    ))
+}
+
+#[cfg(target_os = "macos")]
 fn injected_failure(stage: &'static str) -> io::Error {
     io::Error::other(format!("P0-SPIKE-02 injected failure at {stage}"))
 }
@@ -904,6 +1160,7 @@ fn injected_failure(stage: &'static str) -> io::Error {
 #[cfg(target_os = "macos")]
 fn same_directory_atomic_replace(
     target: &Path,
+    store: &RecoveryStore,
     new_bytes: &[u8],
     fault: ReplaceFault,
 ) -> io::Result<()> {
@@ -911,30 +1168,28 @@ fn same_directory_atomic_replace(
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs();
-    let temporary = temporary_path_for(target, now)?;
-    debug_assert_eq!(temporary.parent(), target.parent());
+    let mut issued = issue_owned_temporary(target, store, now)?;
+    debug_assert_eq!(issued.temporary_path.parent(), target.parent());
     let mut committed = false;
 
     let result = (|| {
-        let mut file = create_owned_temporary(&temporary)?;
         if fault == ReplaceFault::AfterTempCreate {
             return Err(injected_failure("temp-create"));
         }
 
         let split = new_bytes.len() / 2;
-        file.write_all(&new_bytes[..split])?;
+        issued.file.write_all(&new_bytes[..split])?;
         if fault == ReplaceFault::AfterPartialWrite {
             return Err(injected_failure("partial-write"));
         }
-        file.write_all(&new_bytes[split..])?;
-        file.flush()?;
-        file.sync_all()?;
+        issued.file.write_all(&new_bytes[split..])?;
+        issued.file.flush()?;
+        issued.file.sync_all()?;
         if fault == ReplaceFault::AfterTempSync {
             return Err(injected_failure("temp-sync"));
         }
-        drop(file);
 
-        fs::rename(&temporary, target)?;
+        fs::rename(&issued.temporary_path, target)?;
         committed = true;
         if fault == ReplaceFault::AfterRename {
             return Err(injected_failure("rename-commit"));
@@ -943,49 +1198,45 @@ fn same_directory_atomic_replace(
         sync_parent_directory(target)?;
         Ok(())
     })();
+    drop(issued.file);
 
+    let mut cleanup_error = None;
     if !committed {
-        match fs::remove_file(&temporary) {
+        match fs::remove_file(&issued.temporary_path) {
             Ok(()) => {}
             Err(error) if error.kind() == io::ErrorKind::NotFound => {}
-            Err(error) if result.is_ok() => return Err(error),
-            Err(_) => {}
+            Err(error) => cleanup_error = Some(error),
+        }
+    }
+    if let Err(error) = fs::remove_file(&issued.manifest_path) {
+        if error.kind() != io::ErrorKind::NotFound && cleanup_error.is_none() {
+            cleanup_error = Some(error);
+        }
+    }
+    if let Err(error) = sync_directory(&store.journal_directory) {
+        if cleanup_error.is_none() {
+            cleanup_error = Some(error);
         }
     }
 
-    result
+    match (result, cleanup_error) {
+        (Ok(()), Some(error)) => Err(error),
+        (result, _) => result,
+    }
 }
 
 #[cfg(target_os = "macos")]
 fn sync_parent_directory(target: &Path) -> io::Result<()> {
-    File::open(
+    sync_directory(
         target
             .parent()
             .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "target has no parent"))?,
-    )?
-    .sync_all()
+    )
 }
 
 #[cfg(target_os = "macos")]
-fn owned_temporary_metadata(
-    target: &Path,
-    candidate_name: &str,
-    metadata: &fs::Metadata,
-) -> io::Result<Option<OwnedTemporaryName>> {
-    let target_name = target
-        .file_name()
-        .and_then(|name| name.to_str())
-        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "target has no file name"))?;
-    let Some(parsed) = parse_owned_temporary_name(target_name, candidate_name) else {
-        return Ok(None);
-    };
-    let target_metadata = fs::symlink_metadata(target)?;
-    let owner_matches = target_metadata.file_type().is_file()
-        && target_metadata.uid() == parsed.owner_uid
-        && metadata.uid() == parsed.owner_uid;
-    let secure_regular_file =
-        metadata.file_type().is_file() && metadata.nlink() == 1 && metadata.mode() & 0o777 == 0o600;
-    Ok((owner_matches && secure_regular_file).then_some(parsed))
+fn sync_directory(directory: &Path) -> io::Result<()> {
+    File::open(directory)?.sync_all()
 }
 
 #[cfg(target_os = "macos")]
@@ -999,54 +1250,205 @@ fn modified_epoch_seconds(metadata: &fs::Metadata) -> Option<u64> {
 }
 
 #[cfg(target_os = "macos")]
-fn cleanup_stale_temporaries(target: &Path, older_than_epoch_seconds: u64) -> io::Result<usize> {
-    let parent = target
-        .parent()
-        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "target has no parent"))?;
-    let mut removed = 0;
-
-    for entry in fs::read_dir(parent)? {
-        let entry = entry?;
-        if !entry.file_type()?.is_file() {
-            continue;
-        }
-        let name = entry.file_name();
-        let Some(name) = name.to_str() else {
-            continue;
-        };
-        let metadata = fs::symlink_metadata(entry.path())?;
-        let Some(parsed) = owned_temporary_metadata(target, name, &metadata)? else {
-            continue;
-        };
-        let Some(modified_at) = modified_epoch_seconds(&metadata) else {
-            continue;
-        };
-        if parsed.timestamp < older_than_epoch_seconds && modified_at < older_than_epoch_seconds {
-            fs::remove_file(entry.path())?;
-            removed += 1;
-        }
-    }
-
-    Ok(removed)
+fn secure_manifest_metadata(metadata: &fs::Metadata) -> bool {
+    metadata.file_type().is_file() && metadata.nlink() == 1 && metadata.mode() & 0o777 == 0o600
 }
 
 #[cfg(target_os = "macos")]
-fn count_task_temporaries(target: &Path) -> io::Result<usize> {
+fn temporary_identity_matches(manifest: &OperationManifest, metadata: &fs::Metadata) -> bool {
+    metadata.file_type().is_file()
+        && metadata.nlink() == 1
+        && metadata.mode() & 0o777 == 0o600
+        && metadata.uid() == manifest.owner_uid
+        && metadata.dev() == manifest.temporary_dev
+        && metadata.ino() == manifest.temporary_ino
+}
+
+#[cfg(target_os = "macos")]
+fn manifest_matches_target(
+    manifest: &OperationManifest,
+    target: &Path,
+    target_metadata: &fs::Metadata,
+) -> bool {
+    target_metadata.file_type().is_file()
+        && target_metadata.uid() == manifest.owner_uid
+        && target_metadata.dev() == manifest.target_dev
+        && target_metadata.ino() == manifest.target_ino
+        && target
+            .file_name()
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| name == manifest.target_file_name)
+}
+
+#[cfg(target_os = "macos")]
+fn load_manifest(path: &Path, expected_operation_id: Uuid) -> io::Result<Option<LoadedManifest>> {
+    let path_metadata_before = fs::symlink_metadata(path)?;
+    if !secure_manifest_metadata(&path_metadata_before) {
+        return Ok(None);
+    }
+    let file = File::open(path)?;
+    let file_metadata = file.metadata()?;
+    let path_metadata_after = fs::symlink_metadata(path)?;
+    if !secure_manifest_metadata(&file_metadata)
+        || !secure_manifest_metadata(&path_metadata_after)
+        || path_metadata_before.dev() != file_metadata.dev()
+        || path_metadata_before.ino() != file_metadata.ino()
+        || path_metadata_after.dev() != file_metadata.dev()
+        || path_metadata_after.ino() != file_metadata.ino()
+    {
+        return Ok(None);
+    }
+    let mut bytes = Vec::new();
+    file.take(MANIFEST_MAX_BYTES + 1).read_to_end(&mut bytes)?;
+    if bytes.len() as u64 > MANIFEST_MAX_BYTES {
+        return Ok(None);
+    }
+    let Some(manifest) = std::str::from_utf8(&bytes).ok().and_then(parse_manifest) else {
+        return Ok(None);
+    };
+    Ok((manifest.operation_id == expected_operation_id
+        && file_metadata.uid() == manifest.owner_uid)
+        .then_some(LoadedManifest {
+            manifest,
+            file_dev: file_metadata.dev(),
+            file_ino: file_metadata.ino(),
+        }))
+}
+
+#[cfg(target_os = "macos")]
+fn quarantine_path_for(store: &RecoveryStore, operation_id: Uuid) -> PathBuf {
+    loop {
+        let quarantine_id = Uuid::new_v4();
+        let path = store.quarantine_directory.join(format!(
+            "mdapp-spike-v1-{operation_id}-{quarantine_id}.quarantine"
+        ));
+        if !path.exists() {
+            return path;
+        }
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn cleanup_stale_temporaries(
+    target: &Path,
+    store: &RecoveryStore,
+    older_than_epoch_seconds: u64,
+) -> io::Result<CleanupReport> {
+    cleanup_stale_temporaries_with_hook(target, store, older_than_epoch_seconds, |_, _| Ok(()))
+}
+
+#[cfg(target_os = "macos")]
+fn cleanup_stale_temporaries_with_hook<F>(
+    target: &Path,
+    store: &RecoveryStore,
+    older_than_epoch_seconds: u64,
+    mut before_quarantine: F,
+) -> io::Result<CleanupReport>
+where
+    F: FnMut(&Path, &OperationManifest) -> io::Result<()>,
+{
     let parent = target
         .parent()
         .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "target has no parent"))?;
-    let mut count = 0;
-    for entry in fs::read_dir(parent)? {
+    let target_metadata = fs::symlink_metadata(target)?;
+    let mut report = CleanupReport::default();
+
+    for entry in fs::read_dir(&store.journal_directory)? {
         let entry = entry?;
-        if !entry.file_type()?.is_file() {
-            continue;
-        }
         let name = entry.file_name();
         let Some(name) = name.to_str() else {
             continue;
         };
-        let metadata = fs::symlink_metadata(entry.path())?;
-        if owned_temporary_metadata(target, name, &metadata)?.is_some() {
+        let Some(operation_id) = parse_manifest_file_name(name) else {
+            continue;
+        };
+        let Some(loaded_manifest) = load_manifest(&entry.path(), operation_id)? else {
+            continue;
+        };
+        let manifest = &loaded_manifest.manifest;
+        if !manifest_matches_target(manifest, target, &target_metadata)
+            || manifest.issued_at_epoch_seconds >= older_than_epoch_seconds
+        {
+            continue;
+        }
+        let temporary_path = parent.join(format_temporary_file_name(
+            &manifest.target_file_name,
+            manifest.operation_id,
+        ));
+        let temporary_metadata = match fs::symlink_metadata(&temporary_path) {
+            Ok(metadata) => metadata,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => continue,
+            Err(error) => return Err(error),
+        };
+        if !temporary_identity_matches(manifest, &temporary_metadata)
+            || modified_epoch_seconds(&temporary_metadata)
+                .is_none_or(|modified| modified >= older_than_epoch_seconds)
+        {
+            continue;
+        }
+
+        before_quarantine(&temporary_path, manifest)?;
+        let quarantine_path = quarantine_path_for(store, manifest.operation_id);
+        fs::rename(&temporary_path, &quarantine_path)?;
+        sync_directory(&store.quarantine_directory)?;
+
+        let quarantined_metadata = fs::symlink_metadata(&quarantine_path)?;
+        let target_still_matches = fs::symlink_metadata(target)
+            .ok()
+            .is_some_and(|metadata| manifest_matches_target(manifest, target, &metadata));
+        let manifest_still_matches = load_manifest(&entry.path(), operation_id)?
+            .is_some_and(|after| after == loaded_manifest);
+        if !temporary_identity_matches(manifest, &quarantined_metadata)
+            || !target_still_matches
+            || !manifest_still_matches
+        {
+            report.quarantined_mismatches.push(QuarantinedMismatch {
+                operation_id: manifest.operation_id,
+                path: quarantine_path,
+            });
+            continue;
+        }
+        fs::remove_file(&quarantine_path)?;
+        fs::remove_file(entry.path())?;
+        sync_directory(&store.quarantine_directory)?;
+        sync_directory(&store.journal_directory)?;
+        report.removed += 1;
+    }
+
+    Ok(report)
+}
+
+#[cfg(target_os = "macos")]
+fn count_task_temporaries(target: &Path, store: &RecoveryStore) -> io::Result<usize> {
+    let parent = target
+        .parent()
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "target has no parent"))?;
+    let target_metadata = fs::symlink_metadata(target)?;
+    let mut count = 0;
+    for entry in fs::read_dir(&store.journal_directory)? {
+        let entry = entry?;
+        let name = entry.file_name();
+        let Some(name) = name.to_str() else {
+            continue;
+        };
+        let Some(operation_id) = parse_manifest_file_name(name) else {
+            continue;
+        };
+        let Some(loaded_manifest) = load_manifest(&entry.path(), operation_id)? else {
+            continue;
+        };
+        let manifest = loaded_manifest.manifest;
+        if !manifest_matches_target(&manifest, target, &target_metadata) {
+            continue;
+        }
+        let temporary_path = parent.join(format_temporary_file_name(
+            &manifest.target_file_name,
+            manifest.operation_id,
+        ));
+        if fs::symlink_metadata(temporary_path)
+            .ok()
+            .is_some_and(|metadata| temporary_identity_matches(&manifest, &metadata))
+        {
             count += 1;
         }
     }
@@ -1363,6 +1765,80 @@ fn safe_003_folded_data_image_whitespace_cannot_under_count_payload() {
     }
 }
 
+/// SAFE-003: URL preprocessing strips TAB/LF/CR even inside `data:image/`.
+/// Every insertion position and every possible split through the obfuscated
+/// prefix is exercised with the real 512 KiB + 1 decoded-byte boundary. A
+/// one-byte read policy additionally makes every byte in the full payload a
+/// transport boundary.
+#[test]
+fn safe_003_prefix_ascii_tab_lf_cr_cannot_evade_at_any_chunk_boundary() {
+    let policy = SpikePolicy::default();
+    let decoded = policy.safety_block_data_image_decoded_bytes + 1;
+    let canonical = data_image_bytes_for_decoded_size(decoded);
+    let prefix_start = canonical
+        .windows(DataImageDetector::PREFIX.len())
+        .position(|window| window.eq_ignore_ascii_case(DataImageDetector::PREFIX))
+        .expect("canonical data image prefix");
+
+    for ignored in *b"\t\n\r" {
+        for insertion_at in 0..=DataImageDetector::PREFIX.len() {
+            let mut candidate = canonical.clone();
+            candidate.insert(prefix_start + insertion_at, ignored);
+            let obfuscated_prefix_end = prefix_start + DataImageDetector::PREFIX.len() + 1;
+
+            let one_byte_result = scan_reader(
+                candidate.as_slice(),
+                SpikePolicy {
+                    read_buffer_bytes: 1,
+                    ..policy
+                },
+                &AtomicBool::new(false),
+            )
+            .expect("scan one-byte chunks across obfuscated data image");
+            assert_large_data_image_detected(
+                &one_byte_result,
+                decoded,
+                ignored,
+                insertion_at,
+                usize::MAX,
+            );
+
+            for split_at in prefix_start..=obfuscated_prefix_end {
+                let result = scan_reader(
+                    SplitOnceReader::new(&candidate, split_at),
+                    policy,
+                    &AtomicBool::new(false),
+                )
+                .expect("scan split obfuscated data image");
+                assert_large_data_image_detected(&result, decoded, ignored, insertion_at, split_at);
+            }
+        }
+    }
+}
+
+fn assert_large_data_image_detected(
+    result: &SpikeScanResult,
+    decoded: u64,
+    ignored: u8,
+    insertion_at: usize,
+    split_at: usize,
+) {
+    assert_eq!(
+        result.report.detected_data_image_count, 1,
+        "ignored={ignored:?}, insertion_at={insertion_at}, split_at={split_at}"
+    );
+    assert_eq!(result.report.uncertain_data_image_count, 0);
+    assert_eq!(
+        result.report.largest_data_image_estimate_bytes,
+        Some(decoded)
+    );
+    assert!(matches!(
+        &result.outcome,
+        SpikeOutcome::SafetyBlocked(reasons)
+            if reasons.contains(&SafetyReason::LargeDataImage)
+    ));
+}
+
 /// SAFE-003: percent-obfuscated, overlong-header, and malformed data-image
 /// candidates are quarantined when decoded size cannot be proven.
 #[test]
@@ -1581,10 +2057,11 @@ fn file_001_same_directory_replace_is_all_old_or_all_new() {
         let scratch = ScratchDirectory::create().expect("create scoped scratch directory");
         let target = scratch.join("document.md");
         fs::write(&target, old).expect("write old version");
-        assert!(same_directory_atomic_replace(&target, new, fault).is_err());
+        let store = RecoveryStore::create(&scratch.path, &target).expect("create recovery store");
+        assert!(same_directory_atomic_replace(&target, &store, new, fault).is_err());
         assert_eq!(fs::read(&target).expect("read old version"), old);
         assert_eq!(
-            count_task_temporaries(&target).expect("count temporary files"),
+            count_task_temporaries(&target, &store).expect("count temporary files"),
             0
         );
     }
@@ -1592,21 +2069,25 @@ fn file_001_same_directory_replace_is_all_old_or_all_new() {
     let scratch = ScratchDirectory::create().expect("create scoped scratch directory");
     let target = scratch.join("document.md");
     fs::write(&target, old).expect("write old version");
-    same_directory_atomic_replace(&target, new, ReplaceFault::None)
+    let store = RecoveryStore::create(&scratch.path, &target).expect("create recovery store");
+    same_directory_atomic_replace(&target, &store, new, ReplaceFault::None)
         .expect("commit atomic replacement");
     assert_eq!(fs::read(&target).expect("read new version"), new);
     assert_eq!(
-        count_task_temporaries(&target).expect("count temporary files"),
+        count_task_temporaries(&target, &store).expect("count temporary files"),
         0
     );
 
     let scratch = ScratchDirectory::create().expect("create scoped scratch directory");
     let target = scratch.join("document.md");
     fs::write(&target, old).expect("write old version");
-    assert!(same_directory_atomic_replace(&target, new, ReplaceFault::AfterRename).is_err());
+    let store = RecoveryStore::create(&scratch.path, &target).expect("create recovery store");
+    assert!(
+        same_directory_atomic_replace(&target, &store, new, ReplaceFault::AfterRename).is_err()
+    );
     assert_eq!(fs::read(&target).expect("read committed version"), new);
     assert_eq!(
-        count_task_temporaries(&target).expect("count temporary files"),
+        count_task_temporaries(&target, &store).expect("count temporary files"),
         0
     );
 }
@@ -1621,18 +2102,23 @@ fn p0_spike_02_crash_helper_exits_after_synced_temp() {
     let Ok(target_name) = env::var("P0_SPIKE_02_CRASH_TARGET") else {
         return;
     };
-    let target = PathBuf::from(directory).join(target_name);
-    let temporary = temporary_path_for(&target, 1).expect("create crash temp path");
-    let mut file = create_owned_temporary(&temporary).expect("create crash temp file");
-    file.write_all(b"complete-but-uncommitted")
+    let root = PathBuf::from(directory);
+    let target = root.join(target_name);
+    let store = RecoveryStore::create(&root, &target).expect("create crash recovery store");
+    let mut issued =
+        issue_owned_temporary(&target, &store, 1).expect("issue crash temporary and manifest");
+    issued
+        .file
+        .write_all(b"complete-but-uncommitted")
         .expect("write crash temp");
-    file.sync_all().expect("sync crash temp");
+    issued.file.sync_all().expect("sync crash temp");
     process::exit(CRASH_EXIT_CODE);
 }
 
-/// FILE-001 supporting macOS spike: cleanup accepts only the exact versioned
-/// target-owned name, secure regular-file metadata, and two independent age
-/// checks. Same-prefix decoys, symlinks, directories, and recent files survive.
+/// FILE-001 supporting macOS spike: cleanup starts from the durable Rust-issued
+/// manifest, never by globbing a predictable filename. Exact-shape unissued
+/// same-owner decoys, malformed names, symlinks, directories, and recent issued
+/// files all survive.
 #[cfg(target_os = "macos")]
 #[test]
 fn file_001_crash_temp_is_scoped_and_stale_cleanup_is_selective() {
@@ -1646,9 +2132,7 @@ fn file_001_crash_temp_is_scoped_and_stale_cleanup_is_selective() {
         .file_name()
         .and_then(|name| name.to_str())
         .expect("UTF-8 target name");
-    let owner_uid = fs::symlink_metadata(&target)
-        .expect("target metadata")
-        .uid();
+    let store = RecoveryStore::create(&scratch.path, &target).expect("create recovery store");
     let decoy = scratch.join("unrelated.tmp");
     fs::write(&decoy, b"must-not-delete").expect("write cleanup decoy");
 
@@ -1668,74 +2152,69 @@ fn file_001_crash_temp_is_scoped_and_stale_cleanup_is_selective() {
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs();
-    let recent = temporary_path_for(&target, now + 60).expect("create recent temp path");
-    let mut recent_file = create_owned_temporary(&recent).expect("create recent task temp");
-    recent_file
+    let mut recent = issue_owned_temporary(&target, &store, now + 60)
+        .expect("issue recent temporary and manifest");
+    recent
+        .file
         .write_all(b"recent-must-not-delete")
         .expect("write recent task temp");
-    recent_file.sync_all().expect("sync recent task temp");
-    drop(recent_file);
+    recent.file.sync_all().expect("sync recent task temp");
+    let recent_path = recent.temporary_path.clone();
+    assert_eq!(
+        parse_temporary_file_name(
+            target_name,
+            recent_path.file_name().unwrap().to_str().unwrap()
+        ),
+        Some(recent.manifest.operation_id)
+    );
+    drop(recent.file);
 
-    let malformed = scratch.path.join(format!(
-        ".{target_name}.mdapp-spike-v1-{timestamp:020}-{owner_uid:010}-{pid:010}-{sequence:020}-extra.tmp",
-        timestamp = 1_u64,
-        pid = process::id(),
-        sequence = 900_u64,
-    ));
+    let malformed = scratch
+        .path
+        .join(format!(".{target_name}.mdapp-spike-v2-not-a-uuid.tmp"));
     fs::write(&malformed, b"same-prefix-malformed").expect("write malformed decoy");
 
-    let wrong_owner_uid = if owner_uid == u32::MAX {
-        owner_uid - 1
-    } else {
-        owner_uid + 1
-    };
-    let wrong_owner = scratch.path.join(format_temporary_file_name(
-        target_name,
-        1,
-        wrong_owner_uid,
-        process::id(),
-        901,
-    ));
-    let mut wrong_owner_file =
-        create_owned_temporary(&wrong_owner).expect("create wrong-owner decoy");
-    wrong_owner_file
-        .write_all(b"wrong-owner-must-not-delete")
-        .expect("write wrong-owner decoy");
-    wrong_owner_file.sync_all().expect("sync wrong-owner decoy");
-    drop(wrong_owner_file);
+    let unissued_id = Uuid::new_v4();
+    let unissued = scratch
+        .path
+        .join(format_temporary_file_name(target_name, unissued_id));
+    let mut unissued_file =
+        create_owned_temporary(&unissued).expect("create exact-shape unissued decoy");
+    unissued_file
+        .write_all(b"same-owner-unissued-must-not-delete")
+        .expect("write unissued decoy");
+    unissued_file.sync_all().expect("sync unissued decoy");
+    drop(unissued_file);
+    assert_eq!(
+        parse_temporary_file_name(target_name, unissued.file_name().unwrap().to_str().unwrap()),
+        Some(unissued_id)
+    );
+    assert!(!manifest_path_for(&store, unissued_id).exists());
 
-    let symlink_decoy = scratch.path.join(format_temporary_file_name(
-        target_name,
-        1,
-        owner_uid,
-        process::id(),
-        902,
-    ));
+    let symlink_decoy = scratch
+        .path
+        .join(format_temporary_file_name(target_name, Uuid::new_v4()));
     symlink(&decoy, &symlink_decoy).expect("create exact-name symlink decoy");
 
-    let directory_decoy = scratch.path.join(format_temporary_file_name(
-        target_name,
-        1,
-        owner_uid,
-        process::id(),
-        903,
-    ));
+    let directory_decoy = scratch
+        .path
+        .join(format_temporary_file_name(target_name, Uuid::new_v4()));
     fs::create_dir(&directory_decoy).expect("create exact-name directory decoy");
 
     assert_eq!(
-        count_task_temporaries(&target).expect("count crash and recent temporaries"),
+        count_task_temporaries(&target, &store).expect("count crash and recent temporaries"),
         2
     );
+    let cleanup =
+        cleanup_stale_temporaries(&target, &store, now + 1).expect("clean stale issued temporary");
+    assert_eq!(cleanup.removed, 1);
+    assert!(cleanup.quarantined_mismatches.is_empty());
     assert_eq!(
-        cleanup_stale_temporaries(&target, now + 1).expect("clean stale task temp"),
+        count_task_temporaries(&target, &store).expect("count after cleanup"),
         1
     );
     assert_eq!(
-        count_task_temporaries(&target).expect("count after cleanup"),
-        1
-    );
-    assert_eq!(
-        fs::read(&recent).expect("read retained recent temp"),
+        fs::read(&recent_path).expect("read retained recent temp"),
         b"recent-must-not-delete"
     );
     assert_eq!(fs::read(&target).expect("read original after cleanup"), old);
@@ -1748,8 +2227,8 @@ fn file_001_crash_temp_is_scoped_and_stale_cleanup_is_selective() {
         b"same-prefix-malformed"
     );
     assert_eq!(
-        fs::read(&wrong_owner).expect("read wrong-owner decoy"),
-        b"wrong-owner-must-not-delete"
+        fs::read(&unissued).expect("read exact-shape unissued decoy"),
+        b"same-owner-unissued-must-not-delete"
     );
     assert!(fs::symlink_metadata(&symlink_decoy)
         .expect("symlink decoy metadata")
@@ -1758,31 +2237,107 @@ fn file_001_crash_temp_is_scoped_and_stale_cleanup_is_selective() {
     assert!(directory_decoy.is_dir());
 }
 
-/// FILE-001 supporting macOS spike: even an exact, secure, task-owned filename
-/// with an old embedded timestamp is retained until its filesystem mtime is
-/// strictly older than the cleanup cutoff.
+/// FILE-001 supporting macOS spike: even a manifest-issued temporary with an
+/// old issuance time is retained until its filesystem mtime is strictly older
+/// than the cleanup cutoff.
 #[cfg(target_os = "macos")]
 #[test]
 fn file_001_cleanup_preserves_recently_modified_owned_temporary() {
     let scratch = ScratchDirectory::create().expect("create scoped scratch directory");
     let target = scratch.join("document.md");
     fs::write(&target, b"original").expect("write target");
-    let recent = temporary_path_for(&target, 1).expect("create old-name recent temp path");
-    let mut file = create_owned_temporary(&recent).expect("create old-name recent temp");
-    file.write_all(b"recent")
+    let store = RecoveryStore::create(&scratch.path, &target).expect("create recovery store");
+    let mut recent =
+        issue_owned_temporary(&target, &store, 1).expect("issue old-manifest recent temporary");
+    recent
+        .file
+        .write_all(b"recent")
         .expect("write old-name recent temp");
-    file.sync_all().expect("sync old-name recent temp");
-    drop(file);
-    let modified = modified_epoch_seconds(&fs::symlink_metadata(&recent).expect("recent metadata"))
-        .expect("recent mtime");
+    recent.file.sync_all().expect("sync old-name recent temp");
+    let recent_path = recent.temporary_path.clone();
+    drop(recent.file);
+    let modified =
+        modified_epoch_seconds(&fs::symlink_metadata(&recent_path).expect("recent metadata"))
+            .expect("recent mtime");
 
+    let cleanup =
+        cleanup_stale_temporaries(&target, &store, modified).expect("run strict recent cleanup");
+    assert_eq!(cleanup.removed, 0);
+    assert!(cleanup.quarantined_mismatches.is_empty());
     assert_eq!(
-        cleanup_stale_temporaries(&target, modified).expect("run strict recent cleanup"),
-        0
+        fs::read(&recent_path).expect("read retained recent temp"),
+        b"recent"
+    );
+}
+
+/// FILE-001 supporting macOS spike: a deterministic swap after the initial
+/// identity check cannot cause deletion of the replacement. The replacement is
+/// moved into the private, same-filesystem quarantine, detected by inode/dev,
+/// retained, and demonstrably recoverable by an explicit rename.
+#[cfg(target_os = "macos")]
+#[test]
+fn file_001_path_swap_is_quarantined_not_deleted_and_recoverable() {
+    let scratch = ScratchDirectory::create().expect("create scoped scratch directory");
+    let target = scratch.join("document.md");
+    fs::write(&target, b"original-remains-intact").expect("write target");
+    let store = RecoveryStore::create(&scratch.path, &target).expect("create recovery store");
+    let mut issued =
+        issue_owned_temporary(&target, &store, 1).expect("issue stale temporary and manifest");
+    issued
+        .file
+        .write_all(b"issued-temporary")
+        .expect("write issued temporary");
+    issued.file.sync_all().expect("sync issued temporary");
+    let issued_path = issued.temporary_path.clone();
+    let issued_manifest_path = issued.manifest_path.clone();
+    let operation_id = issued.manifest.operation_id;
+    drop(issued.file);
+
+    let swap_source = scratch.join("same-owner-path-swap-decoy");
+    let mut swap_file = create_owned_temporary(&swap_source).expect("create path-swap decoy");
+    swap_file
+        .write_all(b"decoy-must-not-be-deleted")
+        .expect("write path-swap decoy");
+    swap_file.sync_all().expect("sync path-swap decoy");
+    drop(swap_file);
+    let rescued_issued = scratch.join("rescued-issued-temporary");
+    let cutoff = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
+        + 1;
+
+    let report =
+        cleanup_stale_temporaries_with_hook(&target, &store, cutoff, |candidate, _manifest| {
+            fs::rename(candidate, &rescued_issued)?;
+            fs::rename(&swap_source, candidate)
+        })
+        .expect("run cleanup with deterministic path swap");
+
+    assert_eq!(report.removed, 0);
+    assert_eq!(report.quarantined_mismatches.len(), 1);
+    let mismatch = &report.quarantined_mismatches[0];
+    assert_eq!(mismatch.operation_id, operation_id);
+    assert_eq!(
+        fs::read(&mismatch.path).expect("read quarantined decoy"),
+        b"decoy-must-not-be-deleted"
     );
     assert_eq!(
-        fs::read(&recent).expect("read retained recent temp"),
-        b"recent"
+        fs::read(&rescued_issued).expect("read rescued issued temporary"),
+        b"issued-temporary"
+    );
+    assert!(!issued_path.exists());
+    assert!(issued_manifest_path.exists());
+    assert_eq!(
+        fs::read(&target).expect("read unchanged target"),
+        b"original-remains-intact"
+    );
+
+    let recovered_decoy = scratch.join("operator-recovered-decoy");
+    fs::rename(&mismatch.path, &recovered_decoy).expect("recover quarantined mismatch by rename");
+    assert_eq!(
+        fs::read(&recovered_decoy).expect("read recovered decoy"),
+        b"decoy-must-not-be-deleted"
     );
 }
 
