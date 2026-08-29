@@ -20,7 +20,7 @@
 
 - Dependency task/freeze status: `P0-BOOT-01` DONE；canonical 32 MiB/193 MiB 预算已批准；`P0-CONTRACT-01` 正在修复且 `CONTRACT-024` 仍是 frozen port，本任务只提供其 Phase 0 真实 transport 可行性证据。
 - Baseline commands: repository hygiene self-test/scan；design validator；`pnpm verify`；native shell smoke prerequisites。
-- Baseline result: pending after claim commit.
+- Baseline result: claim `ade2504` PASS；hygiene self-test 4/4、89 tracked files；design snapshot `fe6727f...`；Vitest 3/3、Rust fmt/clippy/tests、Vite 与 Tauri debug build 全通过。
 
 ## Acceptance criteria status
 
@@ -44,7 +44,7 @@
 
 | Test / acceptance ID | Exact command and environment | Result | Artifact or failure |
 |---|---|---|---|
-| claim baseline | pending | NOT RUN | claim commit 后执行 |
+| claim baseline | `pnpm install --frozen-lockfile`; hygiene self-test/scan；design validator；`pnpm verify`；macOS arm64 | PASS | Vitest 3/3；Rust fmt/clippy/tests；Vite/Tauri debug build；无 tracked lockfile diff |
 
 ## Open questions and blockers
 
@@ -52,10 +52,9 @@
 
 ## Remaining numbered steps
 
-1. 提交 claim，并在独立 worktree 重跑完整基线。
-2. 实现 feature-gated native command、on-page-load JS harness 和有超时的外部 runner。
-3. 运行 ordinary/worst-escaping 多次独立进程实测，以及默认构建无测试 surface 的断言。
-4. 独立复核结果；可靠则进入 REVIEW，不可靠则记录 BLOCKED 与 ADR 输入。
+1. 实现 feature-gated native command、on-page-load JS harness 和有超时的外部 runner。
+2. 运行 ordinary/worst-escaping 多次独立进程实测，以及默认构建无测试 surface 的断言。
+3. 独立复核结果；可靠则进入 REVIEW，不可靠则记录 BLOCKED 与 ADR 输入。
 
 ## Data safety, recovery, and temporary artifacts
 
@@ -64,4 +63,4 @@
 
 ## Single recommended next action
 
-提交 claim，然后先证明未改动基线在当前 worktree 全部通过。
+实现只在显式 Cargo feature 下可用的真实 Tauri/WKWebView round-trip harness。
