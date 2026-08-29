@@ -37,6 +37,7 @@ export interface DecorationScan {
 export interface EditorSpikeMetrics {
   fullRefreshes: number;
   incrementalRefreshes: number;
+  conservativeRefreshes: number;
   compositionStarts: number;
   compositionEnds: number;
   compositionFrozenUpdates: number;
@@ -74,7 +75,20 @@ const SAFE_SOURCE_NODE_NAMES = new Set([
   "Table",
 ]);
 
-const REPLACEABLE_MARKER_NAMES = new Set(["HeaderMark", "EmphasisMark", "LinkMark"]);
+const SOURCE_REVEAL_PRIORITY = new Map<string, number>([
+  ["Table", 400],
+  ["FencedCode", 300],
+  ["Image", 200],
+  ["Link", 100],
+]);
+
+const REPLACEABLE_MARKER_NAMES = new Set([
+  "HeaderMark",
+  "EmphasisMark",
+  "LinkMark",
+  "ListMark",
+  "QuoteMark",
+]);
 
 const requestDecorationRefresh = StateEffect.define<null>();
 
@@ -99,6 +113,7 @@ export function createEditorSpikeMetrics(): EditorSpikeMetrics {
   return {
     fullRefreshes: 0,
     incrementalRefreshes: 0,
+    conservativeRefreshes: 0,
     compositionStarts: 0,
     compositionEnds: 0,
     compositionFrozenUpdates: 0,
@@ -140,24 +155,32 @@ export function normalizeSourceRanges(
 function findSafeSourceRange(state: EditorState, position: number): SourceRange | null {
   const biases: Array<-1 | 1> =
     position === 0 ? [1] : position === state.doc.length ? [-1] : [-1, 1];
-  let best: SourceRange | null = null;
+  let best: (SourceRange & { readonly priority: number }) | null = null;
 
   for (const bias of biases) {
     const resolved = syntaxTree(state).resolveInner(position, bias);
     let node: typeof resolved | null = resolved;
     while (node) {
       if (SAFE_SOURCE_NODE_NAMES.has(node.name)) {
-        const candidate = { from: node.from, to: node.to };
-        if (!best || candidate.to - candidate.from < best.to - best.from) {
+        const candidate = {
+          from: node.from,
+          to: node.to,
+          priority: SOURCE_REVEAL_PRIORITY.get(node.name) ?? 0,
+        };
+        if (
+          !best ||
+          candidate.priority > best.priority ||
+          (candidate.priority === best.priority &&
+            candidate.to - candidate.from < best.to - best.from)
+        ) {
           best = candidate;
         }
-        break;
       }
       node = node.parent;
     }
   }
 
-  return best;
+  return best ? { from: best.from, to: best.to } : null;
 }
 
 export function deriveActiveSourceRanges(state: EditorState): SourceRange[] {
@@ -289,10 +312,66 @@ function changedLineRanges(update: ViewUpdate): SourceRange[] {
   return normalizeSourceRanges(ranges, update.state.doc.length);
 }
 
+const WORD_INTERIOR_CHARACTER = /^[\p{L}\p{M}\p{N}_]$/u;
+const PLAIN_TEXT_LINE = /^[\p{L}\p{M}\p{N}_\t ]+$/u;
+
+function codePointBefore(state: EditorState, position: number): string {
+  if (position <= 0) return "";
+  return [...state.sliceDoc(Math.max(0, position - 2), position)].at(-1) ?? "";
+}
+
+function codePointAfter(state: EditorState, position: number): string {
+  if (position >= state.doc.length) return "";
+  return [...state.sliceDoc(position, Math.min(state.doc.length, position + 2))][0] ?? "";
+}
+
+/**
+ * Only a word-character edit surrounded by word characters on an otherwise
+ * plain-text line is proven local. Structural punctuation also rules out the
+ * fast path because editing a reference-definition label can invalidate a link
+ * elsewhere without changing a delimiter. Everything else falls back to a
+ * visible-range rebuild; fences, list indentation, block quotes, reference
+ * definitions, and lazy continuation are the important propagation examples.
+ */
+function canIncrementallyRefreshChangedLines(update: ViewUpdate): boolean {
+  if (!update.docChanged) return true;
+
+  let sawChange = false;
+  let safe = true;
+  update.changes.iterChanges((fromA, toA, fromB, toB, inserted) => {
+    sawChange = true;
+    if (!safe) return;
+
+    const deleted = update.startState.sliceDoc(fromA, toA);
+    const added = inserted.toString();
+    const oldLine = update.startState.doc.lineAt(fromA);
+    const newLine = update.state.doc.lineAt(fromB);
+    if (
+      [...deleted, ...added].some(
+        (character) => !WORD_INTERIOR_CHARACTER.test(character),
+      ) ||
+      toA > oldLine.to ||
+      toB > newLine.to ||
+      !PLAIN_TEXT_LINE.test(oldLine.text) ||
+      !PLAIN_TEXT_LINE.test(newLine.text) ||
+      !WORD_INTERIOR_CHARACTER.test(codePointBefore(update.startState, fromA)) ||
+      !WORD_INTERIOR_CHARACTER.test(codePointAfter(update.startState, toA)) ||
+      !WORD_INTERIOR_CHARACTER.test(codePointBefore(update.state, fromB)) ||
+      !WORD_INTERIOR_CHARACTER.test(codePointAfter(update.state, toB))
+    ) {
+      safe = false;
+    }
+  });
+
+  return sawChange && safe;
+}
+
+export type CompositionRefreshPhase = "idle" | "composing" | "refreshPending";
+
 class EditorSpikeDecorationRuntime {
   decorations: DecorationSet;
   activeSourceRanges: SourceRange[];
-  private composing = false;
+  private compositionPhase: CompositionRefreshPhase = "idle";
   private destroyed = false;
   private scheduledRefresh: number | null = null;
   private readonly metrics: EditorSpikeMetrics;
@@ -314,7 +393,7 @@ class EditorSpikeDecorationRuntime {
       transaction.effects.some((effect) => effect.is(requestDecorationRefresh)),
     );
 
-    if (this.composing) {
+    if (this.compositionPhase !== "idle") {
       if (update.docChanged) {
         this.decorations = this.decorations.map(update.changes);
         this.activeSourceRanges = normalizeSourceRanges(
@@ -343,21 +422,27 @@ class EditorSpikeDecorationRuntime {
   }
 
   startComposition(): void {
-    if (this.composing) return;
-    this.composing = true;
+    if (this.compositionPhase === "composing") return;
+    if (this.scheduledRefresh !== null) {
+      this.scheduler.cancel(this.scheduledRefresh);
+      this.scheduledRefresh = null;
+      this.metrics.cancelledCompositionRefreshes += 1;
+    }
+    this.compositionPhase = "composing";
     this.metrics.compositionStarts += 1;
   }
 
   endComposition(): void {
-    if (!this.composing) return;
-    this.composing = false;
+    if (this.compositionPhase !== "composing") return;
+    this.compositionPhase = "refreshPending";
     this.metrics.compositionEnds += 1;
     if (this.scheduledRefresh !== null) return;
 
     this.metrics.scheduledCompositionRefreshes += 1;
     this.scheduledRefresh = this.scheduler.request(() => {
       this.scheduledRefresh = null;
-      if (this.destroyed) return;
+      if (this.destroyed || this.compositionPhase !== "refreshPending") return;
+      this.compositionPhase = "idle";
       this.view.dispatch({
         effects: requestDecorationRefresh.of(null),
         annotations: Transaction.addToHistory.of(false),
@@ -366,7 +451,11 @@ class EditorSpikeDecorationRuntime {
   }
 
   isCompositionFrozen(): boolean {
-    return this.composing;
+    return this.compositionPhase !== "idle";
+  }
+
+  getCompositionPhase(): CompositionRefreshPhase {
+    return this.compositionPhase;
   }
 
   hasScheduledRefresh(): boolean {
@@ -406,6 +495,12 @@ class EditorSpikeDecorationRuntime {
     const nextActive = deriveActiveSourceRanges(update.state);
     this.activeSourceRanges = nextActive;
     this.decorations = this.decorations.map(update.changes);
+
+    if (update.docChanged && !canIncrementallyRefreshChangedLines(update)) {
+      this.metrics.conservativeRefreshes += 1;
+      this.fullRefresh(update.view);
+      return;
+    }
 
     const requestedRanges = normalizeSourceRanges(
       [...changedLineRanges(update), ...previousActive, ...nextActive],
@@ -489,6 +584,7 @@ export function getEditorSpikeRuntime(view: EditorView): {
   readonly decorations: DecorationSet;
   readonly activeSourceRanges: readonly SourceRange[];
   readonly compositionFrozen: boolean;
+  readonly compositionPhase: CompositionRefreshPhase;
   readonly scheduledRefresh: boolean;
 } {
   const runtime = view.plugin(editorSpikeDecorationPlugin);
@@ -497,6 +593,7 @@ export function getEditorSpikeRuntime(view: EditorView): {
     decorations: runtime.decorations,
     activeSourceRanges: runtime.activeSourceRanges,
     compositionFrozen: runtime.isCompositionFrozen(),
+    compositionPhase: runtime.getCompositionPhase(),
     scheduledRefresh: runtime.hasScheduledRefresh(),
   };
 }

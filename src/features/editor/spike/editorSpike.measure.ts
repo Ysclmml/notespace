@@ -224,7 +224,8 @@ describe("P0-SPIKE-01 automated feasibility measurements", () => {
         rssDeltaBytes,
       },
       limitations: [
-        "jsdom does not reproduce native IME candidate windows, WebKit layout, or animation-frame paint",
+        "The unit harness dispatches real composition/beforeinput/input event ordering but substitutes an explicit transaction for the browser DOM observer mutation",
+        "jsdom does not reproduce macOS Pinyin candidate windows, WebKit layout, or animation-frame paint; target-platform evidence remains required",
         "The accepted Rust preflight still must block lines strictly above 1 MiB before EditorView",
         "These feasibility ceilings do not replace release-build reference-machine product budgets",
       ],

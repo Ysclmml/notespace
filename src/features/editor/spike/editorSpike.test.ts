@@ -4,6 +4,7 @@ import { EditorView } from "@codemirror/view";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 
 import { installCodeMirrorDomMeasurementStubs } from "./domTestSupport";
+import { dispatchCompositionEvent, dispatchDomInputStep } from "./domInputHarness";
 import {
   createEditorSpikeMetrics,
   createEditorSpikeState,
@@ -139,10 +140,37 @@ describe("P0-SPIKE-01 cursor-local source reveal", () => {
     expect(undoDepth(view.state)).toBe(0);
     expect(view.state.doc.toString()).toBe(source);
   });
+
+  it("EDT-LIVE-001 uses a complete structural ancestor for table, fence, image, and link source", () => {
+    const source =
+      "plain [outside](next.md) ![alt](asset.png)\n\n" +
+      "| key | value |\n| --- | --- |\n| [cell](cell.md) | `c|d` |\n\n" +
+      "```ts\nconst value = 1\n```\n";
+    const metrics = createEditorSpikeMetrics();
+    const tableFrom = source.indexOf("| key");
+    const tableTo = source.indexOf("\n\n```ts");
+    const fenceFrom = source.indexOf("```ts");
+    const fenceTo = source.lastIndexOf("```") + 3;
+    const linkFrom = source.indexOf("[outside]");
+    const linkTo = linkFrom + "[outside](next.md)".length;
+    const imageFrom = source.indexOf("![alt]");
+    const imageTo = imageFrom + "![alt](asset.png)".length;
+
+    const rangesAt = (needle: string, offset = 1) =>
+      deriveActiveSourceRanges(
+        createEditorSpikeState(source, { metrics }, source.indexOf(needle) + offset),
+      );
+
+    expect(rangesAt("outside", 2)).toEqual([{ from: linkFrom, to: linkTo }]);
+    expect(rangesAt("alt", 1)).toEqual([{ from: imageFrom, to: imageTo }]);
+    expect(rangesAt("const value", 3)).toEqual([{ from: fenceFrom, to: fenceTo }]);
+    expect(rangesAt("cell", 2)).toEqual([{ from: tableFrom, to: tableTo }]);
+    expect(rangesAt("c|d", 1)).toEqual([{ from: tableFrom, to: tableTo }]);
+  });
 });
 
 describe("P0-SPIKE-01 composition and history", () => {
-  it("IME-001 freezes decoration switches until the next scheduled frame", () => {
+  it("IME-001 DOM event-order harness freezes the post-composition mutation until RAF", () => {
     const source = "# 标题\n\n**文本**\n";
     const metrics = createEditorSpikeMetrics();
     const scheduler = new ManualFrameScheduler();
@@ -151,15 +179,31 @@ describe("P0-SPIKE-01 composition and history", () => {
     const refreshesBefore = metrics.fullRefreshes + metrics.incrementalRefreshes;
     const positionsBefore = decorationPositions(view);
 
-    view.contentDOM.dispatchEvent(
-      new CompositionEvent("compositionstart", { bubbles: true }),
-    );
-    expect(getEditorSpikeRuntime(view).compositionFrozen).toBe(true);
+    const domEvents: Array<{ type: string; isComposing: boolean | null }> = [];
+    for (const type of ["compositionstart", "beforeinput", "input", "compositionend"]) {
+      view.contentDOM.addEventListener(type, (event) => {
+        domEvents.push({
+          type: event.type,
+          isComposing: event instanceof InputEvent ? event.isComposing : null,
+        });
+      });
+    }
 
-    view.dispatch({
-      changes: { from: cursor, insert: "中" },
-      selection: EditorSelection.cursor(cursor + 1),
-      userEvent: "input.type.compose",
+    dispatchCompositionEvent(view, "compositionstart");
+    expect(getEditorSpikeRuntime(view).compositionFrozen).toBe(true);
+    expect(getEditorSpikeRuntime(view).compositionPhase).toBe("composing");
+
+    dispatchDomInputStep(view, {
+      data: "中",
+      inputType: "insertCompositionText",
+      isComposing: true,
+      applyObservedMutation: () => {
+        view.dispatch({
+          changes: { from: cursor, insert: "中" },
+          selection: EditorSelection.cursor(cursor + 1),
+          userEvent: "input.type.compose",
+        });
+      },
     });
 
     const candidateConfirmation = new KeyboardEvent("keydown", {
@@ -171,27 +215,48 @@ describe("P0-SPIKE-01 composition and history", () => {
     expect(view.contentDOM.dispatchEvent(candidateConfirmation)).toBe(true);
     expect(candidateConfirmation.defaultPrevented).toBe(false);
 
-    view.dispatch({
-      changes: { from: cursor, to: cursor + 1, insert: "中文" },
-      selection: EditorSelection.cursor(cursor + 2),
-      userEvent: "input.type.compose",
+    expect(metrics.compositionFrozenUpdates).toBe(1);
+    expect(metrics.fullRefreshes + metrics.incrementalRefreshes).toBe(refreshesBefore);
+    expect(decorationPositions(view)).toEqual(positionsBefore);
+    expect(view.state.doc.toString()).toBe("# 标题\n\n**文中本**\n");
+
+    dispatchCompositionEvent(view, "compositionend", "中文");
+    expect(getEditorSpikeRuntime(view).compositionFrozen).toBe(true);
+    expect(getEditorSpikeRuntime(view).compositionPhase).toBe("refreshPending");
+    expect(getEditorSpikeRuntime(view).scheduledRefresh).toBe(true);
+    expect(scheduler.size).toBe(1);
+
+    dispatchDomInputStep(view, {
+      data: "中文",
+      inputType: "insertFromComposition",
+      isComposing: false,
+      applyObservedMutation: () => {
+        view.dispatch({
+          changes: { from: cursor, to: cursor + 1, insert: "中文" },
+          selection: EditorSelection.cursor(cursor + 2),
+          userEvent: "input.type.compose",
+        });
+      },
     });
 
     expect(metrics.compositionFrozenUpdates).toBe(2);
     expect(metrics.fullRefreshes + metrics.incrementalRefreshes).toBe(refreshesBefore);
-    expect(decorationPositions(view)).toEqual(positionsBefore);
+    expect(getEditorSpikeRuntime(view).compositionPhase).toBe("refreshPending");
     expect(view.state.doc.toString()).toBe("# 标题\n\n**文中文本**\n");
-
-    view.contentDOM.dispatchEvent(
-      new CompositionEvent("compositionend", { bubbles: true }),
-    );
-    expect(getEditorSpikeRuntime(view).compositionFrozen).toBe(false);
-    expect(getEditorSpikeRuntime(view).scheduledRefresh).toBe(true);
-    expect(scheduler.size).toBe(1);
 
     scheduler.flush();
     expect(getEditorSpikeRuntime(view).scheduledRefresh).toBe(false);
+    expect(getEditorSpikeRuntime(view).compositionFrozen).toBe(false);
+    expect(getEditorSpikeRuntime(view).compositionPhase).toBe("idle");
     expect(metrics.fullRefreshes).toBeGreaterThan(1);
+    expect(domEvents).toEqual([
+      { type: "compositionstart", isComposing: null },
+      { type: "beforeinput", isComposing: true },
+      { type: "input", isComposing: true },
+      { type: "compositionend", isComposing: null },
+      { type: "beforeinput", isComposing: false },
+      { type: "input", isComposing: false },
+    ]);
     expect(undoDepth(view.state)).toBe(1);
     expect(undo(view)).toBe(true);
     expect(view.state.doc.toString()).toBe(source);
@@ -262,15 +327,16 @@ describe("P0-SPIKE-01 viewport and generated input boundaries", () => {
     expect(scan?.scannedCharacters).toBeLessThan(source.length / 100);
   });
 
-  it("PERF-001 incrementally rescans a local line instead of the whole document", () => {
-    const source = generateSyntheticMarkdown(64 * 1024);
+  it("PERF-001 incrementally rescans a proven word-interior edit instead of the whole document", () => {
+    const source = `safe ordinary words\n\n${generateSyntheticMarkdown(64 * 1024)}`;
     const metrics = createEditorSpikeMetrics();
-    const view = mount(createEditorSpikeState(source, { metrics }, 2));
+    const editAt = source.indexOf("ordinary") + 3;
+    const view = mount(createEditorSpikeState(source, { metrics }, editAt));
     const scansBefore = metrics.scans.length;
 
     view.dispatch({
-      changes: { from: 2, insert: "x" },
-      selection: EditorSelection.cursor(3),
+      changes: { from: editAt, insert: "x" },
+      selection: EditorSelection.cursor(editAt + 1),
       userEvent: "input.type",
     });
 
@@ -279,8 +345,72 @@ describe("P0-SPIKE-01 viewport and generated input boundaries", () => {
       .filter((scan) => scan.kind === "incremental");
     expect(incrementalScans).toHaveLength(1);
     expect(incrementalScans[0]?.scannedCharacters).toBeLessThan(source.length / 100);
-    expect(view.state.doc.toString()).toBe(`${source.slice(0, 2)}x${source.slice(2)}`);
+    expect(metrics.conservativeRefreshes).toBe(0);
+    expect(view.state.doc.toString()).toBe(
+      `${source.slice(0, editAt)}x${source.slice(editAt)}`,
+    );
   });
+
+  it.each([
+    {
+      boundary: "opening fence",
+      source: "plain\n\n# shown\n[link](target.md)\ntrailing\n",
+      from: "# shown",
+      to: "# shown",
+      insert: "```\n# shown",
+    },
+    {
+      boundary: "closing fence",
+      source: "plain\n\n```\n# hidden\n[hidden](target.md)\n# trailing hidden\n",
+      from: "# trailing hidden",
+      to: "# trailing hidden",
+      insert: "```\n# trailing hidden",
+    },
+    {
+      boundary: "list continuation",
+      source: "plain\n\n- item\n    # child heading\n\n# outside\n",
+      from: "- item",
+      to: "- item",
+      insert: "item",
+    },
+    {
+      boundary: "quote/fence",
+      source: "plain\n\n> ```\n> # hidden\n> ```\n# outside\n",
+      from: "> ```",
+      to: "> ```",
+      insert: "```",
+    },
+    {
+      boundary: "reference definition",
+      source: "plain\n\n[referencekey]: target.md\n\n[referencekey]\n",
+      from: "k",
+      to: "k",
+      insert: "x",
+    },
+  ])(
+    "PERF-001 conservatively rebuilds visible decorations across a $boundary boundary",
+    ({ source, from: fromText, to: toText, insert }) => {
+      const metrics = createEditorSpikeMetrics();
+      const cursor = source.indexOf("plain") + 2;
+      const view = mount(createEditorSpikeState(source, { metrics }, cursor));
+      const from = source.indexOf(fromText);
+      const to = from + toText.length;
+      const nextSource = `${source.slice(0, from)}${insert}${source.slice(to)}`;
+
+      view.dispatch({
+        changes: { from, to, insert },
+        userEvent: "input.type",
+      });
+
+      const fresh = mount(
+        createEditorSpikeState(nextSource, { metrics: createEditorSpikeMetrics() }, cursor),
+      );
+      expect(decorationPositions(view)).toEqual(decorationPositions(fresh));
+      expect(metrics.conservativeRefreshes).toBe(1);
+      expect(metrics.scans.at(-1)?.kind).toBe("full");
+      expect(view.state.doc.toString()).toBe(nextSource);
+    },
+  );
 
   it("PERF-010 generators are deterministic, bounded, and never persist a giant fixture", () => {
     const tenMiB = 10 * 1024 * 1024;
