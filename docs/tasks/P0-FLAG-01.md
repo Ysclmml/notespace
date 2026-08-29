@@ -2,7 +2,7 @@
 
 - Status: REVIEW
 - Owner / next owner: Application Core (`/root/p0_flag_01`) / Integration
-- Base revision / head revision: `813da5aec969c2751feb6c80116686d7c90b3dae` / implementation `21b3de5`; the task-note/ledger handoff commit is the branch tip
+- Base revision / head revision: `813da5aec969c2751feb6c80116686d7c90b3dae` / implementation `21b3de5`; independently reviewed handoff `84783c2`; the independent-review record commit is the branch tip
 - Requirement IDs: `DATA-REVISION-001`, `SAFE-IPC-001`, `EXT-ROUTER-001`, `EXT-COMMAND-001`, `OPS-LOG-001`, `OPS-CONTEXT-001`, `OPS-HANDOFF-001`
 - Product UX IDs: `UX-EXT-001`
 - Test / acceptance IDs: `CORE-001`, `SEC-001`, `EXT-001`, `EXT-002`, `OBS-001`, `CONTRACT-001`, `CONTRACT-002`, `CONTRACT-003`, `PROC-001`, `PROC-002`
@@ -40,7 +40,7 @@ This task does not wire flags into product UI, change IPC/generated types, chang
 - Added a one-argument production factory with no override input and a separate test-only factory for overrides and invalid-graph tests.
 - Added validation for unknown/duplicate/incomplete definitions, invalid definition/capability types, unknown/non-boolean overrides, self/missing/cyclic dependencies, unknown capabilities, and unsafe fail-closed defaults.
 - Added 15 focused tests for production defaults, safety behavior, exact `session.restore` isolation from `recovery.dirty`, capability mapping, transitive resolution, stable ordering, deep immutability, privacy, and every required negative case.
-- Performed a fresh post-implementation source/diff review against the frozen 14-flag table. No second owner has reviewed the branch yet; Integration is the required independent reviewer.
+- Performed a fresh post-implementation source/diff review against the frozen 14-flag table. A separate read-only reviewer then reviewed exact handoff `84783c2` and returned `MERGE` with no blocker, major, or minor findings.
 
 ## Decisions and assumptions
 
@@ -64,16 +64,16 @@ This task does not wire flags into product UI, change IPC/generated types, chang
 | `PROC-001` / documentation pre-handoff | Implementation `21b3de5`; Ruby 2.6.10; `ruby scripts/validate_design_docs.rb` | PASS: 41 Markdown files, 79 links, 56 requirements, 41 UX requirements/crosswalk rows, 83 test IDs, 41 acceptance IDs, 37 IPC commands, 43 tasks; pre-handoff snapshot `66d8cf78af0ed80e1466cb8929bb474df32d0b8961cd4e9837a4692efd711d3e` | No artifact |
 | `OBS-001`, `PROC-001` / privacy and scope | Implementation `21b3de5`; `rg -n -i 'import\\.meta\\.env|process\\.env|localStorage|sessionStorage|indexedDB|@tauri|invoke\\(|listen\\(|data:image' src/app/flags`; `ruby scripts/validate_design_docs.rb`; `git diff --quiet 813da5a..HEAD -- src/generated src-tauri package.json pnpm-lock.yaml .github`; `git diff --check 813da5a..HEAD` | PASS: no forbidden lookup/import/path/content pattern, validator found no personal path or embedded Base64, no IPC/generated/native/dependency/manifest/CI diff, no whitespace errors | No artifact |
 | `PROC-001`, `PROC-002` / handoff record | Review handoff branch tip; `ruby scripts/validate_design_docs.rb`; `git status --short --branch`; `git diff --check` | PASS after task-note and ledger transition to `REVIEW`; the deterministic snapshot is intentionally emitted by the validator rather than copied into its own hashed Markdown input | No artifact |
+| `EXT-001`, `EXT-002`, `SEC-001`, `OBS-001`, `CONTRACT-001`–`CONTRACT-003`, `PROC-002` / independent review | Read-only review of exact handoff `84783c2`; `pnpm exec vitest run src/app/flags/featureFlags.test.ts`; `pnpm test`; `pnpm typecheck`; `pnpm lint`; `pnpm format:check`; `ruby scripts/validate_design_docs.rb`; `git diff --check 813da5a..84783c2` | `MERGE`; no blocker/major/minor findings; focused 15/15 and full 47/47 tests pass; types/lint/format/docs/diff pass; worktree stayed clean | Reviewer noted only the intentional deferred consumer wiring and recommended future lint/review continue preventing deep imports of the test-only seam |
 
 ## Open questions and blockers
 
-None. The branch is buildable and locally verified. Integration still owns independent review, merge-order conflict handling against the advanced `main`, integrated gates, and the only permitted transition to `DONE`.
+None. The branch is buildable, locally verified, and independently reviewed `MERGE`. Integration still owns merge-order conflict handling against the advanced `main`, integrated gates, and the only permitted transition to `DONE`.
 
 ## Remaining numbered steps
 
-1. Integration independently reviews the implementation and this handoff.
-2. Integration merges the branch in current-main order, resolving only the `P0-FLAG-01` ledger row if the shared state file advanced.
-3. Integration reruns documentation, full verify, privacy/scope, and clean-state gates on the merged revision, then alone marks the task `DONE`.
+1. Integration merges the independently reviewed branch in current-main order, resolving only the `P0-FLAG-01` ledger row if the shared state file advanced.
+2. Integration reruns documentation, full verify, privacy/scope, and clean-state gates on the merged revision, then alone marks the task `DONE`.
 
 ## Data safety, recovery, and temporary artifacts
 
@@ -81,4 +81,4 @@ No user documents, clipboard contents, filesystem paths, environment values, sto
 
 ## Single recommended next action
 
-Integration independently reviews and merges `task/P0-FLAG-01-typed-registry` at its review handoff tip, preserves the frozen IPC/generated/dependency state, reruns integrated gates, and only then marks `P0-FLAG-01` `DONE`.
+Integration merges `task/P0-FLAG-01-typed-registry` at its independent-review record tip, preserves the frozen IPC/generated/dependency state, reruns integrated gates, and only then marks `P0-FLAG-01` `DONE`.
