@@ -1,17 +1,18 @@
 # 项目状态与持久化交接
 
-最后更新：2026-08-29  
-状态版本：3  
+最后更新：2026-08-30
+状态版本：4
 设计基线：Approved design baseline 0.1
 
 > 本文件是上下文压缩、换代理和中断后恢复工作的唯一状态入口。聊天记录不是项目状态。任何实现者先按 `AGENTS.md` 的读取链恢复上下文。
 
 ## 1. 当前终态
 
-- 当前阶段：**设计基线已冻结，实现未开始**。
-- 应用代码、依赖、构建、测试与 CI：尚未创建。
-- 工作区：当前不是 Git 仓库。
-- 下一个可执行任务：用户确认开始实现后，由 Integration 领取 `P0-BOOT-01`；不得跳过 Phase 0 / F0 直接开发功能。
+- 当前阶段：**Phase 0 启动壳已完成实现与分支验证，等待主线集成复验**。
+- 应用代码：`P0-BOOT-01` 已建立 Tauri 2 + React/TypeScript/Vite + Rust 桌面壳和 Paper & Ink 合成空状态；尚未实现任何 Phase 1 产品能力。
+- 构建与测试：任务分支和全新 clone 均通过格式、lint、类型、前端单测、Rust fmt/clippy/tests、Vite build 与 Tauri debug build；CI 仍由后续独立任务建立。
+- 工作区：Git 仓库已建立；当前任务分支 `task/P0-BOOT-01-bootstrap`，实现 revision `8478847`。
+- 下一个可执行动作：Integration fast-forward 合并启动壳到 `main`，在主线复验后把 `P0-BOOT-01` 标记 `DONE`，再释放满足依赖的 Phase 0 任务。
 - 基线不等于字段 schema 已冻结：`03-domain-model-and-contracts.md` 的 `1.0-draft` 必须在 `P0-CONTRACT-01` 中生成 Rust/TypeScript 类型、通过契约测试后才能发布 F0。
 
 ## 2. 已接受且实现不得自行改动的决策
@@ -80,24 +81,23 @@
 | 里程碑 | 状态 | 准入条件 |
 |---|---|---|
 | Design baseline 0.1 | DONE | 本文档包冻结并通过文档校验 |
-| Phase 0 / F0 | IN_PROGRESS | Git 基线 `7f98624` 已建立；`P0-BOOT-01` 正在创建桌面壳 |
+| Phase 0 / F0 | IN_PROGRESS | Git 基线 `7f98624` 已建立；`P0-BOOT-01` 已验证并等待主线集成，F0 尚未发布 |
 | Phase 1–6 | NOT_STARTED | 严格按 `IMPLEMENTATION_PLAN.md` 的依赖和 Freeze Gate |
 
 实施任务 ledger（claim/交接时只修改自己的一行，详细证据在 task note）：
 
 | Task | Status | Owner / next owner | Base / head | IDs / scope | Task note / exact next action |
 |---|---|---|---|---|---|
-| `P0-BOOT-01` | CLAIMED | Integration / `/root` | `unversioned` / `7f98624` | `OPS-BUILD-001`、`OPS-CONTEXT-001` / Git baseline + desktop shell | [`P0-BOOT-01.md`](tasks/P0-BOOT-01.md)；在 `task/P0-BOOT-01-bootstrap` 创建并验证 Tauri/React/Rust 壳 |
+| `P0-BOOT-01` | REVIEW | Integration / `/root` | `7f98624` / `8478847` | `OPS-BUILD-001`、`OPS-CONTEXT-001` / Git baseline + desktop shell | [`P0-BOOT-01.md`](tasks/P0-BOOT-01.md)；fast-forward 合并到 `main` 后重跑文档校验与 `pnpm verify` |
 
-当前只有 `P0-BOOT-01` 为 `CLAIMED`；其余任务必须等待依赖满足后再进入 READY/CLAIMED，不要预建整张空表。
+当前只有 `P0-BOOT-01` 为 `REVIEW`；其余任务必须等本任务主线集成完成、依赖满足后再进入 READY/CLAIMED，不要预建整张空表。
 
 ## 7. 下一步（精确到可执行）
 
-1. 获得用户开始实现的指令；设计请求本身不授权创建应用代码。
-2. Integration 重读 `AGENTS.md` -> 本文件 -> `DESIGN.md` -> `REQUIREMENTS.md` -> Phase 0 相关 ADR/领域设计。
-3. 检查工作树，从 `docs/tasks/TEMPLATE.md` 创建 `docs/tasks/P0-BOOT-01.md`，只把该任务在本文件标为 `CLAIMED`。
-4. 执行 `P0-BOOT-01`；先在当前非 Git 目录建立可追踪的设计基线（排除 `.DS_Store`、个人路径和用户语料），再创建桌面壳。该首个检查点落地后才能创建并行 branch/worktree。
-5. 只有 Phase 0 出口全部满足时由 Integration 发布 F0；F0 之前禁止进入 Phase 1 功能实现。
+1. Integration fast-forward 合并 `task/P0-BOOT-01-bootstrap` 到 `main`。
+2. 在 `main` 重跑 `ruby scripts/validate_design_docs.rb` 与 `pnpm verify`（Rustup toolchain bin 需在进程 `PATH`）。
+3. 门禁全通过后，把 `P0-BOOT-01` 标记 `DONE`，按 `IMPLEMENTATION_PLAN.md` 依赖只添加下一批可执行 Phase 0 ledger 行并建立独立 task note/branch。
+4. 只有 Phase 0 出口全部满足时由 Integration 发布 F0；F0 之前禁止进入 Phase 1 功能实现。
 
 ## 8. 验证记录
 
@@ -106,6 +106,7 @@
 - 最终设计快照（校验器自身 + 除本状态文件外的全部 Markdown，路径与内容确定性聚合）SHA-256：`7663910ab21fdef1a6deb4f3662652feb69c712bafd3f99bbf541ec6485c23c2`。后续运行同一校验器会直接输出 `design_snapshot_sha256`；不一致即表示规范已变化，必须更新状态/证据后才能宣称基线仍有效。
 - 同一命令同时检查未完成状态、已退役契约术语、个人绝对路径、嵌入式 Base64、错误码集合和关键 task-level phase 接棒；本次均无命中。
 - 两个独立只读审计从“语义一致性”和“无聊天冷接手”视角复核最终规范，均无剩余 blocker/major。此结论只覆盖设计包，不冒充尚不存在的应用构建、单测或 E2E。
+- 2026-08-30 `P0-BOOT-01` 在任务分支和系统临时目录中的全新 clone 均执行 `pnpm verify` 并 PASS；Tauri debug `.app` 通过原生窗口 smoke，未读取或提交用户文档。详细命令与证据见 [`P0-BOOT-01.md`](tasks/P0-BOOT-01.md)。
 
 ## 9. 标准任务交接
 
