@@ -5,22 +5,33 @@
 //! implementation prematurely.
 
 use std::env;
-use std::fs::{self, File, OpenOptions};
+#[cfg(target_os = "macos")]
+use std::fs::OpenOptions;
+use std::fs::{self, File};
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
-use std::process::{self, Command};
+use std::process;
+#[cfg(target_os = "macos")]
+use std::process::Command;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant};
+#[cfg(target_os = "macos")]
+use std::time::{SystemTime, UNIX_EPOCH};
+
+#[cfg(target_os = "macos")]
+use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
 
 const KIB: u64 = 1024;
 const MIB: u64 = 1024 * KIB;
 const SCAN_BUFFER_BYTES: usize = 64 * 1024;
 const JSON_ESCAPE_BUFFER_BYTES: usize = SCAN_BUFFER_BYTES * 6;
 const SCRATCH_PREFIX: &str = "markdown-workspace-p0-spike-02-";
+#[cfg(target_os = "macos")]
 const CRASH_EXIT_CODE: i32 = 86;
 
 static SCRATCH_SEQUENCE: AtomicU64 = AtomicU64::new(0);
+#[cfg(target_os = "macos")]
 static TEMP_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Clone, Copy, Debug)]
@@ -79,6 +90,7 @@ struct SpikePreflightReport {
     line_count_estimate: u64,
     has_utf8_bom: bool,
     detected_data_image_count: u64,
+    uncertain_data_image_count: u64,
     largest_data_image_estimate_bytes: Option<u64>,
     retained_bytes_upper_bound: usize,
 }
@@ -112,24 +124,30 @@ enum DataImageStage {
         encoded_chars: u64,
         padding_chars: u8,
     },
+    Quarantined,
 }
 
 #[derive(Debug)]
 struct DataImageDetector {
     stage: DataImageStage,
     detected_count: u64,
+    uncertain_count: u64,
     largest_decoded_estimate: Option<u64>,
 }
 
 impl DataImageDetector {
     const PREFIX: &'static [u8] = b"data:image/";
+    const MEDIA_TYPE_STEM: &'static [u8] = b"data:image";
     const BASE64_SUFFIX: &'static [u8] = b";base64,";
-    const MAX_HEADER_BYTES: usize = 128;
+    // A normal media type/header is tiny. Crossing this bounded window is not
+    // permission to forget a candidate: the scanner quarantines it instead.
+    const MAX_HEADER_BYTES: usize = 4 * 1024;
 
     fn new() -> Self {
         Self {
             stage: DataImageStage::Seeking(0),
             detected_count: 0,
+            uncertain_count: 0,
             largest_decoded_estimate: None,
         }
     }
@@ -137,28 +155,52 @@ impl DataImageDetector {
     fn feed(&mut self, byte: u8) {
         self.stage = match self.stage {
             DataImageStage::Seeking(matched) => {
-                let next = advance_ascii_case_insensitive(Self::PREFIX, matched, byte);
-                if next == Self::PREFIX.len() {
-                    DataImageStage::Header {
-                        suffix_matched: 0,
-                        header_bytes: 0,
-                    }
+                if matched >= Self::MEDIA_TYPE_STEM.len()
+                    && (byte == b'%' || byte.is_ascii_whitespace())
+                {
+                    self.quarantine_candidate();
+                    DataImageStage::Quarantined
                 } else {
-                    DataImageStage::Seeking(next)
+                    let next = advance_ascii_case_insensitive(Self::PREFIX, matched, byte);
+                    if next == Self::PREFIX.len() {
+                        DataImageStage::Header {
+                            suffix_matched: 0,
+                            header_bytes: 0,
+                        }
+                    } else {
+                        DataImageStage::Seeking(next)
+                    }
                 }
             }
             DataImageStage::Header {
                 suffix_matched,
                 header_bytes,
             } => {
-                if matches!(byte, b'\n' | b'\r' | b')' | b'>' | b'\'' | b'"')
-                    || header_bytes >= Self::MAX_HEADER_BYTES
-                {
+                let next_header_bytes = header_bytes.saturating_add(1);
+                if next_header_bytes > Self::MAX_HEADER_BYTES || byte == b'%' {
+                    self.quarantine_candidate();
+                    DataImageStage::Quarantined
+                } else if is_data_uri_terminator(byte) {
                     seeking_stage_for(byte)
+                } else if byte == b',' && suffix_matched == 0 {
+                    // A non-base64 or obfuscated image data URI has no bounded
+                    // decoded-size proof in this spike. Fail closed rather than
+                    // treating the comma as ordinary prose and seeking anew.
+                    self.quarantine_candidate();
+                    DataImageStage::Quarantined
+                } else if byte.is_ascii_whitespace() {
+                    // MIME/data URI implementations may accept folded or stray
+                    // ASCII whitespace. Ignore it for matching while retaining
+                    // the bounded header counter.
+                    DataImageStage::Header {
+                        suffix_matched,
+                        header_bytes: next_header_bytes,
+                    }
                 } else {
                     let next =
                         advance_ascii_case_insensitive(Self::BASE64_SUFFIX, suffix_matched, byte);
                     if next == Self::BASE64_SUFFIX.len() {
+                        self.detected_count += 1;
                         DataImageStage::Payload {
                             encoded_chars: 0,
                             padding_chars: 0,
@@ -166,7 +208,7 @@ impl DataImageDetector {
                     } else {
                         DataImageStage::Header {
                             suffix_matched: next,
-                            header_bytes: header_bytes + 1,
+                            header_bytes: next_header_bytes,
                         }
                     }
                 }
@@ -175,7 +217,12 @@ impl DataImageDetector {
                 encoded_chars,
                 padding_chars,
             } => {
-                if is_base64_alphabet(byte) {
+                if byte.is_ascii_whitespace() {
+                    DataImageStage::Payload {
+                        encoded_chars,
+                        padding_chars,
+                    }
+                } else if is_base64_alphabet(byte) && padding_chars == 0 {
                     DataImageStage::Payload {
                         encoded_chars: encoded_chars + 1,
                         padding_chars,
@@ -185,9 +232,23 @@ impl DataImageDetector {
                         encoded_chars: encoded_chars + 1,
                         padding_chars: padding_chars + 1,
                     }
-                } else {
+                } else if is_data_uri_terminator(byte) {
                     self.record_payload(encoded_chars, padding_chars);
                     seeking_stage_for(byte)
+                } else {
+                    // Percent escapes, alphabet after padding, excess padding,
+                    // and unknown punctuation make the decoded size ambiguous.
+                    // Keep the document out of the editor rather than ending the
+                    // payload early and under-counting it.
+                    self.quarantine_candidate();
+                    DataImageStage::Quarantined
+                }
+            }
+            DataImageStage::Quarantined => {
+                if is_data_uri_terminator(byte) {
+                    seeking_stage_for(byte)
+                } else {
+                    DataImageStage::Quarantined
                 }
             }
         };
@@ -204,10 +265,20 @@ impl DataImageDetector {
         }
     }
 
+    fn quarantine_candidate(&mut self) {
+        self.uncertain_count += 1;
+    }
+
     fn record_payload(&mut self, encoded_chars: u64, padding_chars: u8) {
-        self.detected_count += 1;
         let complete_quads = encoded_chars / 4;
         let remainder = encoded_chars % 4;
+        let invalid_shape = remainder == 1
+            || (padding_chars > 0 && remainder != 0)
+            || (padding_chars > 0 && encoded_chars < 4);
+        if invalid_shape {
+            self.quarantine_candidate();
+            return;
+        }
         let mut decoded = complete_quads.saturating_mul(3);
         decoded = decoded.saturating_sub(u64::from(padding_chars.min(2)));
         decoded = decoded.saturating_add(match remainder {
@@ -219,6 +290,10 @@ impl DataImageDetector {
             self.largest_decoded_estimate
                 .map_or(decoded, |current| current.max(decoded)),
         );
+    }
+
+    fn requires_safety_block(&self) -> bool {
+        self.uncertain_count > 0
     }
 }
 
@@ -247,6 +322,126 @@ fn seeking_stage_for(byte: u8) -> DataImageStage {
 
 fn is_base64_alphabet(byte: u8) -> bool {
     byte.is_ascii_alphanumeric() || matches!(byte, b'+' | b'/')
+}
+
+fn is_data_uri_terminator(byte: u8) -> bool {
+    matches!(byte, b')' | b'>' | b'<' | b'\'' | b'"' | b'`' | b']')
+}
+
+/// Streaming physical-line accounting for the P0 UTF-8 contract.
+///
+/// `size_bytes` remains the raw file length, while line thresholds exclude the
+/// three-byte UTF-8 BOM and exclude both bytes of a CRLF terminator. A lone CR
+/// is treated as content because P0 recognizes LF/CRLF, not legacy CR lines.
+#[derive(Debug)]
+struct PhysicalLineMetrics {
+    bom_probe: [u8; 3],
+    bom_probe_len: usize,
+    bom_decided: bool,
+    has_utf8_bom: bool,
+    content_stream_bytes: u64,
+    current_line_bytes: u64,
+    max_line_bytes: u64,
+    newline_count: u64,
+    pending_cr: bool,
+    last_was_line_ending: bool,
+}
+
+impl PhysicalLineMetrics {
+    fn new() -> Self {
+        Self {
+            bom_probe: [0; 3],
+            bom_probe_len: 0,
+            bom_decided: false,
+            has_utf8_bom: false,
+            content_stream_bytes: 0,
+            current_line_bytes: 0,
+            max_line_bytes: 0,
+            newline_count: 0,
+            pending_cr: false,
+            last_was_line_ending: false,
+        }
+    }
+
+    fn feed(&mut self, byte: u8) {
+        if !self.bom_decided {
+            self.bom_probe[self.bom_probe_len] = byte;
+            self.bom_probe_len += 1;
+            if self.bom_probe_len == self.bom_probe.len() {
+                self.decide_bom();
+            }
+            return;
+        }
+        self.feed_content_byte(byte);
+    }
+
+    fn finish(&mut self) {
+        if !self.bom_decided {
+            self.decide_bom();
+        }
+        if self.pending_cr {
+            self.pending_cr = false;
+            self.extend_line(1);
+            self.last_was_line_ending = false;
+        }
+    }
+
+    fn decide_bom(&mut self) {
+        self.bom_decided = true;
+        self.has_utf8_bom = self.bom_probe_len == 3 && self.bom_probe == [0xef, 0xbb, 0xbf];
+        if !self.has_utf8_bom {
+            let bytes = self.bom_probe;
+            for byte in bytes.into_iter().take(self.bom_probe_len) {
+                self.feed_content_byte(byte);
+            }
+        }
+    }
+
+    fn feed_content_byte(&mut self, byte: u8) {
+        self.content_stream_bytes += 1;
+        if self.pending_cr {
+            self.pending_cr = false;
+            if byte == b'\n' {
+                self.finish_line();
+                return;
+            }
+            self.extend_line(1);
+        }
+
+        match byte {
+            b'\r' => {
+                self.pending_cr = true;
+                self.last_was_line_ending = false;
+            }
+            b'\n' => self.finish_line(),
+            _ => {
+                self.extend_line(1);
+                self.last_was_line_ending = false;
+            }
+        }
+    }
+
+    fn extend_line(&mut self, bytes: u64) {
+        self.current_line_bytes += bytes;
+        self.max_line_bytes = self.max_line_bytes.max(self.current_line_bytes);
+    }
+
+    fn finish_line(&mut self) {
+        self.max_line_bytes = self.max_line_bytes.max(self.current_line_bytes);
+        self.current_line_bytes = 0;
+        self.newline_count += 1;
+        self.last_was_line_ending = true;
+    }
+
+    fn line_count_estimate(&self) -> u64 {
+        if self.content_stream_bytes == 0 {
+            0
+        } else if self.last_was_line_ending {
+            self.newline_count
+        } else {
+            self.newline_count + 1
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -316,14 +511,9 @@ fn scan_reader<R: Read>(
 
     let mut read_buffer = vec![0_u8; policy.read_buffer_bytes];
     let mut total_bytes = 0_u64;
-    let mut current_line_bytes = 0_u64;
-    let mut max_line_bytes = 0_u64;
-    let mut newline_count = 0_u64;
-    let mut last_byte_was_newline = false;
+    let mut line_metrics = PhysicalLineMetrics::new();
     let mut utf8 = StreamingUtf8Validator::new();
     let mut data_images = DataImageDetector::new();
-    let mut first_bytes = [0_u8; 3];
-    let mut first_bytes_len = 0_usize;
     let mut saw_nul = false;
     let mut binary_sampled = 0_u64;
     let mut binary_controls = 0_u64;
@@ -355,11 +545,6 @@ fn scan_reader<R: Read>(
                 });
             }
 
-            if first_bytes_len < first_bytes.len() {
-                first_bytes[first_bytes_len] = byte;
-                first_bytes_len += 1;
-            }
-
             if binary_sampled < 8 * KIB {
                 binary_sampled += 1;
                 if matches!(byte, 0x01..=0x08 | 0x0b | 0x0c | 0x0e..=0x1f | 0x7f) {
@@ -369,17 +554,7 @@ fn scan_reader<R: Read>(
             saw_nul |= byte == 0;
             utf8.feed(byte);
             data_images.feed(byte);
-
-            if byte == b'\n' {
-                max_line_bytes = max_line_bytes.max(current_line_bytes);
-                current_line_bytes = 0;
-                newline_count += 1;
-                last_byte_was_newline = true;
-            } else {
-                current_line_bytes += 1;
-                max_line_bytes = max_line_bytes.max(current_line_bytes);
-                last_byte_was_newline = false;
-            }
+            line_metrics.feed(byte);
         }
 
         total_bytes = observed_after_read;
@@ -390,14 +565,9 @@ fn scan_reader<R: Read>(
     }
 
     data_images.finish();
-    let line_count_estimate = if total_bytes == 0 {
-        0
-    } else if last_byte_was_newline {
-        newline_count
-    } else {
-        newline_count + 1
-    };
-    let has_utf8_bom = first_bytes_len >= 3 && first_bytes == [0xef, 0xbb, 0xbf];
+    line_metrics.finish();
+    let line_count_estimate = line_metrics.line_count_estimate();
+    let max_line_bytes = line_metrics.max_line_bytes;
     let looks_binary = saw_nul
         || (binary_sampled >= 64 && binary_controls.saturating_mul(100) >= binary_sampled * 30);
 
@@ -422,6 +592,7 @@ fn scan_reader<R: Read>(
         if data_images
             .largest_decoded_estimate
             .is_some_and(|bytes| bytes > policy.safety_block_data_image_decoded_bytes)
+            || data_images.requires_safety_block()
         {
             safety_reasons.push(SafetyReason::LargeDataImage);
         }
@@ -442,13 +613,14 @@ fn scan_reader<R: Read>(
             size_bytes: total_bytes,
             max_line_bytes,
             line_count_estimate,
-            has_utf8_bom,
+            has_utf8_bom: line_metrics.has_utf8_bom,
             detected_data_image_count: data_images.detected_count,
+            uncertain_data_image_count: data_images.uncertain_count,
             largest_data_image_estimate_bytes: data_images.largest_decoded_estimate,
             retained_bytes_upper_bound: policy.read_buffer_bytes
                 + std::mem::size_of::<DataImageDetector>()
                 + std::mem::size_of::<StreamingUtf8Validator>()
-                + first_bytes.len(),
+                + std::mem::size_of::<PhysicalLineMetrics>(),
         },
         outcome,
     })
@@ -511,16 +683,26 @@ fn write_multiline_fixture(path: &Path, total_bytes: u64, line_bytes: usize) -> 
 
 fn write_data_image_for_decoded_size(path: &Path, decoded_bytes: u64) -> io::Result<()> {
     let mut file = File::create(path)?;
-    file.write_all(b"![synthetic](data:image/png;base64,")?;
+    write_data_image_bytes(&mut file, decoded_bytes)?;
+    file.sync_all()
+}
+
+fn data_image_bytes_for_decoded_size(decoded_bytes: u64) -> Vec<u8> {
+    let mut bytes = Vec::new();
+    write_data_image_bytes(&mut bytes, decoded_bytes).expect("Vec writes cannot fail");
+    bytes
+}
+
+fn write_data_image_bytes(mut writer: impl Write, decoded_bytes: u64) -> io::Result<()> {
+    writer.write_all(b"![synthetic](data:image/png;base64,")?;
     let complete_groups = decoded_bytes / 3;
-    write_repeated(&mut file, b'A', complete_groups * 4)?;
+    write_repeated(&mut writer, b'A', complete_groups * 4)?;
     match decoded_bytes % 3 {
-        1 => file.write_all(b"AA==")?,
-        2 => file.write_all(b"AAA=")?,
+        1 => writer.write_all(b"AA==")?,
+        2 => writer.write_all(b"AAA=")?,
         _ => {}
     }
-    file.write_all(b")")?;
-    file.sync_all()
+    writer.write_all(b")")
 }
 
 fn write_sized_data_image(path: &Path, total_bytes: u64) -> io::Result<()> {
@@ -541,6 +723,41 @@ fn write_sized_data_image(path: &Path, total_bytes: u64) -> io::Result<()> {
 fn scan_file(path: &Path, policy: SpikePolicy) -> Result<SpikeScanResult, SpikeScanError> {
     let file = File::open(path)?;
     scan_reader(file, policy, &AtomicBool::new(false))
+}
+
+#[derive(Debug)]
+struct SplitOnceReader<'a> {
+    bytes: &'a [u8],
+    split_at: usize,
+    position: usize,
+}
+
+impl<'a> SplitOnceReader<'a> {
+    fn new(bytes: &'a [u8], split_at: usize) -> Self {
+        assert!(split_at <= bytes.len());
+        Self {
+            bytes,
+            split_at,
+            position: 0,
+        }
+    }
+}
+
+impl Read for SplitOnceReader<'_> {
+    fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
+        if self.position == self.bytes.len() {
+            return Ok(0);
+        }
+        let segment_end = if self.position < self.split_at {
+            self.split_at
+        } else {
+            self.bytes.len()
+        };
+        let read = (segment_end - self.position).min(buffer.len());
+        buffer[..read].copy_from_slice(&self.bytes[self.position..self.position + read]);
+        self.position += read;
+        Ok(read)
+    }
 }
 
 #[derive(Debug)]
@@ -565,6 +782,7 @@ impl<R: Read> Read for CancellingReader<R> {
     }
 }
 
+#[cfg(target_os = "macos")]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum ReplaceFault {
     None,
@@ -574,6 +792,36 @@ enum ReplaceFault {
     AfterRename,
 }
 
+#[cfg(target_os = "macos")]
+const TEMP_NAME_VERSION: &str = "v1";
+#[cfg(target_os = "macos")]
+const TEMP_TIMESTAMP_DIGITS: usize = 20;
+#[cfg(target_os = "macos")]
+const TEMP_U32_DIGITS: usize = 10;
+#[cfg(target_os = "macos")]
+const TEMP_SEQUENCE_DIGITS: usize = 20;
+
+#[cfg(target_os = "macos")]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct OwnedTemporaryName {
+    timestamp: u64,
+    owner_uid: u32,
+}
+
+#[cfg(target_os = "macos")]
+fn format_temporary_file_name(
+    target_file_name: &str,
+    timestamp: u64,
+    owner_uid: u32,
+    pid: u32,
+    sequence: u64,
+) -> String {
+    format!(
+        ".{target_file_name}.mdapp-spike-{TEMP_NAME_VERSION}-{timestamp:020}-{owner_uid:010}-{pid:010}-{sequence:020}.tmp"
+    )
+}
+
+#[cfg(target_os = "macos")]
 fn temporary_path_for(target: &Path, timestamp: u64) -> io::Result<PathBuf> {
     let parent = target
         .parent()
@@ -582,16 +830,65 @@ fn temporary_path_for(target: &Path, timestamp: u64) -> io::Result<PathBuf> {
         .file_name()
         .and_then(|name| name.to_str())
         .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "target has no file name"))?;
+    let owner_uid = fs::symlink_metadata(target)?.uid();
     let sequence = TEMP_SEQUENCE.fetch_add(1, Ordering::Relaxed);
-    Ok(parent.join(format!(
-        ".{file_name}.mdapp-spike-{timestamp}-{sequence}.tmp"
+    Ok(parent.join(format_temporary_file_name(
+        file_name,
+        timestamp,
+        owner_uid,
+        process::id(),
+        sequence,
     )))
 }
 
+#[cfg(target_os = "macos")]
+fn parse_fixed_decimal<T: std::str::FromStr>(value: &str, digits: usize) -> Option<T> {
+    (value.len() == digits && value.bytes().all(|byte| byte.is_ascii_digit()))
+        .then(|| value.parse().ok())
+        .flatten()
+}
+
+#[cfg(target_os = "macos")]
+fn parse_owned_temporary_name(
+    target_file_name: &str,
+    candidate: &str,
+) -> Option<OwnedTemporaryName> {
+    let prefix = format!(".{target_file_name}.mdapp-spike-");
+    let remainder = candidate.strip_prefix(&prefix)?.strip_suffix(".tmp")?;
+    let mut components = remainder.split('-');
+    if components.next()? != TEMP_NAME_VERSION {
+        return None;
+    }
+    let timestamp = parse_fixed_decimal(components.next()?, TEMP_TIMESTAMP_DIGITS)?;
+    let owner_uid = parse_fixed_decimal(components.next()?, TEMP_U32_DIGITS)?;
+    let pid: u32 = parse_fixed_decimal(components.next()?, TEMP_U32_DIGITS)?;
+    let _sequence: u64 = parse_fixed_decimal(components.next()?, TEMP_SEQUENCE_DIGITS)?;
+    if components.next().is_some() || pid == 0 {
+        return None;
+    }
+    Some(OwnedTemporaryName {
+        timestamp,
+        owner_uid,
+    })
+}
+
+#[cfg(target_os = "macos")]
+fn create_owned_temporary(path: &Path) -> io::Result<File> {
+    OpenOptions::new()
+        .create_new(true)
+        .write(true)
+        .mode(0o600)
+        .open(path)
+}
+
+#[cfg(target_os = "macos")]
 fn injected_failure(stage: &'static str) -> io::Error {
     io::Error::other(format!("P0-SPIKE-02 injected failure at {stage}"))
 }
 
+/// macOS-only feasibility path. Windows replace/share-mode semantics require a
+/// dedicated production adapter and are intentionally not inferred here.
+#[cfg(target_os = "macos")]
 fn same_directory_atomic_replace(
     target: &Path,
     new_bytes: &[u8],
@@ -606,10 +903,7 @@ fn same_directory_atomic_replace(
     let mut committed = false;
 
     let result = (|| {
-        let mut file = OpenOptions::new()
-            .create_new(true)
-            .write(true)
-            .open(&temporary)?;
+        let mut file = create_owned_temporary(&temporary)?;
         if fault == ReplaceFault::AfterTempCreate {
             return Err(injected_failure("temp-create"));
         }
@@ -649,7 +943,7 @@ fn same_directory_atomic_replace(
     result
 }
 
-#[cfg(unix)]
+#[cfg(target_os = "macos")]
 fn sync_parent_directory(target: &Path) -> io::Result<()> {
     File::open(
         target
@@ -659,20 +953,43 @@ fn sync_parent_directory(target: &Path) -> io::Result<()> {
     .sync_all()
 }
 
-#[cfg(not(unix))]
-fn sync_parent_directory(_target: &Path) -> io::Result<()> {
-    Ok(())
+#[cfg(target_os = "macos")]
+fn owned_temporary_metadata(
+    target: &Path,
+    candidate_name: &str,
+    metadata: &fs::Metadata,
+) -> io::Result<Option<OwnedTemporaryName>> {
+    let target_name = target
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "target has no file name"))?;
+    let Some(parsed) = parse_owned_temporary_name(target_name, candidate_name) else {
+        return Ok(None);
+    };
+    let target_metadata = fs::symlink_metadata(target)?;
+    let owner_matches = target_metadata.file_type().is_file()
+        && target_metadata.uid() == parsed.owner_uid
+        && metadata.uid() == parsed.owner_uid;
+    let secure_regular_file =
+        metadata.file_type().is_file() && metadata.nlink() == 1 && metadata.mode() & 0o777 == 0o600;
+    Ok((owner_matches && secure_regular_file).then_some(parsed))
 }
 
+#[cfg(target_os = "macos")]
+fn modified_epoch_seconds(metadata: &fs::Metadata) -> Option<u64> {
+    metadata
+        .modified()
+        .ok()?
+        .duration_since(UNIX_EPOCH)
+        .ok()
+        .map(|duration| duration.as_secs())
+}
+
+#[cfg(target_os = "macos")]
 fn cleanup_stale_temporaries(target: &Path, older_than_epoch_seconds: u64) -> io::Result<usize> {
     let parent = target
         .parent()
         .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "target has no parent"))?;
-    let file_name = target
-        .file_name()
-        .and_then(|name| name.to_str())
-        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "target has no file name"))?;
-    let prefix = format!(".{file_name}.mdapp-spike-");
     let mut removed = 0;
 
     for entry in fs::read_dir(parent)? {
@@ -684,20 +1001,14 @@ fn cleanup_stale_temporaries(target: &Path, older_than_epoch_seconds: u64) -> io
         let Some(name) = name.to_str() else {
             continue;
         };
-        let Some(remainder) = name
-            .strip_prefix(&prefix)
-            .and_then(|name| name.strip_suffix(".tmp"))
-        else {
+        let metadata = fs::symlink_metadata(entry.path())?;
+        let Some(parsed) = owned_temporary_metadata(target, name, &metadata)? else {
             continue;
         };
-        let Some(timestamp) = remainder
-            .split('-')
-            .next()
-            .and_then(|value| value.parse::<u64>().ok())
-        else {
+        let Some(modified_at) = modified_epoch_seconds(&metadata) else {
             continue;
         };
-        if timestamp < older_than_epoch_seconds {
+        if parsed.timestamp < older_than_epoch_seconds && modified_at < older_than_epoch_seconds {
             fs::remove_file(entry.path())?;
             removed += 1;
         }
@@ -706,24 +1017,23 @@ fn cleanup_stale_temporaries(target: &Path, older_than_epoch_seconds: u64) -> io
     Ok(removed)
 }
 
+#[cfg(target_os = "macos")]
 fn count_task_temporaries(target: &Path) -> io::Result<usize> {
     let parent = target
         .parent()
         .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "target has no parent"))?;
-    let file_name = target
-        .file_name()
-        .and_then(|name| name.to_str())
-        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "target has no file name"))?;
-    let prefix = format!(".{file_name}.mdapp-spike-");
     let mut count = 0;
     for entry in fs::read_dir(parent)? {
         let entry = entry?;
-        if entry.file_type()?.is_file()
-            && entry
-                .file_name()
-                .to_str()
-                .is_some_and(|name| name.starts_with(&prefix) && name.ends_with(".tmp"))
-        {
+        if !entry.file_type()?.is_file() {
+            continue;
+        }
+        let name = entry.file_name();
+        let Some(name) = name.to_str() else {
+            continue;
+        };
+        let metadata = fs::symlink_metadata(entry.path())?;
+        if owned_temporary_metadata(target, name, &metadata)?.is_some() {
             count += 1;
         }
     }
@@ -877,7 +1187,7 @@ fn safe_001_ordered_preflight_boundaries_are_exact() {
     }
 }
 
-/// SAFE-001 / AC-SAFE-005 / CONTRACT-011: unsupported wins over repairable safety.
+/// SAFE-001 / AC-SAFE-005 / CONTRACT-011: unsupported forms stay typed.
 #[test]
 fn safe_001_binary_and_invalid_utf8_are_unsupported() {
     let policy = SpikePolicy::default();
@@ -911,63 +1221,227 @@ fn safe_001_binary_and_invalid_utf8_are_unsupported() {
     );
 }
 
-/// SAFE-003: marker, metadata, and payload state survive arbitrary read boundaries.
+/// SAFE-001: UTF-8 BOM is not line content and CRLF contributes no line bytes.
 #[test]
-fn safe_003_data_image_detection_crosses_every_chunk_boundary() {
+fn safe_001_bom_and_crlf_line_boundaries_are_explicit_and_exact() {
     let policy = SpikePolicy {
-        read_buffer_bytes: 7,
+        max_normal_line_bytes: 4,
+        safety_block_line_bytes: 4,
+        read_buffer_bytes: 1,
+        ..SpikePolicy::default()
+    };
+
+    let exact = b"\xef\xbb\xbfabcd\r\n";
+    let exact_result = scan_reader(exact.as_slice(), policy, &AtomicBool::new(false))
+        .expect("scan BOM + CRLF exact boundary");
+    assert!(exact_result.report.has_utf8_bom);
+    assert_eq!(exact_result.report.size_bytes, exact.len() as u64);
+    assert_eq!(exact_result.report.max_line_bytes, 4);
+    assert_eq!(exact_result.report.line_count_estimate, 1);
+    assert_eq!(
+        exact_result.outcome,
+        SpikeOutcome::Editable(EditableMode::Normal)
+    );
+
+    let over = b"\xef\xbb\xbfabcde\r\n";
+    let over_result = scan_reader(over.as_slice(), policy, &AtomicBool::new(false))
+        .expect("scan BOM + CRLF over boundary");
+    assert_eq!(over_result.report.max_line_bytes, 5);
+    assert_eq!(over_result.report.line_count_estimate, 1);
+    assert_eq!(
+        over_result.outcome,
+        SpikeOutcome::SafetyBlocked(vec![SafetyReason::LineTooLong])
+    );
+
+    let bom_only = b"\xef\xbb\xbf";
+    let bom_only_result = scan_reader(bom_only.as_slice(), policy, &AtomicBool::new(false))
+        .expect("scan BOM-only document");
+    assert!(bom_only_result.report.has_utf8_bom);
+    assert_eq!(bom_only_result.report.max_line_bytes, 0);
+    assert_eq!(bom_only_result.report.line_count_estimate, 0);
+}
+
+/// SAFE-003: marker/header/payload and -1/exact/+1 decoded thresholds survive
+/// every possible split between two read calls.
+#[test]
+fn safe_003_data_image_thresholds_survive_every_split_boundary() {
+    let policy = SpikePolicy {
+        safety_block_data_image_decoded_bytes: 12,
+        ..SpikePolicy::default()
+    };
+    let threshold = policy.safety_block_data_image_decoded_bytes;
+
+    for decoded in [threshold - 1, threshold, threshold + 1] {
+        let bytes = data_image_bytes_for_decoded_size(decoded);
+        for split_at in 0..=bytes.len() {
+            let result = scan_reader(
+                SplitOnceReader::new(&bytes, split_at),
+                policy,
+                &AtomicBool::new(false),
+            )
+            .expect("scan split data image");
+            assert_eq!(result.report.detected_data_image_count, 1);
+            assert_eq!(result.report.uncertain_data_image_count, 0);
+            assert_eq!(
+                result.report.largest_data_image_estimate_bytes,
+                Some(decoded),
+                "decoded={decoded}, split_at={split_at}"
+            );
+            if decoded > threshold {
+                assert!(matches!(
+                    result.outcome,
+                    SpikeOutcome::SafetyBlocked(reasons)
+                        if reasons == vec![SafetyReason::LargeDataImage]
+                ));
+            } else {
+                assert_eq!(
+                    result.outcome,
+                    SpikeOutcome::Editable(EditableMode::Normal),
+                    "decoded={decoded}, split_at={split_at}"
+                );
+            }
+        }
+    }
+}
+
+/// SAFE-003: whitespace/newlines are ignored inside Base64 payloads, including
+/// when the folded header or payload crosses every possible read split.
+#[test]
+fn safe_003_folded_data_image_whitespace_cannot_under_count_payload() {
+    let policy = SpikePolicy {
+        safety_block_data_image_decoded_bytes: 12,
         ..SpikePolicy::default()
     };
     let decoded = policy.safety_block_data_image_decoded_bytes + 1;
-    let scratch = ScratchDirectory::create().expect("create scoped scratch directory");
-    let path = scratch.join("cross-chunk.md");
-    write_data_image_for_decoded_size(&path, decoded).expect("generate data-image boundary");
+    let canonical = data_image_bytes_for_decoded_size(decoded);
+    let comma = canonical
+        .iter()
+        .position(|byte| *byte == b',')
+        .expect("canonical data image comma");
+    let mut folded = Vec::new();
+    folded.extend_from_slice(b"![synthetic](data:image/png; \r\nBaSe64\t,");
+    for (index, byte) in canonical[comma + 1..canonical.len() - 1].iter().enumerate() {
+        if index > 0 && index % 3 == 0 {
+            folded.extend_from_slice(b" \r\n\t");
+        }
+        folded.push(*byte);
+    }
+    folded.push(b')');
 
-    let result = scan_file(&path, policy).expect("scan cross-chunk data image");
-    assert_eq!(result.report.detected_data_image_count, 1);
-    assert_eq!(
-        result.report.largest_data_image_estimate_bytes,
-        Some(decoded)
-    );
-    assert!(matches!(
-        result.outcome,
-        SpikeOutcome::SafetyBlocked(reasons)
-            if reasons.contains(&SafetyReason::LargeDataImage)
-    ));
+    for split_at in 0..=folded.len() {
+        let result = scan_reader(
+            SplitOnceReader::new(&folded, split_at),
+            policy,
+            &AtomicBool::new(false),
+        )
+        .expect("scan folded data image");
+        assert_eq!(result.report.detected_data_image_count, 1);
+        assert_eq!(result.report.uncertain_data_image_count, 0);
+        assert_eq!(
+            result.report.largest_data_image_estimate_bytes,
+            Some(decoded),
+            "split_at={split_at}"
+        );
+        assert!(matches!(
+            result.outcome,
+            SpikeOutcome::SafetyBlocked(reasons)
+                if reasons.contains(&SafetyReason::LargeDataImage)
+        ));
+    }
 }
 
-/// SAFE-003: decoded-byte threshold uses strict greater-than semantics.
+/// SAFE-003: percent-obfuscated, overlong-header, and malformed data-image
+/// candidates are quarantined when decoded size cannot be proven.
 #[test]
-fn safe_003_data_image_decoded_threshold_is_exact() {
+fn safe_003_ambiguous_data_image_candidates_fail_closed() {
+    let mut long_header = b"![x](data:image/".to_vec();
+    long_header.extend(std::iter::repeat_n(
+        b'x',
+        DataImageDetector::MAX_HEADER_BYTES + 1,
+    ));
+    long_header.extend_from_slice(b";base64,AAAA)");
+
+    let candidates = [
+        long_header,
+        b"![x](data:image%2Fpng%3Bbase64%2CAAAAAAAAAAAA)".to_vec(),
+        b"![x](data:image \r\n/png;base64,AAAAAAAAAAAA)".to_vec(),
+        b"![x](data:image/png%3Bbase64%2CAAAAAAAAAAAA)".to_vec(),
+        b"![x](data:image/png;base64,AAAA%2FAAAAAAAA)".to_vec(),
+        b"![x](data:image/png;base64,A)".to_vec(),
+    ];
+
+    for candidate in candidates {
+        for split_at in 0..=candidate.len() {
+            let result = scan_reader(
+                SplitOnceReader::new(&candidate, split_at),
+                SpikePolicy::default(),
+                &AtomicBool::new(false),
+            )
+            .expect("scan ambiguous data image");
+            assert!(
+                result.report.uncertain_data_image_count > 0,
+                "split_at={split_at}"
+            );
+            assert!(matches!(
+                result.outcome,
+                SpikeOutcome::SafetyBlocked(reasons)
+                    if reasons.contains(&SafetyReason::LargeDataImage)
+            ));
+        }
+    }
+}
+
+/// SAFE-001 / CONTRACT-011: Unsupported wins when the same bytes also meet
+/// both SafetyBlocked thresholds.
+#[test]
+fn safe_001_unsupported_precedes_simultaneous_safety_blockers() {
+    let policy = SpikePolicy {
+        safety_block_line_bytes: 16,
+        safety_block_data_image_decoded_bytes: 3,
+        ..SpikePolicy::default()
+    };
+    let bytes = b"\0data:image/png;base64,AAAAAAAAAAAAAAAA)";
+    let result = scan_reader(bytes.as_slice(), policy, &AtomicBool::new(false))
+        .expect("scan binary plus safety blockers");
+    assert!(result.report.max_line_bytes > policy.safety_block_line_bytes);
+    assert!(result
+        .report
+        .largest_data_image_estimate_bytes
+        .is_some_and(|size| size > policy.safety_block_data_image_decoded_bytes));
+    assert_eq!(
+        result.outcome,
+        SpikeOutcome::Unsupported(vec![UnsupportedReason::Binary])
+    );
+}
+
+/// SAFE-003: production decoded-byte policy also covers threshold -1/exact/+1.
+#[test]
+fn safe_003_production_data_image_decoded_threshold_is_exact() {
     let scratch = ScratchDirectory::create().expect("create scoped scratch directory");
     let policy = SpikePolicy::default();
     let threshold = policy.safety_block_data_image_decoded_bytes;
 
-    let exact = scratch.join("data-image-exact.md");
-    write_data_image_for_decoded_size(&exact, threshold).expect("generate exact data image");
-    let exact_result = scan_file(&exact, policy).expect("scan exact data image");
-    assert_eq!(
-        exact_result.report.largest_data_image_estimate_bytes,
-        Some(threshold)
-    );
-    assert_eq!(
-        exact_result.outcome,
-        SpikeOutcome::Editable(EditableMode::LargeText)
-    );
-
-    let over = scratch.join("data-image-over.md");
-    write_data_image_for_decoded_size(&over, threshold + 1)
-        .expect("generate over-threshold data image");
-    let over_result = scan_file(&over, policy).expect("scan over-threshold data image");
-    assert_eq!(
-        over_result.report.largest_data_image_estimate_bytes,
-        Some(threshold + 1)
-    );
-    assert!(matches!(
-        over_result.outcome,
-        SpikeOutcome::SafetyBlocked(reasons)
-            if reasons.contains(&SafetyReason::LargeDataImage)
-    ));
+    for decoded in [threshold - 1, threshold, threshold + 1] {
+        let path = scratch.join(&format!("data-image-{decoded}.md"));
+        write_data_image_for_decoded_size(&path, decoded).expect("generate data image boundary");
+        let result = scan_file(&path, policy).expect("scan data image boundary");
+        assert_eq!(
+            result.report.largest_data_image_estimate_bytes,
+            Some(decoded)
+        );
+        if decoded > threshold {
+            assert!(matches!(
+                result.outcome,
+                SpikeOutcome::SafetyBlocked(reasons)
+                    if reasons.contains(&SafetyReason::LargeDataImage)
+            ));
+        } else {
+            assert_eq!(
+                result.outcome,
+                SpikeOutcome::Editable(EditableMode::LargeText)
+            );
+        }
+    }
 }
 
 /// PERF-010 / SAFE-003 / AC-SAFE-002: scanner-only release-budget feasibility.
@@ -1075,7 +1549,9 @@ fn safe_001_read_error_has_no_partial_success_report() {
     ));
 }
 
-/// FILE-001 supporting spike: failure before rename retains the complete old file.
+/// FILE-001 supporting macOS spike: failure before rename retains the complete
+/// old file. This does not claim Windows replace/share-mode semantics.
+#[cfg(target_os = "macos")]
 #[test]
 fn file_001_same_directory_replace_is_all_old_or_all_new() {
     let old = b"complete-old-version";
@@ -1120,6 +1596,7 @@ fn file_001_same_directory_replace_is_all_old_or_all_new() {
 }
 
 /// Helper invoked only by the parent crash test. A direct harness run is a no-op.
+#[cfg(target_os = "macos")]
 #[test]
 fn p0_spike_02_crash_helper_exits_after_synced_temp() {
     let Ok(directory) = env::var("P0_SPIKE_02_CRASH_DIRECTORY") else {
@@ -1130,24 +1607,32 @@ fn p0_spike_02_crash_helper_exits_after_synced_temp() {
     };
     let target = PathBuf::from(directory).join(target_name);
     let temporary = temporary_path_for(&target, 1).expect("create crash temp path");
-    let mut file = OpenOptions::new()
-        .create_new(true)
-        .write(true)
-        .open(temporary)
-        .expect("create crash temp file");
+    let mut file = create_owned_temporary(&temporary).expect("create crash temp file");
     file.write_all(b"complete-but-uncommitted")
         .expect("write crash temp");
     file.sync_all().expect("sync crash temp");
     process::exit(CRASH_EXIT_CODE);
 }
 
-/// FILE-001 supporting spike: a real process exit leaves a scoped, recoverable temp.
+/// FILE-001 supporting macOS spike: cleanup accepts only the exact versioned
+/// target-owned name, secure regular-file metadata, and two independent age
+/// checks. Same-prefix decoys, symlinks, directories, and recent files survive.
+#[cfg(target_os = "macos")]
 #[test]
 fn file_001_crash_temp_is_scoped_and_stale_cleanup_is_selective() {
+    use std::os::unix::fs::symlink;
+
     let scratch = ScratchDirectory::create().expect("create scoped scratch directory");
     let target = scratch.join("document.md");
     let old = b"old-remains-recoverable";
     fs::write(&target, old).expect("write original");
+    let target_name = target
+        .file_name()
+        .and_then(|name| name.to_str())
+        .expect("UTF-8 target name");
+    let owner_uid = fs::symlink_metadata(&target)
+        .expect("target metadata")
+        .uid();
     let decoy = scratch.join("unrelated.tmp");
     fs::write(&decoy, b"must-not-delete").expect("write cleanup decoy");
 
@@ -1168,13 +1653,65 @@ fn file_001_crash_temp_is_scoped_and_stale_cleanup_is_selective() {
         .unwrap_or_default()
         .as_secs();
     let recent = temporary_path_for(&target, now + 60).expect("create recent temp path");
-    fs::write(&recent, b"recent-must-not-delete").expect("write recent task temp");
+    let mut recent_file = create_owned_temporary(&recent).expect("create recent task temp");
+    recent_file
+        .write_all(b"recent-must-not-delete")
+        .expect("write recent task temp");
+    recent_file.sync_all().expect("sync recent task temp");
+    drop(recent_file);
+
+    let malformed = scratch.path.join(format!(
+        ".{target_name}.mdapp-spike-v1-{timestamp:020}-{owner_uid:010}-{pid:010}-{sequence:020}-extra.tmp",
+        timestamp = 1_u64,
+        pid = process::id(),
+        sequence = 900_u64,
+    ));
+    fs::write(&malformed, b"same-prefix-malformed").expect("write malformed decoy");
+
+    let wrong_owner_uid = if owner_uid == u32::MAX {
+        owner_uid - 1
+    } else {
+        owner_uid + 1
+    };
+    let wrong_owner = scratch.path.join(format_temporary_file_name(
+        target_name,
+        1,
+        wrong_owner_uid,
+        process::id(),
+        901,
+    ));
+    let mut wrong_owner_file =
+        create_owned_temporary(&wrong_owner).expect("create wrong-owner decoy");
+    wrong_owner_file
+        .write_all(b"wrong-owner-must-not-delete")
+        .expect("write wrong-owner decoy");
+    wrong_owner_file.sync_all().expect("sync wrong-owner decoy");
+    drop(wrong_owner_file);
+
+    let symlink_decoy = scratch.path.join(format_temporary_file_name(
+        target_name,
+        1,
+        owner_uid,
+        process::id(),
+        902,
+    ));
+    symlink(&decoy, &symlink_decoy).expect("create exact-name symlink decoy");
+
+    let directory_decoy = scratch.path.join(format_temporary_file_name(
+        target_name,
+        1,
+        owner_uid,
+        process::id(),
+        903,
+    ));
+    fs::create_dir(&directory_decoy).expect("create exact-name directory decoy");
+
     assert_eq!(
         count_task_temporaries(&target).expect("count crash and recent temporaries"),
         2
     );
     assert_eq!(
-        cleanup_stale_temporaries(&target, now).expect("clean stale task temp"),
+        cleanup_stale_temporaries(&target, now + 1).expect("clean stale task temp"),
         1
     );
     assert_eq!(
@@ -1189,6 +1726,47 @@ fn file_001_crash_temp_is_scoped_and_stale_cleanup_is_selective() {
     assert_eq!(
         fs::read(&decoy).expect("read cleanup decoy"),
         b"must-not-delete"
+    );
+    assert_eq!(
+        fs::read(&malformed).expect("read malformed decoy"),
+        b"same-prefix-malformed"
+    );
+    assert_eq!(
+        fs::read(&wrong_owner).expect("read wrong-owner decoy"),
+        b"wrong-owner-must-not-delete"
+    );
+    assert!(fs::symlink_metadata(&symlink_decoy)
+        .expect("symlink decoy metadata")
+        .file_type()
+        .is_symlink());
+    assert!(directory_decoy.is_dir());
+}
+
+/// FILE-001 supporting macOS spike: even an exact, secure, task-owned filename
+/// with an old embedded timestamp is retained until its filesystem mtime is
+/// strictly older than the cleanup cutoff.
+#[cfg(target_os = "macos")]
+#[test]
+fn file_001_cleanup_preserves_recently_modified_owned_temporary() {
+    let scratch = ScratchDirectory::create().expect("create scoped scratch directory");
+    let target = scratch.join("document.md");
+    fs::write(&target, b"original").expect("write target");
+    let recent = temporary_path_for(&target, 1).expect("create old-name recent temp path");
+    let mut file = create_owned_temporary(&recent).expect("create old-name recent temp");
+    file.write_all(b"recent")
+        .expect("write old-name recent temp");
+    file.sync_all().expect("sync old-name recent temp");
+    drop(file);
+    let modified = modified_epoch_seconds(&fs::symlink_metadata(&recent).expect("recent metadata"))
+        .expect("recent mtime");
+
+    assert_eq!(
+        cleanup_stale_temporaries(&target, modified).expect("run strict recent cleanup"),
+        0
+    );
+    assert_eq!(
+        fs::read(&recent).expect("read retained recent temp"),
+        b"recent"
     );
 }
 
