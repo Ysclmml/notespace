@@ -1,0 +1,24 @@
+.markdown-editor {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  background: var(--paper-0);
+}
+
+.markdown-editor .cm-editor {
+  height: 100%;
+}
+
+.markdown-editor--sourceOnly .cm-activeLine {
+  background: transparent;
+}
+
+.markdown-editor--sourceOnly .cm-content {
+  width: 100%;
+  max-width: none;
+  padding-right: 44px;
+  padding-left: 44px;
+  font-family: var(--font-mono);
+  font-size: 14px;
+  line-height: 1.7;
+}
