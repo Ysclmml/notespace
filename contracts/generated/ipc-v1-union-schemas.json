@@ -736,7 +736,8 @@
           ]
         },
         "AppErrorCode": {
-          "type": "string"
+          "type": "string",
+          "minLength": 1
         },
         "AppErrorDetails": {
           "oneOf": [
@@ -1604,7 +1605,8 @@
           ]
         },
         "AppErrorCode": {
-          "type": "string"
+          "type": "string",
+          "minLength": 1
         },
         "AppErrorDetails": {
           "oneOf": [
@@ -2187,7 +2189,8 @@
           ]
         },
         "AppErrorCode": {
-          "type": "string"
+          "type": "string",
+          "minLength": 1
         },
         "AppErrorDetails": {
           "oneOf": [
@@ -3812,7 +3815,8 @@
           ]
         },
         "AppErrorCode": {
-          "type": "string"
+          "type": "string",
+          "minLength": 1
         },
         "AppErrorDetails": {
           "oneOf": [
@@ -5128,7 +5132,8 @@
           ]
         },
         "AppErrorCode": {
-          "type": "string"
+          "type": "string",
+          "minLength": 1
         },
         "AppErrorDetails": {
           "oneOf": [
@@ -5807,7 +5812,8 @@
           ]
         },
         "AppErrorCode": {
-          "type": "string"
+          "type": "string",
+          "minLength": 1
         },
         "AppErrorDetails": {
           "oneOf": [
@@ -8482,7 +8488,8 @@
           ]
         },
         "AppErrorCode": {
-          "type": "string"
+          "type": "string",
+          "minLength": 1
         },
         "AppErrorDetails": {
           "oneOf": [
@@ -10579,7 +10586,8 @@
           ]
         },
         "AppErrorCode": {
-          "type": "string"
+          "type": "string",
+          "minLength": 1
         },
         "AppErrorDetails": {
           "oneOf": [
@@ -12187,7 +12195,8 @@
           ]
         },
         "AppErrorCode": {
-          "type": "string"
+          "type": "string",
+          "minLength": 1
         },
         "AppErrorDetails": {
           "oneOf": [
@@ -14197,7 +14206,8 @@
           ]
         },
         "AppErrorCode": {
-          "type": "string"
+          "type": "string",
+          "minLength": 1
         },
         "AppErrorDetails": {
           "oneOf": [
@@ -15156,7 +15166,8 @@
           ]
         },
         "AppErrorCode": {
-          "type": "string"
+          "type": "string",
+          "minLength": 1
         },
         "AppErrorDetails": {
           "oneOf": [
@@ -16509,7 +16520,8 @@
           ]
         },
         "AppErrorCode": {
-          "type": "string"
+          "type": "string",
+          "minLength": 1
         },
         "AppErrorDetails": {
           "oneOf": [
@@ -17491,7 +17503,8 @@
           ]
         },
         "AppErrorCode": {
-          "type": "string"
+          "type": "string",
+          "minLength": 1
         },
         "AppErrorDetails": {
           "oneOf": [

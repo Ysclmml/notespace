@@ -1261,9 +1261,44 @@ impl Serialize for AppError {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
+#[derive(Clone, Debug, PartialEq, Eq, TS)]
 #[ts(type = "KnownAppErrorCode | UnknownAppErrorCode")]
 pub struct AppErrorCode(pub String);
+
+impl Serialize for AppErrorCode {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        if self.0.is_empty() {
+            return Err(serde::ser::Error::custom("AppErrorCode must not be empty"));
+        }
+        serializer.serialize_str(&self.0)
+    }
+}
+
+impl<'de> Deserialize<'de> for AppErrorCode {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let code = String::deserialize(deserializer)?;
+        if code.is_empty() {
+            return Err(D::Error::custom("AppErrorCode must not be empty"));
+        }
+        Ok(Self(code))
+    }
+}
+
+impl JsonSchema for AppErrorCode {
+    fn schema_name() -> Cow<'static, str> {
+        "AppErrorCode".into()
+    }
+
+    fn json_schema(_: &mut SchemaGenerator) -> Schema {
+        json_schema!({ "type": "string", "minLength": 1 })
+    }
+}
 
 impl AppErrorCode {
     pub fn is_known(&self) -> bool {
@@ -1803,6 +1838,18 @@ mod tests {
         let encoded = serde_json::to_string(&error).expect("error serializes");
         let decoded: AppError = serde_json::from_str(&encoded).expect("error deserializes");
         assert_eq!(decoded.code.0, "ERR_FUTURE_READ_ONLY");
+    }
+
+    #[test]
+    fn contract_003_app_error_code_is_non_empty_on_both_serde_directions() {
+        assert!(serde_json::from_value::<AppErrorCode>(serde_json::json!("")).is_err());
+        assert!(serde_json::to_value(AppErrorCode(String::new())).is_err());
+        assert_eq!(
+            serde_json::from_value::<AppErrorCode>(serde_json::json!("ERR_FUTURE"))
+                .expect("unknown non-empty codes remain forward readable")
+                .0,
+            "ERR_FUTURE"
+        );
     }
 
     #[test]

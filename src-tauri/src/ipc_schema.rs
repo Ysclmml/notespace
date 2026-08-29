@@ -1271,6 +1271,7 @@ mod tests {
         assert!(app_error["properties"]["recoveryActions"]["items"]
             .get("enum")
             .is_none());
+        assert_eq!(recovery["$defs"]["AppErrorCode"]["minLength"], 1);
 
         let native_open = serde_json::to_value(&schemas["app.openResourcesRequested"])
             .expect("native-open schema serializes");

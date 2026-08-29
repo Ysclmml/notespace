@@ -171,6 +171,26 @@ describe("CONTRACT-003 forward compatibility and fail-closed writes", () => {
     });
   });
 
+  it("rejects an empty AppErrorCode through the recovery event entry point", () => {
+    expect(
+      decodeEventEnvelope({
+        ...eventBase,
+        eventType: "recovery.snapshotFailed",
+        scope: { kind: "document", documentId: "fixture-document" },
+        sequence: 6,
+        payload: {
+          documentId: "fixture-document",
+          error: {
+            code: "",
+            message: "Invalid empty code",
+            retryable: false,
+            correlationId: "fixture-correlation",
+          },
+        },
+      }),
+    ).toBeNull();
+  });
+
   it("returns a valid unknown read-only event envelope instead of throwing", () => {
     const decoded = decodeEventEnvelope({
       ...eventBase,
