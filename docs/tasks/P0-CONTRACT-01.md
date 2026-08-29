@@ -1,105 +1,92 @@
 # P0-CONTRACT-01 — IPC v1 契约冻结与生成绑定
 
-- Status: CLAIMED
-- Owner / next owner: Contract/Domain (`/root/p0_contract_01`) / Contract/Domain implementation
-- Base revision / head revision: original base `576a435`; third-review rework base `91a2782`; head pending
+- Status: REVIEW
+- Owner / next owner: Contract/Domain (`/root/p0_contract_01`) / Integration + independent Contract reviewer
+- Base revision / head revision: original base `576a435`; third-review rework base `91a2782`; implementation head `e61f98ec28527580f59b2a54e6092c07ce057b87`; handoff revision is the REVIEW checkpoint commit containing this note
 - Requirement IDs: `DATA-REVISION-001`, `SAFE-IPC-001`, `EXT-ROUTER-001`, `EXT-COMMAND-001`, `OPS-CONTEXT-001`, `OPS-HANDOFF-001`
 - Product UX IDs: `UX-EXT-001`
 - Test / acceptance IDs: `CORE-001`, `SEC-001`, `EXT-001`, `EXT-002`, `CONTRACT-001`–`CONTRACT-024`, `PROC-001`, `PROC-002`; supporting clean-checkout evidence for `BUILD-001`
 - ADRs / contract and schema versions: `ADR-0001`–`ADR-0004`; IPC wire version `1.0`; schema status remains `1.0-draft` until Integration publishes F0
 - Feature flags: none; `P0-FLAG-01` remains downstream
-- Owned and touched paths: `contracts/**`, `src/generated/**`, `src/domain/ipc.contract.test.ts`, `src-tauri/src/domain/**`, `src-tauri/src/ipc_schema.rs`, `src-tauri/src/ipc_schema/**`, approved narrow changes to `src-tauri/Cargo.toml` and `src-tauri/Cargo.lock`, this task note, and only this task's `docs/PROJECT_STATE.md` row
+- Owned and touched paths: `contracts/**`, `src/generated/**`, `src/domain/ipc.contract.test.ts`, `src-tauri/src/domain/**`, `src-tauri/src/ipc_schema.rs`, `src-tauri/src/ipc_schema/**`, `src-tauri/src/bin/generate_ipc.rs`, approved narrow `src-tauri/Cargo.toml` / `src-tauri/Cargo.lock` changes, this note, and only this task's `docs/PROJECT_STATE.md` row
 
 ## Goal and non-goals
 
-Define a Rust-owned executable IPC v1 schema, stable request/response/error/event envelopes, cancellation metadata, complete core wire models, and deterministic TypeScript bindings. Establish the canonical `CONTRACT-001`–`CONTRACT-024` manifest/runner, with F0 executing `CONTRACT-001`–`CONTRACT-003` and the remaining 21 ports frozen for their mapped owners.
+The branch defines the executable Rust-owned IPC v1 wire surface, deterministic TypeScript bindings, stable command/error/event envelopes, cancellation metadata, and core models. It establishes the canonical `CONTRACT-001`–`CONTRACT-024` manifest/runner: F0 executes `CONTRACT-001`–`CONTRACT-003`; the other 21 ports remain frozen for their mapped future owners.
 
-Non-goals were preserved: no Tauri command handler, frontend `invoke`/listener, filesystem, clipboard, renderer, real IPC transport, feature-flag behavior, or Phase 1 session/editor/navigation/assets implementation was added. `CONTRACT-004`–`CONTRACT-024` remain non-behavioral `frozenPort` entries.
+No Tauri command handler, frontend invoke/listener, filesystem, clipboard, renderer, real IPC transport, feature behavior, or Phase 1 implementation was added. `CONTRACT-004`–`CONTRACT-024` remain non-behavioral `frozenPort` entries.
 
 ## Acceptance criteria status
 
-Third independent review supersedes the prior REVIEW evidence. The four failed boundaries below are open until new local, mutation, and clean-clone evidence is recorded; unchanged passing areas remain implementation context, not current handoff evidence.
-
 | Requirement / acceptance ID | Expected evidence | Status |
 |---|---|---|
-| `CONTRACT-001` | Rust generator reproduces committed TypeScript, manifest, fixture, and executable validator artifacts with zero drift | IN PROGRESS — replace the handwritten event payload validator with a Rust-serde-derived executable schema; prove a legal Rust event-field rename is accepted only after regeneration and the old field is rejected |
-| `CONTRACT-002` | Every tagged, untagged, and single-variant wire union uses concrete Rust variants serialized through `serde_json`, with mechanically checked registry completeness | IN PROGRESS — remove the hard-coded `44` self-check and add missing `SaveAsTarget`, `NavigateTarget`, `AbsentDiskRevision`, and `DocumentSaveAsOutcome` concrete variants |
-| `CONTRACT-003` | Unknown event/error/optional fields remain readable while unsafe values and unknown writes fail closed | IN PROGRESS — normalize every nested event `AppError` through the decoder and reject all forbidden `DocumentExternalChanged.writeId` combinations in Rust serde |
-| `CONTRACT-004`–`CONTRACT-024` | Freeze canonical ID, layer, fixture port, and future owner without claiming feature behavior | PASS for F0 freeze only — exactly 21 entries remain `frozenPort`; no behavior was implemented |
-| `CORE-001`, `SEC-001`, `EXT-001`, `EXT-002` | Core models, versioned/fail-closed envelopes, and router/command vocabulary are available to Rust and TypeScript | PASS — the full prior TS surface has a Rust serde/`TS` owner, including all 37 command request/response and 8 event payload types |
-| `PROC-001`, `PROC-002` | Durable state and reproducible handoff include exact revisions, commands, results, risks, and next action | PASS — this note supersedes the rejected `0387139` handoff and records local plus clean-clone evidence |
+| `CONTRACT-001` | Rust regeneration reproduces every committed TypeScript/manifest/fixture/schema artifact; legal Rust serde changes drive runtime validation | PASS — five generated artifacts are drift-gated; the 8 event specs, payload Rust types, and schemas share one registry; the field-rename mutation changed decoder behavior only after regeneration |
+| `CONTRACT-002` | Every structural tagged, untagged, and single-variant wire union has concrete Rust variants serialized through `serde_json`, with mechanical completeness | PASS — 50 groups are derived from the wire registry/schema, including `SaveAsTarget`, `NavigateTarget`, `AbsentDiskRevision`, `DocumentSaveAsOutcome`, `ResourceResolutionWithoutGrant`, and `MarkdownResourceRef`; branch coverage detects duplicate/missing variants |
+| `CONTRACT-003` | Unknown events/errors/optional fields remain readable while unsafe values and unknown writes fail closed | PASS — nested event `AppError` values are returned sanitized; unknown codes retain only read-only recovery actions; unsafe integers, invalid scope/payload, null optional fields, non-Markdown native targets, unknown Rust write actions, and illegal external `writeId` states are rejected |
+| `CONTRACT-004`–`CONTRACT-024` | Freeze canonical ID, layer, fixture port, and future owner without claiming feature behavior | PASS for F0 freeze only — exactly 21 entries remain `frozenPort`; no feature behavior is implemented |
+| `CORE-001`, `SEC-001`, `EXT-001`, `EXT-002` | Core models, versioned/fail-closed envelopes, router vocabulary, and complete command/event payload types exist in Rust and TypeScript | PASS — 37 commands, 8 events, 24 known errors, cancellation metadata, safe integers, and all referenced request/response/event types are generated and validated |
+| `PROC-001`, `PROC-002`, `BUILD-001` | Reproducible handoff includes exact revisions, commands, risks, and clean-checkout evidence | PASS — local and clean-clone gates below were run at the implementation head |
 
 ## Changes made
 
-Third-review implementation has not started. The prior change list below describes the rejected `42563ee` implementation and will be rewritten before REVIEW.
-
-- Deleted the 1,121-line handwritten `src-tauri/src/ipc_schema/typescript.rs` declaration source. `src-tauri/src/ipc_schema/rust_typescript.rs` now invokes `ts-rs` declarations from real Rust serde types; only policy helpers that Rust explicitly maps to—brands, required-nullable, and open/known error-code aliases—are emitted around those declarations.
-- Added the complete command/event payload model in `src-tauri/src/domain/payloads.rs`. A systematic exported-name comparison against the rejected TS surface found no missing prior exported declaration; the new output additionally names mechanically factored enums/value objects.
-- Added JS-safe integer wrappers for every exact Rust wire integer. Serialization and deserialization reject values outside `Number.MAX_SAFE_INTEGER`; `SessionRevision` remains a branded JSON number, and generated bindings contain no `bigint`.
-- Made `missing.lastKnown` required and nullable, modeled `DocumentExternalChanged` as its legal `change`/provenance union, and constrained `NativeOpenTarget.document` to a Markdown `ResourceRef` on both decode and encode paths.
-- Made unknown `AppError.code` forward-readable while filtering both inbound and outbound recovery actions to read-only `openSafetyPage`, `compare`, or `openExternal`. Known event decoders now validate envelope shape, scope kind and identity, event-to-payload mapping, non-negative safe-integer sequence/counters, document provenance, and nested Markdown locator/anchor shape. Unknown events remain readable only after a valid base envelope.
-- Routed an unknown destructive conflict action through `CommandRequest<ConflictResolutionRequest>` so the real Rust enum decoder rejects it; no synthetic action-only predicate substitutes for the request boundary.
-- Replaced required-field/placeholder fixture metadata with 44 groups of concrete Rust enum variants serialized by `serde_json`. The same serialized fixture set is embedded into generated TypeScript and compared with the committed JSON artifact in Vitest.
-- Preserved the exact 37 command, 8 event, 24 known-error, and `CONTRACT-001`–`CONTRACT-024` catalogs. Event specs gained generated `scopeKind` metadata used by the strict decoder; `004`–`024` semantics and ownership mappings did not change.
-- Added exact `ts-rs = 12.0.1` with `default-features = false` and only `serde-compat`. `Cargo.lock` adds `ts-rs 12.0.1`, `ts-rs-macros 12.0.1`, and `termcolor 1.4.1`; `package.json` and `pnpm-lock.yaml` are unchanged.
+- Rust serde/`ts-rs` types remain the sole declaration source. The renderer registry calls `TS::decl`; it contains type ownership/classification but no duplicated fields, tags, optionality, or nullability.
+- Added exact `schemars = 1.2.2` with `default-features = false` and only `derive`. Rust serde derives now mechanically produce executable JSON Schemas. The generator commits and drift-checks `ipc-v1-event-schemas.json` and `ipc-v1-union-schemas.json` alongside `ipc.ts`, the manifest, and concrete fixtures.
+- Replaced the handwritten event-field validator with a generic TypeScript JSON Schema evaluator. A generation-time vocabulary gate rejects unsupported assertion keywords. The evaluator preserves `$ref` sibling semantics, validates safe integers/objects/arrays/unions, and returns normalized nested values rather than the original envelope.
+- A single `event_registry!` binds all 8 event IDs/names/Rust payload types/scope policies. It expands both `EVENTS` and the Rust-derived schema map; generated schema titles are checked against generated payload type names.
+- `decodeAppError` is applied recursively through `$ref` resolution. The `recovery.snapshotFailed` regression proves an unknown error entering through `decodeEventEnvelope` loses `overwrite` and unknown actions while retaining `openSafetyPage` in the returned payload.
+- `DocumentExternalChanged` and standalone `DocumentChangeProvenance` use rejecting Rust deserialization for every present `writeId` on external/permission states, including `null`. Matching generated schema constraints reject the same combinations in TypeScript.
+- Exact integer helpers expose JSON integer bounds of `±Number.MAX_SAFE_INTEGER`; event optional properties remove explicit-null acceptance while `RequiredNullable<T>` preserves required `null`. The Markdown-only wrapper schema is selected mechanically from `ResourceRef`; the open `AppError` schema permits future strings to reach the fail-closed policy.
+- The union registry classifies all exported wire types. Structural unions marked plain fail catalog validation; each registered union's variant count comes from its schema. Concrete Rust variants are serialized through `serde_json`, and TypeScript checks every fixture against its root plus every `oneOf`/`anyOf`/single branch.
+- `package.json`, `pnpm-lock.yaml`, global CI, release configuration, command handlers, and `CONTRACT-004`–`CONTRACT-024` behavior were not changed.
 
 ## Decisions and assumptions
 
-- The schema stays `1.0-draft`; this branch proves the F0 contract gate but does not publish F0. Only Integration may publish the schema and mark this task `DONE`.
-- Rust serde models are the sole wire-shape source. The explicit `ts-rs` registry selects types to render but does not restate fields, variants, tags, optionality, or nullability. `serde-compat` warnings remain enabled; no global warning suppression was introduced.
-- Branded string IDs and `SessionRevision` use explicit `ts-rs` type mappings. `JsSafeU64`/`JsSafeI64` combine a TypeScript `number` mapping with Rust range-checked serde, so the mapping cannot silently serialize a JavaScript-unsafe integer.
-- `RequiredNullable<T>` is a Rust newtype whose field is not optional; its TypeScript helper is `T | null`. Regression tests require explicit `lastKnown: null` and reject an omitted field.
-- Forward compatibility is asymmetric by design: a syntactically valid unknown event/error remains readable, but unknown or write-capable recovery actions on an unknown error are removed, and unknown command actions fail Rust deserialization.
-- `ts-rs` is a build/code-generation dependency, not a runtime parser, renderer, storage, network, or security subsystem. Integration approved the exact pin and narrow lock delta; no ADR or product behavior changed.
+- IPC remains `1.0-draft`; only Integration may publish F0 and mark the task `DONE`.
+- `ts-rs` remains responsible for TypeScript declarations; `schemars 1.2.2` is an executable validator/test artifact derived from the same serde types. It was selected because it honors `serde(rename_all_fields)` and has explicit schema helpers for branded safe integers, `AppError`, Markdown-only references, and rejecting external provenance.
+- Optional event properties use the frozen TypeScript meaning `field?: T`, so the generated decoder schema removes `null` only from non-required properties. Required-nullable fields remain required and accept explicit `null`.
+- JSON Schema `format` is annotation-only under the generated Draft 2020-12 vocabulary; numeric type/finite checks remain assertions. Any newly emitted unsupported assertion keyword fails Rust catalog generation instead of being silently ignored.
+- Forward compatibility is asymmetric: unknown read-only events and optional fields remain readable; unknown error codes retain only `openSafetyPage`, `compare`, or `openExternal`; unknown write actions fail the real Rust request decoder.
+- The generated union-schema artifact is intentionally comprehensive and review-heavy; it is test-only contract data, not loaded by the production application. The smaller event-schema artifact is embedded into generated TypeScript for runtime decoding.
 
 ## Verification evidence
 
-Prior evidence below is retained only as historical diagnostic context and is not sufficient for the current claim. Third-review evidence will replace it before handoff.
+Environment: macOS/Darwin 25.6.0 arm64; Node `v24.14.0`; pnpm `10.32.1`; Rust/Cargo `1.98.0`. `${CARGO_BIN_DIR}` denotes the local Rust toolchain directory; `${CLEAN_CLONE}` denotes the disposable system-temporary clone and contains no user documents.
 
-Environment: macOS/Darwin 25.6.0 arm64; `pnpm exec node v24.14.0`; pnpm `10.32.1`; Rust/Cargo `1.98.0`. `${CARGO_BIN_DIR}` denotes the local Rust toolchain bin directory; `${CLEAN_CLONE}` denotes the validated system-temporary clone and does not persist a personal path.
-
-| Test / acceptance ID | Exact command/environment | Result | Artifact or failure |
+| Test / acceptance ID | Exact command and environment | Result | Artifact or failure |
 |---|---|---|---|
-| `CONTRACT-001`–`CONTRACT-003` | `PATH="${CARGO_BIN_DIR}:$PATH" pnpm exec node contracts/run.mjs` at `42563ee` | PASS; exit 0; generated drift 0; Rust contract 11/11; TypeScript 16/16 | `src/generated/ipc.ts`, `contracts/ipc-v1.manifest.json`, `contracts/generated/ipc-v1-union-fixtures.json`; terminal: `CONTRACT-001..003 PASS` |
-| `CONTRACT-001`, discriminator mutation | Using `apply_patch`, change only `WorkspaceState` serde `tag = "kind"` to `tag = "type"`; run `PATH="${CARGO_BIN_DIR}:$PATH" cargo run --manifest-path src-tauri/Cargo.toml --bin generate_ipc -- --check`; restore with `apply_patch` | EXPECTED FAIL; exit 1; drift named both `src/generated/ipc.ts` and fixture JSON. Restored tree then passed `--check` | Proves a serde discriminator mutation cannot remain green or be hidden by a substring-only test |
-| `CONTRACT-002` | Rust `contract_002_*` tests plus `pnpm vitest run src/domain/ipc.contract.test.ts` inside the runner | PASS; concrete 44-group Rust fixture serialization, required-nullable semantics, generated discriminator/optionality assertions, and JSON-to-TS artifact equality | Nested fixtures include Markdown locator/anchor, disk revision, error, external-change provenance, recovery, and Save As values |
-| `CONTRACT-003`, `CORE-001`, `SEC-001` | `PATH="${CARGO_BIN_DIR}:$PATH" cargo test --manifest-path src-tauri/Cargo.toml --all-targets --all-features` and full Vitest through `pnpm verify` | PASS; Rust 13/13; Vitest 19/19 | Regressions cover unsafe/negative/fractional sequence, unsafe revision/counter, missing vs null, unknown error + overwrite, unknown Rust write action, invalid scope/payload/identity/provenance, and non-Markdown native open |
-| `EXT-001`, `EXT-002`, full generated surface | `comm -23 <(git show 0387139:src-tauri/src/ipc_schema/typescript.rs \| rg -o '^export (type\|interface) [A-Za-z0-9_]+' \| sed -E 's/^export (type\|interface) //' \| sort -u) <(rg -o '^export (type\|interface) [A-Za-z0-9_]+' src/generated/ipc.ts \| sed -E 's/^export (type\|interface) //' \| sort -u)` | PASS; empty output, so no exported declaration from the rejected surface is missing | Generated output additionally exposes mechanically factored safe-integer, literal, enum, and wrapper types |
-| `CONTRACT-004`–`CONTRACT-024` | Same canonical runner | PASS for catalog freeze; exactly 21 `frozenPort` entries and no missing/extra contract ID | `contracts/ipc-v1.manifest.json`; feature behavior explicitly not executed |
-| Formatting, lint, type, Rust, build | `PATH="${CARGO_BIN_DIR}:$PATH" pnpm verify` at `42563ee` | PASS; exit 0; Prettier, ESLint, TypeScript, Vitest 19, Rust fmt, Clippy `-D warnings`, Rust 13, Vite production build, and Tauri debug no-bundle build | Local executable: `src-tauri/target/debug/markdown-workspace` |
-| `BUILD-001`, `PROC-001` clean checkout | `git clone --local --branch task/P0-CONTRACT-01-ipc-v1 --single-branch . "${CLEAN_CLONE}"`; in clone run `pnpm install --frozen-lockfile && ruby scripts/validate_design_docs.rb && PATH="${CARGO_BIN_DIR}:$PATH" pnpm exec node contracts/run.mjs && PATH="${CARGO_BIN_DIR}:$PATH" pnpm verify` | PASS; every command exit 0 at `42563ee`; validator reported 22 Markdown files, 37 IPC commands, snapshot `28af204e18b4336787d5c7f831bffdf1ca2c5f4ce57172a6a7a0bd94feec175a` | Clean clone Tauri executable under `${CLEAN_CLONE}/src-tauri/target/debug/markdown-workspace`; clone moved recoverably to system Trash afterward |
-| Dependency/license/security | `PATH="${CARGO_BIN_DIR}:$PATH" cargo metadata --locked --manifest-path src-tauri/Cargo.toml --format-version 1` filtered to the 3 new lock packages; `cargo tree -p ts-rs@12.0.1`; `cargo audit --file src-tauri/Cargo.lock` | PASS for introduced dependency: `ts-rs`/macros MIT, `termcolor` Unlicense OR MIT; audit exit 0 with no vulnerability finding. Audit printed 17 allowed warnings, none for the three added packages | Exact pin and minimal `serde-compat` feature in `src-tauri/Cargo.toml`; no npm manifest/lock diff |
-| Scope/privacy guard | `! rg -n '/(Users|home)/|data:image/[^;]+;base64,|BEGIN (RSA|OPENSSH|EC) PRIVATE KEY' contracts src/generated src/domain/ipc.contract.test.ts src-tauri/src/domain src-tauri/src/ipc_schema.rs src-tauri/src/ipc_schema` and `! rg -n '#\[tauri::command\]|tauri::command|\binvoke\s*\(|\blisten\s*\(' src-tauri/src/domain src-tauri/src/ipc_schema.rs src-tauri/src/ipc_schema src/domain/ipc.contract.test.ts src/generated/ipc.ts` | PASS; no match | No user content, personal absolute path, Base64 fixture, secret, command handler, frontend IPC call, or listener committed |
-| Patch hygiene | `git diff --check 0387139..42563ee` | PASS; exit 0 | No whitespace errors or files outside declared task scope |
+| `CONTRACT-001`–`CONTRACT-003` | `PATH="${CARGO_BIN_DIR}:$PATH" pnpm exec node contracts/run.mjs` at `e61f98e` | PASS; exit 0; generator drift 0; Rust contract 13/13; TypeScript contract 23/23 | `src/generated/ipc.ts`, `contracts/ipc-v1.manifest.json`, `contracts/generated/ipc-v1-{union-fixtures,union-schemas,event-schemas}.json`; terminal ended `CONTRACT-001..003 PASS` |
+| `CONTRACT-001`, event-field mutation | With `apply_patch`, rename Rust `WorkspaceFilesChanged.generation_hint` to `generation_counter`, update only the dedicated expectation, run generator `--write`, then `pnpm exec vitest run src/domain/ipc.contract.test.ts -t "accepts exactly the Rust-derived workspace.filesChanged payload shape"`; restore with `apply_patch` and regenerate | PASS mutation evidence; regenerated schema keys were `changes,generationCounter,overflow`; decoder accepted `generationCounter` and rejected old `generationHint`; restored test also PASS | Proves runtime event fields are not a second handwritten source |
+| `CONTRACT-002`, branch-completeness mutation | With `apply_patch`, replace `SaveAsTarget::Grant` fixture by a second `Prompt`; regenerate; run `pnpm exec vitest run src/domain/ipc.contract.test.ts -t "mechanically covers every branch"`; restore with `apply_patch` and regenerate | EXPECTED FAIL; exit 1; exact failure `SaveAsTarget branch 1 has no concrete Rust fixture`; restored full test 23/23 PASS | Proves equal-length/magic-count fixtures cannot hide a missing variant |
+| `CONTRACT-002`, serde/schema alignment | `PATH="${CARGO_BIN_DIR}:$PATH" cargo test --manifest-path src-tauri/Cargo.toml contract_ -- --nocapture` | PASS; 13/13 focused tests | Includes strict external/permission `writeId`, required-nullable, safe integer, Markdown-only, schema helper, event registry, and concrete fixture tests |
+| `CONTRACT-003`, `CORE-001`, `SEC-001` | `pnpm exec vitest run src/domain/ipc.contract.test.ts` | PASS; 23/23 | Includes nested `AppError` normalization, negative/fractional/unsafe sequence, unsafe payload counter, optional-null, invalid scope/identity/payload/provenance, and generated field-shape regressions |
+| Documentation gate | `ruby scripts/validate_design_docs.rb` | PASS; 22 Markdown files, 37 IPC commands, no link/fence/ID/privacy violations | Validator stdout; implementation-head snapshot `8d3690d82ba923ad694273ce06ad4eadc82f256b73bce863a1fc47494e24b0c4` |
+| Formatting, lint, type, Rust, build | `PATH="${CARGO_BIN_DIR}:$PATH" pnpm verify` at `e61f98e` | PASS; exit 0; Prettier, ESLint, TypeScript, Vitest 26/26, Rust fmt, Clippy `-D warnings`, Rust 15/15, Vite production build, Tauri debug no-bundle build | Local ignored build output under `dist/` and `src-tauri/target/debug/markdown-workspace` |
+| `BUILD-001`, `PROC-001` clean checkout | `git clone --local --branch task/P0-CONTRACT-01-ipc-v1 --single-branch <source> "${CLEAN_CLONE}"`; then `pnpm install --frozen-lockfile && ruby scripts/validate_design_docs.rb && PATH="${CARGO_BIN_DIR}:$PATH" pnpm exec node contracts/run.mjs && PATH="${CARGO_BIN_DIR}:$PATH" pnpm verify` | PASS; every command exit 0 at `e61f98e`; contract Rust 13/13 + TS 23/23; full Vitest 26/26 + Rust 15/15; Tauri debug build succeeded | Clean clone was moved recoverably to system Trash after verification |
+| Dependency/license/security | `cargo metadata --locked --manifest-path src-tauri/Cargo.toml --format-version 1`; `cargo tree --locked --manifest-path src-tauri/Cargo.toml -e features -i schemars@1.2.2`; `cargo audit --file src-tauri/Cargo.lock` | PASS; direct edge exact `1.2.2`, default features false, only `derive`; audit exit 0 with 17 pre-existing allowed warnings and no vulnerability finding | `schemars`/derive MIT, MSRV 1.74; `serde_derive_internals 0.30.0` MIT OR Apache-2.0, MSRV 1.71; checksums locked; no npm manifest/lock diff |
+| Scope/privacy guard | Reject personal paths, embedded Base64, private keys, Tauri commands, `invoke`, and `listen` with scoped `rg`; inspect `git diff --name-only` and `git diff -- package.json pnpm-lock.yaml` | PASS; no match and no package/lock diff | Only declared task paths changed; no user document or binary content |
+| Patch hygiene | `git diff --check 7763960..e61f98e` and generator `--check` | PASS; exit 0 | No whitespace errors or generated drift |
 
 ## Open questions and blockers
 
-There is no external blocker. Current implementation findings owned by Contract/Domain:
+There is no Contract/Domain implementation blocker.
 
-- `CONTRACT-003`: `decodeEventEnvelope` validates nested `AppError` but returns the original payload, so unknown codes can retain write-capable recovery actions.
-- `CONTRACT-003`: Rust serde accepts forbidden `external + writeId` forms for `DocumentExternalChanged`.
-- `CONTRACT-001`: `runtime.rs` restates event payload fields and can drift from accepted Rust serde wire shapes.
-- `CONTRACT-002`: the hard-coded fixture count is self-consistent and omits four confirmed union groups.
-
-- Owner: Integration. Decision/input: independently review `42563ee`, then publish or keep IPC schema status `1.0-draft` as part of the F0 decision. Affected task: `P0-CONTRACT-01` and downstream `P0-FLAG-01`. Safe work: read-only review and Integration gate execution may proceed; only Integration marks `DONE`.
-- Owner: mapped future feature owners. Decision/input: implement `CONTRACT-004`–`CONTRACT-024` only in their listed tasks. Affected requirements/tasks: manifest `futureTasks`. Safe work: use the frozen ports; do not interpret their presence as passing behavior.
-- Owner: Integration/Release dependency policy. Input: disposition of the 17 allowed unmaintained/unsound warnings reported elsewhere in the pre-existing Tauri lock graph before release. None names `ts-rs`, `ts-rs-macros`, or `termcolor`, and `cargo audit` returned success, so this does not block the contract review.
-- Maintenance risk: future wire types must be added to the explicit `ts-rs` render registry. Command/event catalog validation, generated drift, concrete fixtures, and full exported-surface tests make omissions visible, but the owning contract task must still regenerate artifacts on an accepted schema change.
+- Owner: Integration. Input/action: independently review the implementation and handoff commits, connect `contracts/run.mjs` to the global verify/CI path owned by `P0-CI-01`, then decide whether F0 may publish IPC `1.0-draft`. Affected tasks: `P0-CONTRACT-01`, `P0-CI-01`, downstream `P0-FLAG-01`. Safe work: read-only review and Integration gate execution; only Integration marks `DONE`.
+- Owner: Integration/Release dependency policy. Input: disposition of the 17 allowed pre-existing RustSec warnings in the Tauri lock graph before release. None names `schemars`, `schemars_derive`, or `serde_derive_internals`; this does not block the contract review.
+- Owner: future Contract/Domain schema owners. Maintenance requirement: add every accepted wire type to the explicit declaration registry and regenerate all artifacts. Structural-union classification, event registry/schema title checks, canonical catalogs, branch matrix, and generator drift fail omissions within the registered surface; accepted schema changes still require normal contract review.
 
 ## Remaining numbered steps
 
-1. Commit this third-review CLAIMED checkpoint.
-2. Replace the handwritten payload validator with a Rust-derived executable schema and normalize nested errors.
-3. Enforce strict `DocumentExternalChanged` serde and add negative tests.
-4. Make union fixture completeness mechanical and cover all confirmed omissions.
-5. Run local gates, independent mutations, full clean-clone verification, then update this note and the single ledger row to REVIEW.
+1. Integration and an independent Contract reviewer inspect `e61f98e` plus the REVIEW checkpoint commit and rerun the canonical runner.
+2. Integration wires `contracts/run.mjs` into its owned global verify/CI entry point without changing contract semantics.
+3. If Phase 0 gates pass, Integration merges the branch, publishes F0, marks this task `DONE`, and releases `P0-FLAG-01`.
+4. Future feature owners implement only their mapped `CONTRACT-004`–`CONTRACT-024` ports after F0; no Phase 1 work starts from this branch.
 
 ## Data safety, recovery, and temporary artifacts
 
-No user Markdown, clipboard content, personal absolute path, Base64 image, secret, recovery state, or external full file content was read or committed. All fixtures are small deterministic contract values containing only `fixture-*` identifiers and harmless sample text. Build output remains ignored under `dist/` and `src-tauri/target/`.
+No user Markdown, clipboard content, personal absolute path, Base64 image, secret, recovery state, or external full file content was read or committed. Fixtures contain only small deterministic `fixture-*` values and harmless sample text. Build output remains ignored under `dist/` and `src-tauri/target/`.
 
-The clean verification clone was moved to the system Trash rather than recursively deleted; it is recoverable until Trash is emptied. No user/project recovery action is required.
+The clean verification clone was moved to system Trash rather than recursively deleted and remains recoverable until Trash is emptied. The two temporary mutation states were restored only with `apply_patch`, followed by regeneration and passing drift/tests. No user/project recovery action is required.
 
 ## Single recommended next action
 
-Contract/Domain should commit this claim checkpoint, then implement the Rust-derived event schema boundary before touching fixture coverage.
+Integration should independently review `e61f98e`, rerun `pnpm exec node contracts/run.mjs`, and—only if that review passes—merge it through the Integration branch, connect the runner to CI, and publish F0.
