@@ -186,7 +186,7 @@ def assert_manual_report!(report)
     assert!(report.dig(section, "compositionUpdateCount").to_i >= 1, "#{section} had no update")
     assert!(report.dig(section, "beforeInputCount") == report.dig(section, "inputCount"), "#{section} input pair mismatch")
     assert!(report.dig(section, "rejectedUntrustedEventCount") == 0, "#{section} included an untrusted event")
-    %w[strictSequenceValid compositionDataValid inputFieldsValid singleTargetValid finalStateMatches nativeNonceFlowConsumed].each do |field|
+    %w[strictSequenceValid compositionDataValid inputFieldsValid singleTargetValid finalStateMatches rejectedEventSetEmpty privateMacValid nativeNonceFlowConsumed].each do |field|
       assert!(report.dig(section, field), "#{section}.#{field} was false")
     end
   end
@@ -195,6 +195,7 @@ def assert_manual_report!(report)
   assert!(chooser.fetch("eventKind") == "cancel", "chooser did not emit cancel")
   assert!(chooser.fetch("eventWasTrusted"), "chooser cancel was synthetic")
   assert!(chooser.fetch("nativeDialogInteractionObserved"), "native chooser interaction was not observed")
+  assert!(chooser.fetch("privateMacValid"), "chooser evidence MAC was invalid")
   assert!(chooser.fetch("nativeNonceFlowConsumed"), "chooser nonce flow was not consumed")
   assert!(chooser.fetch("selectionDataInspected") == false, "chooser inspected selection data")
   assert!(report.dig("chooserNoReadAudit", "status") == "passed", "compiled no-read audit failed")

@@ -1,10 +1,11 @@
 /* eslint-disable no-undef -- Rust-injected document-start browser script. */
 
-;(() => {
+(() => {
   "use strict";
 
-  // Replaced by Rust with seven independently generated 256-bit values. This
-  // object and every token remain inside this initialization-script closure.
+  // Replaced by Rust with eight independently generated 256-bit values. This
+  // object, every token, and the non-extractable HMAC key remain private to this
+  // document-start closure.
   const injected = __HOST_SMOKE_TOKEN_BUNDLE__;
   let captureReadyToken = injected.captureReady;
   let confirmBeginToken = injected.confirmBegin;
@@ -13,16 +14,36 @@
   let cancelFinishToken = injected.cancelFinish;
   let chooserBeginToken = injected.chooserBegin;
   let chooserFinishToken = injected.chooserFinish;
+  let evidenceMacKeyHex = injected.evidenceMacKey;
 
-  const nativeInvoke = window.__TAURI_INTERNALS__.invoke.bind(
-    window.__TAURI_INTERNALS__,
-  );
+  const nativeApply = Reflect.apply;
+  const nativePromiseThen = Promise.prototype.then;
+  const nativeQueueMicrotask = window.queueMicrotask.bind(window);
+  const arrayPush = Array.prototype.push;
+  const isPrototypeOf = Object.prototype.isPrototypeOf;
+  const nativeInvoke = window.__TAURI_INTERNALS__.invoke.bind(window.__TAURI_INTERNALS__);
+  const NativeString = window.String;
+  const NativeUint8Array = window.Uint8Array;
+  const uint8Fill = NativeUint8Array.prototype.fill;
+  const NativeTextEncoder = window.TextEncoder;
+  const textEncoder = new NativeTextEncoder();
+  const textEncode = NativeTextEncoder.prototype.encode;
+  const nativeSubtle = window.crypto.subtle;
+  const subtlePrototype = Object.getPrototypeOf(nativeSubtle);
+  const subtleImportKey = subtlePrototype.importKey;
+  const subtleSign = subtlePrototype.sign;
   const TrustedCompositionEvent = window.CompositionEvent;
   const TrustedInputEvent = window.InputEvent;
+  const trustedElementPrototype = window.Element.prototype;
+  const trustedNodePrototype = window.Node.prototype;
+  const trustedHtmlElementPrototype = window.HTMLElement.prototype;
+  const trustedHtmlInputPrototype = window.HTMLInputElement.prototype;
   const querySelector = Document.prototype.querySelector.bind(document);
   const closest = Element.prototype.closest;
   const contains = Node.prototype.contains;
   const getAttribute = Element.prototype.getAttribute;
+  const eventTypeGetter = Object.getOwnPropertyDescriptor(Event.prototype, "type").get;
+  const eventTargetGetter = Object.getOwnPropertyDescriptor(Event.prototype, "target").get;
   const textContentGetter = Object.getOwnPropertyDescriptor(
     Node.prototype,
     "textContent",
@@ -35,10 +56,7 @@
     CompositionEvent.prototype,
     "data",
   ).get;
-  const inputDataGetter = Object.getOwnPropertyDescriptor(
-    InputEvent.prototype,
-    "data",
-  ).get;
+  const inputDataGetter = Object.getOwnPropertyDescriptor(InputEvent.prototype, "data").get;
   const inputKindGetter = Object.getOwnPropertyDescriptor(
     InputEvent.prototype,
     "inputType",
@@ -55,6 +73,90 @@
   let active = null;
   let chooserTarget = null;
   let chooserBeginPromise = null;
+
+  function privateThen(promise, onFulfilled, onRejected) {
+    return nativeApply(nativePromiseThen, promise, [onFulfilled, onRejected]);
+  }
+
+  function nativeInstance(prototype, value) {
+    return nativeApply(isPrototypeOf, prototype, [value]);
+  }
+
+  function eventType(event) {
+    return nativeApply(eventTypeGetter, event, []);
+  }
+
+  function eventTarget(event) {
+    return nativeApply(eventTargetGetter, event, []);
+  }
+
+  function encodedBytes(value) {
+    return nativeApply(textEncode, textEncoder, [value]);
+  }
+
+  function hexBytes(value) {
+    if (typeof value !== "string" || value.length !== 64) {
+      throw new Error("invalid private HMAC key");
+    }
+    const bytes = new NativeUint8Array(32);
+    for (let index = 0; index < bytes.length; index += 1) {
+      const byte = Number.parseInt(value.slice(index * 2, index * 2 + 2), 16);
+      if (!Number.isInteger(byte)) throw new Error("invalid private HMAC key");
+      bytes[index] = byte;
+    }
+    return bytes;
+  }
+
+  function bytesHex(value) {
+    const bytes = new NativeUint8Array(value);
+    const alphabet = "0123456789abcdef";
+    let encoded = "";
+    for (let index = 0; index < bytes.length; index += 1) {
+      encoded += alphabet[bytes[index] >> 4] + alphabet[bytes[index] & 0x0f];
+    }
+    return encoded;
+  }
+
+  function framedField(value) {
+    return `${encodedBytes(value).length}:${value}`;
+  }
+
+  function imeMacMessage(token, scenario, counts, flags, finalUtf16Length) {
+    const countsField = `${counts[0]},${counts[1]},${counts[2]},${counts[3]},${counts[4]},${counts[5]}`;
+    const flagsField = `${flags[0] ? 1 : 0}${flags[1] ? 1 : 0}${flags[2] ? 1 : 0}${flags[3] ? 1 : 0}${flags[4] ? 1 : 0}${flags[5] ? 1 : 0}`;
+    const lengthField = NativeString(finalUtf16Length);
+    return `P0-HOST-SMOKE-IME-V1|${framedField(token)}|${framedField(scenario)}|${framedField(countsField)}|${framedField(flagsField)}|${framedField(lengthField)}`;
+  }
+
+  function chooserMacMessage(token, eventKind) {
+    return `P0-HOST-SMOKE-CHOOSER-V1|${framedField(token)}|${framedField(eventKind)}`;
+  }
+
+  const rawMacKeyBytes = hexBytes(evidenceMacKeyHex);
+  const importedKey = nativeApply(subtleImportKey, nativeSubtle, [
+    "raw",
+    rawMacKeyBytes,
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  ]);
+  const evidenceMacKey = privateThen(importedKey, (key) => {
+    nativeApply(uint8Fill, rawMacKeyBytes, [0]);
+    evidenceMacKeyHex = null;
+    injected.evidenceMacKey = null;
+    return key;
+  });
+
+  function signEvidence(message) {
+    return privateThen(evidenceMacKey, (key) => {
+      const signature = nativeApply(subtleSign, nativeSubtle, [
+        "HMAC",
+        key,
+        encodedBytes(message),
+      ]);
+      return privateThen(signature, bytesHex);
+    });
+  }
 
   Object.defineProperty(window, "__MARKDOWN_WORKSPACE_HOST_RELEASE_SMOKE__", {
     value: true,
@@ -73,33 +175,31 @@
 
   function editorContent() {
     const candidate = querySelector("[data-host-editor] .cm-content");
-    return candidate instanceof HTMLElement ? candidate : null;
+    return nativeInstance(trustedHtmlElementPrototype, candidate) ? candidate : null;
   }
 
   function nativeFileInput() {
     const candidate = querySelector("[data-host-native-input]");
-    return candidate instanceof HTMLInputElement && inputTypeGetter.call(candidate) === "file"
+    return nativeInstance(trustedHtmlInputPrototype, candidate) &&
+      nativeApply(inputTypeGetter, candidate, []) === "file"
       ? candidate
       : null;
   }
 
   function readText(node) {
-    return textContentGetter.call(node);
+    return nativeApply(textContentGetter, node, []);
   }
 
   function boundedData(value) {
-    return typeof value === "string" && value.length <= MAX_EVENT_DATA_UTF16
-      ? value
-      : null;
+    return typeof value === "string" && value.length <= MAX_EVENT_DATA_UTF16 ? value : null;
   }
 
   function beginScenario(scenario) {
     const expectedStage = scenario === "confirm" ? "awaitConfirm" : "awaitCancel";
-    const expectedBaseline =
-      scenario === "confirm" ? CONFIRM_BASELINE : CANCEL_BASELINE;
+    const expectedBaseline = scenario === "confirm" ? CONFIRM_BASELINE : CANCEL_BASELINE;
     if (localStage !== expectedStage || active !== null) return;
 
-    queueMicrotask(() => {
+    nativeQueueMicrotask(() => {
       const target = editorContent();
       if (target === null || readText(target) !== expectedBaseline) {
         privateResult(`${scenario}Begin`, false);
@@ -123,28 +223,32 @@
         rejectedSyntheticCount: 0,
         sameTarget: true,
       };
-      void nativeInvoke("host_release_smoke_trusted_ime_begin", {
+      const beginRequest = nativeInvoke("host_release_smoke_trusted_ime_begin", {
         token,
         scenario,
-      })
-        .then(() => {
+      });
+      void privateThen(
+        beginRequest,
+        () => {
           privateResult(`${scenario}Begin`, true);
-        })
-        .catch(() => {
+        },
+        () => {
           if (active?.scenario === scenario) active.sameTarget = false;
           privateResult(`${scenario}Begin`, false);
-        });
+        },
+      );
     });
   }
 
   function recordCompositionEvent(event) {
     if (active === null) return;
-    if (event.target !== active.target) {
-      const editorRoot = closest.call(active.target, "[data-host-editor]");
+    const target = eventTarget(event);
+    if (target !== active.target) {
+      const editorRoot = nativeApply(closest, active.target, ["[data-host-editor]"]);
       if (
         editorRoot !== null &&
-        event.target instanceof Node &&
-        contains.call(editorRoot, event.target)
+        nativeInstance(trustedNodePrototype, target) &&
+        nativeApply(contains, editorRoot, [target])
       ) {
         active.sameTarget = false;
       }
@@ -154,20 +258,23 @@
       active.rejectedSyntheticCount += 1;
       return;
     }
-    active.records.push({
-      type: event.type,
-      data: boundedData(compositionDataGetter.call(event)),
-    });
+    nativeApply(arrayPush, active.records, [
+      {
+        type: eventType(event),
+        data: boundedData(nativeApply(compositionDataGetter, event, [])),
+      },
+    ]);
   }
 
   function recordInputEvent(event) {
     if (active === null) return;
-    if (event.target !== active.target) {
-      const editorRoot = closest.call(active.target, "[data-host-editor]");
+    const target = eventTarget(event);
+    if (target !== active.target) {
+      const editorRoot = nativeApply(closest, active.target, ["[data-host-editor]"]);
       if (
         editorRoot !== null &&
-        event.target instanceof Node &&
-        contains.call(editorRoot, event.target)
+        nativeInstance(trustedNodePrototype, target) &&
+        nativeApply(contains, editorRoot, [target])
       ) {
         active.sameTarget = false;
       }
@@ -177,12 +284,14 @@
       active.rejectedSyntheticCount += 1;
       return;
     }
-    active.records.push({
-      type: event.type,
-      data: boundedData(inputDataGetter.call(event)),
-      inputType: inputKindGetter.call(event),
-      isComposing: inputComposingGetter.call(event) === true,
-    });
+    nativeApply(arrayPush, active.records, [
+      {
+        type: eventType(event),
+        data: boundedData(nativeApply(inputDataGetter, event, [])),
+        inputType: nativeApply(inputKindGetter, event, []),
+        isComposing: nativeApply(inputComposingGetter, event, []) === true,
+      },
+    ]);
   }
 
   function evaluateScenario(snapshot) {
@@ -195,7 +304,8 @@
     let pendingInput = null;
     let finalInputPairSeen = false;
 
-    for (const record of snapshot.records) {
+    for (let index = 0; index < snapshot.records.length; index += 1) {
+      const record = snapshot.records[index];
       if (record.type === "compositionstart") counts[0] += 1;
       if (record.type === "compositionupdate") counts[1] += 1;
       if (record.type === "compositionend") counts[2] += 1;
@@ -304,10 +414,7 @@
       counts[3] === counts[4] &&
       counts[3] >= 1;
     strictSequenceValid =
-      strictSequenceValid &&
-      terminalPhaseValid &&
-      countShapeValid &&
-      pendingInput === null;
+      strictSequenceValid && terminalPhaseValid && countShapeValid && pendingInput === null;
 
     const finalText = readText(snapshot.target);
     const expectedText =
@@ -329,7 +436,7 @@
 
   function finishScenario(scenario) {
     if (active?.scenario !== scenario) return;
-    queueMicrotask(() => {
+    nativeQueueMicrotask(() => {
       if (active?.scenario !== scenario) return;
       const snapshot = active;
       active = null;
@@ -344,18 +451,34 @@
       }
       if (typeof token !== "string") return;
 
-      void nativeInvoke("host_release_smoke_trusted_ime_finish", {
-        token,
-        scenario,
-        counts: evidence.counts,
-        flags: evidence.flags,
-        finalUtf16Length: evidence.finalUtf16Length,
-      })
-        .then(() => {
+      const signedRequest = privateThen(
+        signEvidence(
+          imeMacMessage(
+            token,
+            scenario,
+            evidence.counts,
+            evidence.flags,
+            evidence.finalUtf16Length,
+          ),
+        ),
+        (evidenceMac) =>
+          nativeInvoke("host_release_smoke_trusted_ime_finish", {
+            token,
+            scenario,
+            counts: evidence.counts,
+            flags: evidence.flags,
+            finalUtf16Length: evidence.finalUtf16Length,
+            evidenceMac,
+          }),
+      );
+      void privateThen(
+        signedRequest,
+        () => {
           localStage = scenario === "confirm" ? "awaitCancel" : "awaitChooser";
           privateResult(`${scenario}Finish`, true);
-        })
-        .catch(() => privateResult(`${scenario}Finish`, false));
+        },
+        () => privateResult(`${scenario}Finish`, false),
+      );
     });
   }
 
@@ -372,40 +495,53 @@
     chooserBeginPromise = nativeInvoke("host_release_smoke_trusted_chooser_begin", {
       token,
     });
-    void chooserBeginPromise
-      .then(() => privateResult("chooserBegin", true))
-      .catch(() => privateResult("chooserBegin", false));
+    void privateThen(
+      chooserBeginPromise,
+      () => privateResult("chooserBegin", true),
+      () => privateResult("chooserBegin", false),
+    );
   }
 
   function finishChooser(eventKind, event) {
-    if (chooserTarget === null || event.target !== chooserTarget) return;
+    if (chooserTarget === null || eventTarget(event) !== chooserTarget) return;
     if (!event.isTrusted || typeof chooserFinishToken !== "string") return;
     const token = chooserFinishToken;
     chooserFinishToken = null;
     const begin = chooserBeginPromise;
     chooserBeginPromise = null;
     chooserTarget = null;
-    void Promise.resolve(begin)
-      .then(() =>
-        nativeInvoke("host_release_smoke_trusted_chooser_finish", {
-          token,
-          eventKind,
-        }),
-      )
-      .then(() => {
+    if (begin === null) {
+      privateResult("chooserFinish", false);
+      return;
+    }
+    const signedEvidence = privateThen(begin, () =>
+      signEvidence(chooserMacMessage(token, eventKind)),
+    );
+    const finishRequest = privateThen(signedEvidence, (evidenceMac) =>
+      nativeInvoke("host_release_smoke_trusted_chooser_finish", {
+        token,
+        eventKind,
+        evidenceMac,
+      }),
+    );
+    void privateThen(
+      finishRequest,
+      () => {
         localStage = eventKind === "cancel" ? "complete" : "failed";
         privateResult("chooserFinish", eventKind === "cancel");
-      })
-      .catch(() => privateResult("chooserFinish", false));
+      },
+      () => privateResult("chooserFinish", false),
+    );
   }
 
   document.addEventListener(
     "click",
     (event) => {
-      if (!event.isTrusted || !(event.target instanceof Element)) return;
-      const actionTarget = closest.call(event.target, "[data-host-action]");
+      if (!event.isTrusted || !nativeInstance(trustedElementPrototype, event.target))
+        return;
+      const actionTarget = nativeApply(closest, event.target, ["[data-host-action]"]);
       const action = actionTarget
-        ? getAttribute.call(actionTarget, "data-host-action")
+        ? nativeApply(getAttribute, actionTarget, ["data-host-action"])
         : null;
       if (action === "begin-confirm") beginScenario("confirm");
       if (action === "finish-confirm") finishScenario("confirm");
@@ -428,11 +564,18 @@
     if (typeof captureReadyToken !== "string") return;
     const token = captureReadyToken;
     captureReadyToken = null;
-    void nativeInvoke("host_release_smoke_capture_ready", { token }).catch(() => {});
+    const readyRequest = privateThen(evidenceMacKey, () =>
+      nativeInvoke("host_release_smoke_capture_ready", { token }),
+    );
+    void privateThen(
+      readyRequest,
+      () => {},
+      () => {},
+    );
   }
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", announceCaptureReady, { once: true });
   } else {
-    queueMicrotask(announceCaptureReady);
+    nativeQueueMicrotask(announceCaptureReady);
   }
 })();

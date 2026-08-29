@@ -32,7 +32,9 @@ const AUDITED_HOST_UI_SOURCE: &str = include_str!(concat!(
 ));
 const TOKEN_BUNDLE_PLACEHOLDER: &str = "__HOST_SMOKE_TOKEN_BUNDLE__";
 const TOKEN_BYTES: usize = 32;
-const TOKEN_COUNT: usize = 7;
+const TOKEN_COUNT: usize = 8;
+const HMAC_BLOCK_BYTES: usize = 64;
+const HMAC_BYTES: usize = 32;
 const NO_READ_FORBIDDEN_TOKENS: [&str; 11] = [
     "FileReader",
     ".files",
@@ -138,6 +140,8 @@ struct ImeEvidence {
     input_fields_valid: bool,
     single_target_valid: bool,
     final_state_matches: bool,
+    rejected_event_set_empty: bool,
+    private_mac_valid: bool,
     native_nonce_flow_consumed: bool,
     final_utf16_length: u32,
 }
@@ -157,6 +161,8 @@ impl ImeEvidence {
             input_fields_valid: false,
             single_target_valid: false,
             final_state_matches: false,
+            rejected_event_set_empty: false,
+            private_mac_valid: false,
             native_nonce_flow_consumed: false,
             final_utf16_length: 0,
         }
@@ -176,7 +182,7 @@ impl ImeEvidence {
             _ => 0,
         };
         let shape_valid = counts.len() == 6
-            && flags.len() == 5
+            && flags.len() == 6
             && counts.iter().all(|count| *count <= 10_000)
             && final_utf16_length <= 10_000
             && expected_length > 0;
@@ -208,6 +214,8 @@ impl ImeEvidence {
             input_fields_valid: flags[2],
             single_target_valid: flags[3],
             final_state_matches: flags[4],
+            rejected_event_set_empty: flags[5],
+            private_mac_valid: false,
             native_nonce_flow_consumed: false,
             final_utf16_length,
         }
@@ -220,6 +228,7 @@ struct ChooserEvidence {
     event_kind: &'static str,
     event_was_trusted: bool,
     native_dialog_interaction_observed: bool,
+    private_mac_valid: bool,
     native_nonce_flow_consumed: bool,
     selection_data_inspected: bool,
 }
@@ -231,6 +240,7 @@ impl ChooserEvidence {
             event_kind: "none",
             event_was_trusted: false,
             native_dialog_interaction_observed: false,
+            private_mac_valid: false,
             native_nonce_flow_consumed: false,
             selection_data_inspected: false,
         }
@@ -248,6 +258,7 @@ impl ChooserEvidence {
             event_kind,
             event_was_trusted: true,
             native_dialog_interaction_observed: true,
+            private_mac_valid: false,
             native_nonce_flow_consumed: false,
             selection_data_inspected: false,
         }
@@ -348,7 +359,7 @@ impl HostReport {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 struct TrustedTokenBundle {
     capture_ready: String,
     confirm_begin: String,
@@ -357,6 +368,7 @@ struct TrustedTokenBundle {
     cancel_finish: String,
     chooser_begin: String,
     chooser_finish: String,
+    evidence_mac_key: [u8; TOKEN_BYTES],
 }
 
 impl TrustedTokenBundle {
@@ -369,15 +381,18 @@ impl TrustedTokenBundle {
         if !remainder.is_empty() || chunks.len() != TOKEN_COUNT {
             return Err("ERR_HOST_SMOKE_NONCE_COUNT");
         }
-        let mut chunks = chunks.iter().map(|chunk| hex_token(chunk));
+        let mut token_chunks = chunks[..TOKEN_COUNT - 1]
+            .iter()
+            .map(|chunk| hex_token(chunk));
         Ok(Self {
-            capture_ready: chunks.next().ok_or("ERR_HOST_SMOKE_NONCE_COUNT")?,
-            confirm_begin: chunks.next().ok_or("ERR_HOST_SMOKE_NONCE_COUNT")?,
-            confirm_finish: chunks.next().ok_or("ERR_HOST_SMOKE_NONCE_COUNT")?,
-            cancel_begin: chunks.next().ok_or("ERR_HOST_SMOKE_NONCE_COUNT")?,
-            cancel_finish: chunks.next().ok_or("ERR_HOST_SMOKE_NONCE_COUNT")?,
-            chooser_begin: chunks.next().ok_or("ERR_HOST_SMOKE_NONCE_COUNT")?,
-            chooser_finish: chunks.next().ok_or("ERR_HOST_SMOKE_NONCE_COUNT")?,
+            capture_ready: token_chunks.next().ok_or("ERR_HOST_SMOKE_NONCE_COUNT")?,
+            confirm_begin: token_chunks.next().ok_or("ERR_HOST_SMOKE_NONCE_COUNT")?,
+            confirm_finish: token_chunks.next().ok_or("ERR_HOST_SMOKE_NONCE_COUNT")?,
+            cancel_begin: token_chunks.next().ok_or("ERR_HOST_SMOKE_NONCE_COUNT")?,
+            cancel_finish: token_chunks.next().ok_or("ERR_HOST_SMOKE_NONCE_COUNT")?,
+            chooser_begin: token_chunks.next().ok_or("ERR_HOST_SMOKE_NONCE_COUNT")?,
+            chooser_finish: token_chunks.next().ok_or("ERR_HOST_SMOKE_NONCE_COUNT")?,
+            evidence_mac_key: chunks[TOKEN_COUNT - 1],
         })
     }
 
@@ -385,7 +400,8 @@ impl TrustedTokenBundle {
         format!(
             concat!(
                 "{{captureReady:\"{}\",confirmBegin:\"{}\",confirmFinish:\"{}\",",
-                "cancelBegin:\"{}\",cancelFinish:\"{}\",chooserBegin:\"{}\",chooserFinish:\"{}\"}}"
+                "cancelBegin:\"{}\",cancelFinish:\"{}\",chooserBegin:\"{}\",chooserFinish:\"{}\",",
+                "evidenceMacKey:\"{}\"}}"
             ),
             self.capture_ready,
             self.confirm_begin,
@@ -394,6 +410,7 @@ impl TrustedTokenBundle {
             self.cancel_finish,
             self.chooser_begin,
             self.chooser_finish,
+            hex_token(&self.evidence_mac_key),
         )
     }
 }
@@ -585,6 +602,186 @@ fn hex_token(bytes: &[u8]) -> String {
     encoded
 }
 
+fn framed_field(value: &str) -> String {
+    format!("{}:{value}", value.len())
+}
+
+fn ime_mac_message(
+    token: &str,
+    scenario: &str,
+    counts: &[u32],
+    flags: &[bool],
+    final_utf16_length: u32,
+) -> Option<String> {
+    if counts.len() != 6 || flags.len() != 6 {
+        return None;
+    }
+    let counts = format!(
+        "{},{},{},{},{},{}",
+        counts[0], counts[1], counts[2], counts[3], counts[4], counts[5]
+    );
+    let flags = flags
+        .iter()
+        .map(|value| if *value { '1' } else { '0' })
+        .collect::<String>();
+    let final_utf16_length = final_utf16_length.to_string();
+    Some(format!(
+        "P0-HOST-SMOKE-IME-V1|{}|{}|{}|{}|{}",
+        framed_field(token),
+        framed_field(scenario),
+        framed_field(&counts),
+        framed_field(&flags),
+        framed_field(&final_utf16_length),
+    ))
+}
+
+fn chooser_mac_message(token: &str, event_kind: &str) -> Option<String> {
+    if event_kind != "cancel" && event_kind != "change" {
+        return None;
+    }
+    Some(format!(
+        "P0-HOST-SMOKE-CHOOSER-V1|{}|{}",
+        framed_field(token),
+        framed_field(event_kind),
+    ))
+}
+
+fn sha256(message: &[u8]) -> [u8; HMAC_BYTES] {
+    const INITIAL: [u32; 8] = [
+        0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab,
+        0x5be0cd19,
+    ];
+    const ROUND: [u32; 64] = [
+        0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4,
+        0xab1c5ed5, 0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe,
+        0x9bdc06a7, 0xc19bf174, 0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f,
+        0x4a7484aa, 0x5cb0a9dc, 0x76f988da, 0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7,
+        0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967, 0x27b70a85, 0x2e1b2138, 0x4d2c6dfc,
+        0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85, 0xa2bfe8a1, 0xa81a664b,
+        0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070, 0x19a4c116,
+        0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+        0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7,
+        0xc67178f2,
+    ];
+
+    let bit_length = (message.len() as u64).wrapping_mul(8);
+    let mut padded = Vec::with_capacity(message.len() + HMAC_BLOCK_BYTES * 2);
+    padded.extend_from_slice(message);
+    padded.push(0x80);
+    while padded.len() % HMAC_BLOCK_BYTES != 56 {
+        padded.push(0);
+    }
+    padded.extend_from_slice(&bit_length.to_be_bytes());
+
+    let mut state = INITIAL;
+    let (chunks, remainder) = padded.as_chunks::<HMAC_BLOCK_BYTES>();
+    debug_assert!(remainder.is_empty());
+    for chunk in chunks {
+        let mut words = [0_u32; 64];
+        for (index, word) in words[..16].iter_mut().enumerate() {
+            let offset = index * 4;
+            *word = u32::from_be_bytes([
+                chunk[offset],
+                chunk[offset + 1],
+                chunk[offset + 2],
+                chunk[offset + 3],
+            ]);
+        }
+        for index in 16..64 {
+            let s0 = words[index - 15].rotate_right(7)
+                ^ words[index - 15].rotate_right(18)
+                ^ (words[index - 15] >> 3);
+            let s1 = words[index - 2].rotate_right(17)
+                ^ words[index - 2].rotate_right(19)
+                ^ (words[index - 2] >> 10);
+            words[index] = words[index - 16]
+                .wrapping_add(s0)
+                .wrapping_add(words[index - 7])
+                .wrapping_add(s1);
+        }
+
+        let [mut a, mut b, mut c, mut d, mut e, mut f, mut g, mut h] = state;
+        for index in 0..64 {
+            let sum1 = e.rotate_right(6) ^ e.rotate_right(11) ^ e.rotate_right(25);
+            let choice = (e & f) ^ ((!e) & g);
+            let temporary1 = h
+                .wrapping_add(sum1)
+                .wrapping_add(choice)
+                .wrapping_add(ROUND[index])
+                .wrapping_add(words[index]);
+            let sum0 = a.rotate_right(2) ^ a.rotate_right(13) ^ a.rotate_right(22);
+            let majority = (a & b) ^ (a & c) ^ (b & c);
+            let temporary2 = sum0.wrapping_add(majority);
+            h = g;
+            g = f;
+            f = e;
+            e = d.wrapping_add(temporary1);
+            d = c;
+            c = b;
+            b = a;
+            a = temporary1.wrapping_add(temporary2);
+        }
+        for (slot, value) in state.iter_mut().zip([a, b, c, d, e, f, g, h]) {
+            *slot = slot.wrapping_add(value);
+        }
+    }
+
+    let mut digest = [0_u8; HMAC_BYTES];
+    for (index, word) in state.iter().enumerate() {
+        digest[index * 4..index * 4 + 4].copy_from_slice(&word.to_be_bytes());
+    }
+    digest
+}
+
+/// Minimal RFC 2104 HMAC-SHA256 used only by the non-default host harness.
+fn hmac_sha256(key: &[u8], message: &[u8]) -> [u8; HMAC_BYTES] {
+    let mut key_block = [0_u8; HMAC_BLOCK_BYTES];
+    if key.len() > HMAC_BLOCK_BYTES {
+        key_block[..HMAC_BYTES].copy_from_slice(&sha256(key));
+    } else {
+        key_block[..key.len()].copy_from_slice(key);
+    }
+
+    let mut inner_pad = [0x36_u8; HMAC_BLOCK_BYTES];
+    let mut outer_pad = [0x5c_u8; HMAC_BLOCK_BYTES];
+    for index in 0..HMAC_BLOCK_BYTES {
+        inner_pad[index] ^= key_block[index];
+        outer_pad[index] ^= key_block[index];
+    }
+
+    let mut inner = Vec::with_capacity(HMAC_BLOCK_BYTES + message.len());
+    inner.extend_from_slice(&inner_pad);
+    inner.extend_from_slice(message);
+    let inner_digest = sha256(&inner);
+
+    let mut outer = Vec::with_capacity(HMAC_BLOCK_BYTES + HMAC_BYTES);
+    outer.extend_from_slice(&outer_pad);
+    outer.extend_from_slice(&inner_digest);
+    sha256(&outer)
+}
+
+fn constant_time_mac_matches(expected: &[u8; HMAC_BYTES], supplied_hex: &str) -> bool {
+    if supplied_hex.len() != HMAC_BYTES * 2 {
+        return false;
+    }
+    let supplied = supplied_hex.as_bytes();
+    let mut difference = 0_u8;
+    for (index, byte) in expected.iter().enumerate() {
+        let high = b"0123456789abcdef"[(byte >> 4) as usize];
+        let low = b"0123456789abcdef"[(byte & 0x0f) as usize];
+        difference |= high ^ supplied[index * 2];
+        difference |= low ^ supplied[index * 2 + 1];
+    }
+    difference == 0
+}
+
+fn evidence_mac_valid(key: &[u8], message: Option<String>, supplied_hex: &str) -> bool {
+    message.is_some_and(|message| {
+        let expected = hmac_sha256(key, message.as_bytes());
+        constant_time_mac_matches(&expected, supplied_hex)
+    })
+}
+
 fn build_initialization_script(tokens: &TrustedTokenBundle) -> Result<String, &'static str> {
     if INITIALIZATION_SCRIPT_TEMPLATE
         .matches(TOKEN_BUNDLE_PLACEHOLDER)
@@ -744,19 +941,29 @@ fn host_release_smoke_trusted_ime_finish(
     counts: Vec<u32>,
     flags: Vec<bool>,
     final_utf16_length: u32,
+    evidence_mac: String,
 ) -> Result<String, String> {
     if state.mode != HostMode::Manual {
         return Err("ERR_HOST_SMOKE_MANUAL_MODE_REQUIRED".into());
     }
     let mut evidence =
         ImeEvidence::from_private_capture(&scenario, &counts, &flags, final_utf16_length);
-    let passed = evidence.status == "passed";
-    state
+    let mut flow = state
         .trusted_flow
         .lock()
-        .map_err(|_| "ERR_HOST_SMOKE_STATE".to_string())?
-        .finish_ime(&scenario, &token, passed)
+        .map_err(|_| "ERR_HOST_SMOKE_STATE".to_string())?;
+    evidence.private_mac_valid = evidence_mac_valid(
+        &flow.tokens.evidence_mac_key,
+        ime_mac_message(&token, &scenario, &counts, &flags, final_utf16_length),
+        &evidence_mac,
+    );
+    if !evidence.private_mac_valid {
+        evidence.status = "failed";
+    }
+    let passed = evidence.status == "passed";
+    flow.finish_ime(&scenario, &token, passed)
         .map_err(str::to_string)?;
+    drop(flow);
     evidence.native_nonce_flow_consumed = true;
     let snapshot = state
         .update(|report| {
@@ -803,18 +1010,29 @@ fn host_release_smoke_trusted_chooser_finish(
     state: State<'_, HostSmokeState>,
     token: String,
     event_kind: String,
+    evidence_mac: String,
 ) -> Result<String, String> {
     if state.mode != HostMode::Manual {
         return Err("ERR_HOST_SMOKE_MANUAL_MODE_REQUIRED".into());
     }
     let mut evidence = ChooserEvidence::from_private_capture(&event_kind);
-    let passed = evidence.status == "passed";
-    state
+    let mut flow = state
         .trusted_flow
         .lock()
-        .map_err(|_| "ERR_HOST_SMOKE_STATE".to_string())?
-        .finish_chooser(&token, passed)
+        .map_err(|_| "ERR_HOST_SMOKE_STATE".to_string())?;
+    evidence.private_mac_valid = evidence_mac_valid(
+        &flow.tokens.evidence_mac_key,
+        chooser_mac_message(&token, &event_kind),
+        &evidence_mac,
+    );
+    if !evidence.private_mac_valid {
+        evidence.status = "failed";
+    }
+    let passed = evidence.status == "passed";
+    flow.finish_chooser(&token, passed)
         .map_err(str::to_string)?;
+    flow.tokens.evidence_mac_key.fill(0);
+    drop(flow);
     evidence.native_nonce_flow_consumed = true;
     let snapshot = state
         .update(|report| {
@@ -1005,7 +1223,7 @@ fn atomic_json(evidence: &AtomicReplaceEvidence) -> String {
 
 fn ime_json(evidence: &ImeEvidence) -> String {
     format!(
-        "{{\"status\": \"{}\", \"captureSource\": \"nativeInitializationScript\", \"compositionStartCount\": {}, \"compositionUpdateCount\": {}, \"compositionEndCount\": {}, \"beforeInputCount\": {}, \"inputCount\": {}, \"rejectedUntrustedEventCount\": {}, \"strictSequenceValid\": {}, \"compositionDataValid\": {}, \"inputFieldsValid\": {}, \"singleTargetValid\": {}, \"finalStateMatches\": {}, \"nativeNonceFlowConsumed\": {}, \"finalUtf16Length\": {}}}",
+        "{{\"status\": \"{}\", \"captureSource\": \"nativeInitializationScript\", \"compositionStartCount\": {}, \"compositionUpdateCount\": {}, \"compositionEndCount\": {}, \"beforeInputCount\": {}, \"inputCount\": {}, \"rejectedUntrustedEventCount\": {}, \"strictSequenceValid\": {}, \"compositionDataValid\": {}, \"inputFieldsValid\": {}, \"singleTargetValid\": {}, \"finalStateMatches\": {}, \"rejectedEventSetEmpty\": {}, \"privateMacValid\": {}, \"nativeNonceFlowConsumed\": {}, \"finalUtf16Length\": {}}}",
         evidence.status,
         evidence.composition_start_count,
         evidence.composition_update_count,
@@ -1018,6 +1236,8 @@ fn ime_json(evidence: &ImeEvidence) -> String {
         evidence.input_fields_valid,
         evidence.single_target_valid,
         evidence.final_state_matches,
+        evidence.rejected_event_set_empty,
+        evidence.private_mac_valid,
         evidence.native_nonce_flow_consumed,
         evidence.final_utf16_length,
     )
@@ -1025,11 +1245,12 @@ fn ime_json(evidence: &ImeEvidence) -> String {
 
 fn chooser_json(evidence: &ChooserEvidence) -> String {
     format!(
-        "{{\"status\": \"{}\", \"captureSource\": \"nativeInitializationScript\", \"eventKind\": \"{}\", \"eventWasTrusted\": {}, \"nativeDialogInteractionObserved\": {}, \"nativeNonceFlowConsumed\": {}, \"selectionDataInspected\": {}}}",
+        "{{\"status\": \"{}\", \"captureSource\": \"nativeInitializationScript\", \"eventKind\": \"{}\", \"eventWasTrusted\": {}, \"nativeDialogInteractionObserved\": {}, \"privateMacValid\": {}, \"nativeNonceFlowConsumed\": {}, \"selectionDataInspected\": {}}}",
         evidence.status,
         evidence.event_kind,
         evidence.event_was_trusted,
         evidence.native_dialog_interaction_observed,
+        evidence.private_mac_valid,
         evidence.native_nonce_flow_consumed,
         evidence.selection_data_inspected,
     )
@@ -1056,6 +1277,7 @@ mod tests {
             cancel_finish: "cancel-finish".into(),
             chooser_begin: "chooser-begin".into(),
             chooser_finish: "chooser-finish".into(),
+            evidence_mac_key: [0x0b; TOKEN_BYTES],
         }
     }
 
@@ -1112,7 +1334,7 @@ mod tests {
         let passing = ImeEvidence::from_private_capture(
             "confirm",
             &[1, 2, 1, 2, 2, 0],
-            &[true, true, true, true, true],
+            &[true, true, true, true, true, true],
             "\u{786e}\u{8ba4}\u{ff1a}\u{4e2d}\u{6587}"
                 .encode_utf16()
                 .count() as u32,
@@ -1122,7 +1344,7 @@ mod tests {
         let synthetic_sample = ImeEvidence::from_private_capture(
             "confirm",
             &[1, 2, 1, 2, 2, 1],
-            &[true, true, true, true, true],
+            &[true, true, true, true, true, false],
             "\u{786e}\u{8ba4}\u{ff1a}\u{4e2d}\u{6587}"
                 .encode_utf16()
                 .count() as u32,
@@ -1132,7 +1354,7 @@ mod tests {
         let loose_order = ImeEvidence::from_private_capture(
             "confirm",
             &[2, 2, 1, 2, 2, 0],
-            &[false, true, true, true, true],
+            &[false, true, true, true, true, true],
             5,
         );
         assert_eq!(loose_order.status, "failed");
@@ -1186,6 +1408,63 @@ mod tests {
             flow.begin_chooser("frontend-invented"),
             Err("ERR_HOST_SMOKE_CHOOSER_BEGIN_TOKEN")
         );
+    }
+
+    #[test]
+    fn private_mac_matches_rfc2104_and_rejects_transport_tampering() {
+        // RFC 4231 test case 1 (RFC 2104 HMAC construction with SHA-256).
+        let rfc_key = [0x0b_u8; 20];
+        let rfc_mac = hmac_sha256(&rfc_key, b"Hi There");
+        assert_eq!(
+            hex_token(&rfc_mac),
+            "b0344c61d8db38535ca8afceaf0bf12b881dc200c9833da726e9376c2e32cff7"
+        );
+        assert!(constant_time_mac_matches(
+            &rfc_mac,
+            "b0344c61d8db38535ca8afceaf0bf12b881dc200c9833da726e9376c2e32cff7"
+        ));
+        assert!(!constant_time_mac_matches(
+            &rfc_mac,
+            "b0344c61d8db38535ca8afceaf0bf12b881dc200c9833da726e9376c2e32cff0"
+        ));
+
+        let key = [0x08_u8; TOKEN_BYTES];
+        let token = "03".repeat(TOKEN_BYTES);
+        let counts = [1, 2, 1, 2, 2, 0];
+        let flags = [true, true, true, true, true, true];
+        let message =
+            ime_mac_message(&token, "confirm", &counts, &flags, 5).expect("canonical IME message");
+        let mac = hex_token(&hmac_sha256(&key, message.as_bytes()));
+        assert_eq!(
+            message,
+            concat!(
+                "P0-HOST-SMOKE-IME-V1|64:",
+                "0303030303030303030303030303030303030303030303030303030303030303",
+                "|7:confirm|11:1,2,1,2,2,0|6:111111|1:5"
+            )
+        );
+        assert_eq!(
+            mac,
+            "dce9c11dd39f6b63672d4d75f76ceb7d3e0035e71322bd88d610995ec8c6e573"
+        );
+        assert!(evidence_mac_valid(&key, Some(message), &mac));
+
+        let tampered_counts = [1, 9, 1, 2, 2, 0];
+        assert!(!evidence_mac_valid(
+            &key,
+            ime_mac_message(&token, "confirm", &tampered_counts, &flags, 5),
+            &mac,
+        ));
+        assert!(!evidence_mac_valid(
+            &key,
+            chooser_mac_message(&token, "cancel"),
+            &hex_token(&hmac_sha256(
+                &key,
+                chooser_mac_message(&token, "change")
+                    .expect("canonical chooser message")
+                    .as_bytes(),
+            )),
+        ));
     }
 
     #[test]
