@@ -1,93 +1,99 @@
 # P0-HOST-SMOKE-01 — macOS release host smoke harness
 
-- Status: CLAIMED
+- Status: REVIEW
 - Owner / next owner: `/root/p0_host_smoke` / Integration
-- Base revision / head revision: `4fcc284` / `263d750` (NO-MERGE review restart; fix pending)
+- Base revision / head revision: `4fcc284` / `770ec51` (implementation head; reviewed handoff metadata follows)
 - Requirement IDs: `EDIT-IME-001`, `FILE-SAVE-001`, `OPS-BUILD-001`, `OPS-CONTEXT-001`, `OPS-HANDOFF-001`
-- Product UX IDs: `UX-EDIT-003`, `UX-KEY-001`, `UX-PLATFORM-001` (Phase 0 host evidence only; this task does not complete product acceptance)
+- Product UX IDs: `UX-EDIT-003`, `UX-KEY-001`, `UX-PLATFORM-001` (Phase 0 host evidence only; no product acceptance claim)
 - Test / acceptance IDs: `IME-001`, `FILE-001`, `AC-KEY-001`, `AC-PLATFORM-001`, `BUILD-001`, `PROC-001`, `PROC-002`
-- ADRs / contract and schema versions: `ADR-0001`, `ADR-0002`; IPC `1.0-draft` untouched
-- Feature flags: no product flag; non-default Cargo build feature `host-release-smoke`, test-build-only `VITE_HOST_RELEASE_SMOKE=1`, and runtime `MARKDOWN_WORKSPACE_HOST_RELEASE_SMOKE=1` latch
-- Owned and touched paths: `src-tauri/Cargo.toml`, `src-tauri/src/lib.rs`, `src-tauri/src/host_release_smoke.rs`, `src/app/bootstrap/AppBootstrap.tsx`, `src/features/editor/host-smoke/**`, `tests/host-smoke/**`, this task note, and only the `P0-HOST-SMOKE-01` row in `docs/PROJECT_STATE.md`
+- ADRs / contract and schema versions: accepted `ADR-0001`, accepted `ADR-0002`; IPC `1.0-draft` untouched
+- Feature flags: no product flag; non-default Cargo feature `host-release-smoke`, test-build-only `VITE_HOST_RELEASE_SMOKE=1`, runtime `MARKDOWN_WORKSPACE_HOST_RELEASE_SMOKE=1`, manual/automated mode, and private system-temp-root gates
+- Owned and touched paths: `src-tauri/Cargo.toml`, `src-tauri/src/lib.rs`, `src-tauri/src/host_release_smoke.rs`, `src-tauri/src/host_release_smoke_init.js`, `src/app/bootstrap/AppBootstrap.tsx`, `src/features/editor/host-smoke/**`, `tests/host-smoke/**`, this task note, and only the `P0-HOST-SMOKE-01` row in `docs/PROJECT_STATE.md`
 
 ## Goal and non-goals
 
-Supply the missing macOS release-host evidence required by accepted `ADR-0001` migration/rollback: a real Tauri/WKWebView harness that can record Chinese composition candidate confirmation and cancellation against a real CodeMirror control; expose a system menu plus a native chooser whose cancel path reads no path or content; and execute a scoped atomic-replace self-test only below a private system-temporary directory with a structured, content-free report.
+Supply the missing macOS release-host evidence named by accepted `ADR-0001` migration/rollback: a real Tauri/WKWebView harness that can record system Chinese composition confirmation and cancellation against a real CodeMirror control; expose a system menu and a native chooser whose cancel path reads no path/content; and execute an atomic-replace self-test only below a private system-temporary directory with a structured, content-free report.
 
-The harness is test-only. It does not implement Phase 1 open/save/session behavior, does not change frozen IPC or product feature flags, does not read user documents, and cannot by itself complete `AC-KEY-001`, `AC-PLATFORM-001`, or the full `FILE-001` fault-injection matrix. Real Pinyin candidate interaction and visual menu/chooser verification remain an Integration-run host step.
+The harness is test-only. It does not implement Phase 1 open/save/session behavior, change frozen IPC or product flags, read a user document, or complete the product `IME-001`, `FILE-001`, `AC-KEY-001`, or `AC-PLATFORM-001` acceptance suites. `automatedReady` proves only the automatic host prerequisites; it is not `manualPass`. Real system-Pinyin, menu activation, and chooser open/cancel remain Integration-run host evidence.
 
 ## Dependencies and baseline
 
-- Dependency task/freeze status: explicit dependency on reviewed `P0-SPIKE-01` tip `4fcc284`; F0 is not published and Phase 1 remains blocked. Integration explicitly delegated the narrow host evidence task and the non-default Cargo/test build surface.
-- Baseline commands:
-  - `ruby scripts/validate_design_docs.rb`
-  - `volta run --node 24.14.0 --pnpm 10.32.1 pnpm install --frozen-lockfile`
-  - `PATH="${CARGO_HOME:-${HOME}/.cargo}/bin:${PATH}" volta run --node 24.14.0 --pnpm 10.32.1 pnpm verify`
-- Baseline result: PASS at `4fcc284` on macOS 26.6.2 (25G83) arm64, Node 24.14.0, pnpm 10.32.1, and Rust 1.98.0. The documentation gate reported 23 Markdown files / 70 relative links / 83 test IDs and snapshot `1e299acb...`; the full repository gate passed 21/21 frontend tests, Rust fmt/clippy/tests, the 33-module product Vite build, and a Tauri debug build.
+- Explicit dependency: reviewed `P0-SPIKE-01` tip `4fcc284`, used only for the real CodeMirror control. F0 was not inferred and Phase 1 remained out of scope.
+- Integration delegated the narrow host evidence surface, including the non-default Cargo/test build.
+- Baseline at `4fcc284`: `ruby scripts/validate_design_docs.rb`, frozen `pnpm install`, and pinned `pnpm verify` passed on macOS 26.6.2 arm64 with Node 24.14.0, pnpm 10.32.1, and Rust 1.98.0.
 
 ## Acceptance criteria status
 
 | Requirement / acceptance ID | Expected evidence | Status |
 |---|---|---|
-| `IME-001` / `EDIT-IME-001` | Release WKWebView records composition start/update/end, candidate-confirm final state, candidate-cancel unchanged state, and no decoration switch while composing | HARNESS PASS; real system-Pinyin interaction PENDING Integration; does not complete product `IME-001` |
-| `AC-KEY-001` / `UX-KEY-001` | Host-only system menu is visually reviewable and its deterministic menu IDs are reported | PARTIAL PASS: native menu construction/report automated; human activation PENDING; no product AC claim |
-| `AC-PLATFORM-001` / `UX-PLATFORM-001` | Release macOS host exposes the real WKWebView, native chooser, and manual Pinyin flow | PARTIAL PASS: release WKWebView, CodeMirror and native file input automated; visual interaction PENDING; no product AC claim |
-| `FILE-001` / `FILE-SAVE-001` | Host self-test writes only a private system-temp fixture, flushes, atomically replaces, verifies old-or-new integrity, and reports without paths/content | PASS for the scoped success-path host self-test; full product fault-injection matrix remains out of scope |
-| `BUILD-001` / `OPS-BUILD-001` | Default debug/release contain no host-smoke surface; explicit non-default release build launches and reports | PASS: default debug/release sentinel-free; doubly gated host release reports `automatedReady` |
-| `PROC-001`, `PROC-002` | Durable task context, exact evidence, limitations, and next action survive handoff | PASS |
+| `IME-001` / `EDIT-IME-001` | Trusted release-WKWebView composition start/update/end, strict `beforeinput`/`input` pairs, confirmed fixed text, and canceled unchanged fixed text | AUTOMATIC HARNESS PASS; real system-Pinyin confirmation/cancellation PENDING Integration; no product `IME-001` claim |
+| `AC-KEY-001` / `UX-KEY-001` | Host-only system menu is visible and native activation is recorded | PARTIAL PASS: native menu construction/report automated; real activation PENDING Integration; no product AC claim |
+| `AC-PLATFORM-001` / `UX-PLATFORM-001` | Release macOS host uses WKWebView, real CodeMirror, and native chooser | PARTIAL PASS: release host/control/input mounted automatically; chooser must actually open and emit trusted cancel under Integration; no product AC claim |
+| `FILE-001` / `FILE-SAVE-001` | Private-temp self-test flushes, atomically replaces, verifies integrity, and reports no path/content | PASS for the scoped success-path host self-test; the product fault-injection matrix remains out of scope |
+| `BUILD-001` / `OPS-BUILD-001` | Default debug/release have zero harness surface; only the explicitly gated feature release can run | PASS: default builds are marker/legacy-command free; feature + runtime + mode + private-root gates fail closed; automatic host report is `automatedReady` |
+| `PROC-001`, `PROC-002` | Durable exact evidence, limitations, and next action survive handoff | PASS after final task-note/state checkpoint |
 
 ## Changes made
 
-- Added a macOS-only, non-default `host-release-smoke` Cargo feature. The module is absent from default native builds and registers no product IPC or product feature flag.
-- Added a fail-closed native harness with fixed command/menu IDs, immutable runtime frontend latch, structured content-free JSON, release-only startup validation, sticky evidence failures, and exact-PID timeout behavior.
-- Added a real CodeMirror/WKWebView test screen that observes native composition events and the reviewed spike's freeze phases. Confirmation and cancellation use fixed test strings; only event counts, booleans, and UTF-16 length cross the test bridge.
-- Added a browser-native file input that observes only `cancel`/`change` plus selected-count. Source and runner checks reject `FileReader`, byte/text streams, filename, fake path, and relative-path access.
-- Added a private system-temp atomic-replace self-test: create old version, flush, verify, create/flush same-directory staging version, atomic rename, directory flush, verify complete new version, and exact cleanup.
-- Added a Ruby stdlib release runner that builds and scans default release, builds the explicit host release, checks the runtime latch negatively, launches with a private root and timeout, validates the report, and optionally exposes the four-step manual host flow.
-- Added no dependency. `pnpm-lock.yaml` and `src-tauri/Cargo.lock` have no delta; frozen IPC `1.0-draft` and product flags are untouched.
+- Added a macOS-only, non-default Cargo feature. Default native builds do not compile the host module, and the default frontend build does not import the host screen.
+- Added build-time Vite, native feature, runtime opt-in, mode, release-profile, macOS, and canonical private-system-temp-root gates. A feature build without the runtime latch uses the ordinary shell and writes no report.
+- Added a document-start private capture boundary installed after Tauri core and before page scripts. It captures native event accessors, DOM methods, Tauri invoke, `TextEncoder`, and WebCrypto methods; page React code receives no evidence command or token.
+- Added eight independently generated 256-bit values: seven ordered one-time flow tokens plus an evidence-MAC key. The key is immediately imported as a non-extractable sign-only WebCrypto `CryptoKey`; the raw byte buffer and injected key field are cleared after import.
+- Added a zero-dependency minimal SHA-256/RFC 2104 HMAC implementation in the host-only Rust module. Length-framed canonical messages authenticate token, scenario/event kind, six counts, exactly six flags, and final UTF-16 length. Rust performs a fixed-content constant-time lowercase-hex comparison before accepting evidence.
+- Added sticky native flow states for capture-ready, confirm begin/finish, cancel begin/finish, and chooser begin/finish. Wrong order, wrong token, invalid MAC, failed evidence, and replay cannot become pass.
+- Added strict trusted IME capture: `Event.isTrusted`, native `CompositionEvent`/`InputEvent`, one target, a single ordered composition, bounded `data`, required `inputType`/`isComposing`, fixed confirmation text `确认：中文`, and unchanged cancellation text `取消：`. Synthetic or rejected events make the scenario fail.
+- Added a browser-native file input. Only a trusted DOM `cancel` can pass; trusted `change` fails. The harness never reads `files`, path, name, content, bytes, streams, or readers. This is reported honestly as a compiled-source denylist audit, not a fabricated runtime read counter.
+- Added a private system-temp atomic-replace self-test: create/flush/verify the old fixed fixture, create/flush same-directory staging, atomic rename, directory flush, verify the complete new fixed fixture, and exact cleanup. The report contains no path or content.
+- Added a Ruby stdlib release runner that builds/scans the default release, builds the feature release, exercises negative runtime gating, launches with exact PID timeout and a private root, validates schema/privacy, and removes all runner-owned temporary evidence.
+- Added malicious negatives for synthetic/untrusted event attempts and same-realm transport payload tampering, plus RFC 4231 and fixed WebCrypto/Rust canonical HMAC vectors.
+- Added no dependency. `package.json`, `pnpm-lock.yaml`, `src-tauri/Cargo.toml`, and `src-tauri/Cargo.lock` have no dependency delta from the reviewed predecessor; frozen IPC and product flags are unchanged.
 
 ## Decisions and assumptions
 
-- The reviewed editor spike is used only as a real CodeMirror input control; no Phase 1 session/file behavior is inferred from it.
-- Test UI and commands must require both a non-default build-time gate and a runtime opt-in. Default debug/release binaries must not contain callable host commands or visible harness UI.
-- The host frontend additionally requires a native-injected, non-writable window latch. A host-feature binary launched without the runtime enable variable keeps the ordinary shell and writes no smoke report.
-- The chooser harness never reads a `File`, filename, browser fake path, or bytes. It reports only cancel/change event kind and selected-count bucket; a selected file is not accepted by the smoke path.
-- Structured artifacts contain booleans, enums, counts, timings, versions, and hashes of fixed test expectations only. They contain no user text, clipboard data, document content, or absolute path.
-- A synthetic composition event is never accepted as release-host proof. The automated report deliberately leaves both IME scenarios, menu activation, and chooser cancellation `pending`; only real Integration interaction can produce `manualPass`.
+- The editor spike is only a real host input control. No spike-only behavior is accepted as Phase 1 architecture.
+- Private initialization-script evidence, ordered native tokens, and an authenticated canonical payload are all required. Any missing layer fails closed.
+- Same-realm page code may observe or disrupt Tauri transport but cannot change authenticated evidence into a pass; doing so invalidates the Rust-held HMAC check. A replay consumes or encounters a terminal native flow state.
+- Reports contain only fixed enums, booleans, bounded counts/lengths, and fixed-schema metadata. Tokens, keys, MACs, user text, filenames, paths, clipboard data, and document content never enter a report or committed artifact.
+- `nativeDialogInteractionObserved` means a trusted native DOM chooser event followed an explicitly trusted open action; it does not claim the automatic runner opened the dialog. Automatic mode keeps chooser evidence pending.
+- Real Pinyin event compatibility has not been asserted. Integration must run the exact manual sequence on the release host and accept only the runner's fail-closed `manualPass` validation.
 
 ## Verification evidence
 
-| Test / acceptance ID | Exact command and environment | Result | Artifact or failure |
+| Test / acceptance ID | Exact command/environment | Result | Artifact or failure |
 |---|---|---|---|
-| `PROC-001`, `PROC-002` baseline docs | `ruby scripts/validate_design_docs.rb` at `4fcc284`; macOS 26.6.2 arm64 | PASS; 23 Markdown files, 70 relative links, 83 test IDs | stdout only; snapshot `1e299acb...` |
-| `BUILD-001` inherited baseline | `volta run --node 24.14.0 --pnpm 10.32.1 pnpm install --frozen-lockfile` then pinned Rust `PATH` + `pnpm verify` at `4fcc284` | PASS; 21/21 frontend tests, Rust fmt/clippy/tests, Vite build, Tauri debug build | ignored build output only |
-| `BUILD-001`, `IME-001`, `FILE-001` full task gate | `PATH="<rustup-bin>:$PATH" volta run --node 24.14.0 --pnpm 10.32.1 pnpm verify` at `9d33b40`; macOS 26.6.2 (25G83) arm64, Node 24.14.0, pnpm 10.32.1, Rust 1.98.0 | PASS; format/lint/typecheck, 23/23 frontend tests, Rust fmt/clippy, 3/3 host Rust tests, default Vite build and default Tauri debug build | ignored build output only |
-| `BUILD-001` default debug isolation | `rg -a` negative sentinel scan over default `src-tauri/target/debug/markdown-workspace` and `dist` after `pnpm verify` | PASS; no native or frontend host marker | stdout only |
-| `BUILD-001`, `IME-001`, `FILE-001`, `AC-KEY-001`, `AC-PLATFORM-001` release runner | `PATH="<rustup-bin>:$PATH" ruby tests/host-smoke/run_host_release_smoke.rb` at `9d33b40` | PASS twice in the task worktree; default release had no test surface, explicit host release had all expected markers, missing runtime latch wrote no report, automated WKWebView report was `automatedReady` | runner-owned private system-temp report/log removed after validation |
-| same IDs, clean clone | `git clone --no-hardlinks --branch task/P0-HOST-SMOKE-01-host-release <local-repo> <system-temp>/repo`; frozen `pnpm install`; pinned `pnpm verify`; release runner | PASS at `9d33b40`; 23/23 frontend, 3/3 Rust host, debug build, default/host release isolation, automated WKWebView report | exact clean-clone temporary root removed after PASS |
-| dependency security audit | `pnpm audit --registry=https://registry.npmjs.org --audit-level high --prod` and full dev audit | PASS; no known vulnerabilities | no artifact |
-| dependency security audit | `cargo audit --file src-tauri/Cargo.lock` with cargo-audit 0.22.2 | PASS for vulnerabilities; 0 vulnerability findings, 17 inherited allowed warnings (unmaintained GTK3/proc-macro/unic transitive crates and one `glib` unsoundness warning); no lock delta from `4fcc284` | advisory database fetched locally; no repository artifact |
-| schema drift | No schema-drift command exists on the `4fcc284` base because `P0-CONTRACT-01` was not integrated; this task changed no IPC/schema/generated file | NOT AVAILABLE on this branch; Integration must run the current contract drift gate after merge | not a host-harness bypass |
-| `PROC-001`, `PROC-002` final docs gate | `ruby scripts/validate_design_docs.rb` after REVIEW handoff update | PASS; 23 Markdown files, 70 relative links, 83 test IDs | stdout only; validator emitted the final deterministic snapshot |
+| `PROC-001`, `PROC-002` baseline docs | `ruby scripts/validate_design_docs.rb` at `4fcc284`; macOS 26.6.2 arm64 | PASS; 23 Markdown files / 70 links / 83 test IDs | stdout only |
+| `BUILD-001` inherited baseline | frozen `pnpm install` then pinned Rust `PATH` + `volta run --node 24.14.0 --pnpm 10.32.1 pnpm verify` at `4fcc284` | PASS; 21/21 frontend tests, Rust fmt/clippy/tests, Vite build, Tauri debug build | ignored build output only |
+| `IME-001`, `BUILD-001` authenticated focused tests | `volta run --node 24.14.0 --pnpm 10.32.1 pnpm exec vitest run src/features/editor/host-smoke/hostReleaseSmokeInit.test.ts`; `cargo test --manifest-path src-tauri/Cargo.toml --all-targets --features host-release-smoke` | PASS; 3/3 JS tests and 6/6 Rust tests, including synthetic/untrusted, altered transport, wrong order/token, replay, RFC 4231, fixed cross-runtime vector, and chooser-change negatives | stdout only |
+| `BUILD-001`, `IME-001`, `FILE-001` full task gate | `PATH="<rustup-bin>:$PATH" volta run --node 24.14.0 --pnpm 10.32.1 pnpm verify` at `770ec51` | PASS; format/lint/typecheck, 24/24 frontend tests, Rust fmt/clippy, 6/6 host Rust tests, default Vite build, default Tauri debug build | ignored build output only |
+| `BUILD-001`, `IME-001`, `FILE-001`, `AC-KEY-001`, `AC-PLATFORM-001` release runner | `PATH="<rustup-bin>:$PATH" ruby tests/host-smoke/run_host_release_smoke.rb` at `770ec51` | PASS; default release marker/legacy-command free, feature release markers present, runtime-negative wrote no report, document-start WebCrypto/capture ready, atomic/menu/frontend/static-no-read ready, manual evidence pending, `resultState=automatedReady` | runner-owned private report/log/root removed after validation |
+| same IDs, clean clone | `git clone --no-local --branch task/P0-HOST-SMOKE-01-host-release <local-repo> <system-temp>/repo`; frozen `pnpm install`; pinned `pnpm verify`; release runner; docs gate at `770ec51` | PASS; 24/24 frontend, 6/6 Rust host, default debug build, default/feature release isolation, automatic WKWebView report | exact clean-clone root removed securely after PASS |
+| dependency security audit | npm-registry `pnpm audit --audit-level low` and `cargo audit` in `src-tauri` at `770ec51` | PASS; no npm/Rust vulnerability finding; 17 inherited allowed RustSec warnings | no repository artifact; no dependency/lock delta |
+| dependency/manifest isolation | `git diff --exit-code 7dc08a6 -- src-tauri/Cargo.toml src-tauri/Cargo.lock` | PASS; no direct-dependency or lock delta for the HMAC repair | stdout only |
+| independent strict security/release review | read-only review of `7dc08a6..770ec51` plus current durable handoff; reviewer independently reran focused/full/release/docs checks | MERGE; no security, correctness, release-isolation, privacy, or documentation blocker; validator snapshot `8c438728339c09e3517951b3ddf19531a304a261db37a34880df7dccb2eabe10` | no repository artifact; real system-Pinyin/menu/chooser explicitly left to Integration |
+| schema drift | No schema-drift command exists on the `4fcc284` base; this task changed no IPC/schema/generated file | NOT AVAILABLE on this branch; Integration runs the current contract drift gate after combining branches | not a host-harness bypass |
+| `PROC-001`, `PROC-002` final docs gate | `ruby scripts/validate_design_docs.rb` after the REVIEW checkpoint | PASS; 23 Markdown files / 70 links / 83 test IDs; snapshot `f923b9c3cfe82492808432a1662483f38098fe9602f1e57b7f28d6b1d88b29ab` before the terminal task-note/ledger metadata mirror | stdout only |
 
 ## Open questions and blockers
 
-- Owner `/root/p0_host_smoke`: independent review rejected `263d750` because React-authored counts/flags/event kinds could fabricate `manualPass`; `Event.isTrusted`, `InputEvent.data/inputType/isComposing`, a strict single-composition sequence, and chooser trust were not enforced, while fixed zero read-attempt counters were not an observed fact. Replace this with native-nonce-bound private capture/state-machine evidence, malicious synthetic-event negatives, and an accurately labeled static no-read audit before returning to REVIEW.
-- Owner Integration: run the final real macOS system-Pinyin candidate-confirm/cancel plus visual system-menu/native-chooser interaction. A valid report must be `manualPass`, menu activation at least one, both IME sections `passed`, chooser event `cancel`, selected-count `zero`, and both read-attempt counts zero. This is required because synthetic DOM events are not platform evidence; all automated work may continue safely.
-- Owner Integration / Contract: after combining this branch with the current `P0-CONTRACT-01` result, run that revision's schema-drift gate. This branch has no IPC or generated-file delta, so review and manual host verification may continue.
-- Owner Integration / Release: triage the 17 pre-existing RustSec warnings in the shared Tauri lock graph separately. This task introduced no crate or lockfile delta; the scan reported no vulnerabilities, so it does not require widening this harness task.
+- Owner Integration, affected `IME-001` / `AC-KEY-001` / `AC-PLATFORM-001`: run the real system-Pinyin confirmation/cancellation, actual native menu activation, and actual chooser open/cancel. Automatic `automatedReady` is not release-host `manualPass`; Phase 0 evidence remains incomplete until this manual result passes.
+- Owner Integration / Contract, affected integration gates: after combining this branch with the current contract result, run that revision's schema-drift gate. This branch has no IPC/generated/schema delta, so review and manual host verification may continue.
+- Owner Integration / Release, affected dependency hygiene: triage the 17 inherited RustSec warnings in the shared Tauri graph separately. This task added no crate/lock delta and the audit found no vulnerability, so the warnings do not justify widening this host-only task.
+- Owner Integration: the first clean-clone attempt from the rejected predecessor was interrupted and securely removed after the NO-MERGE review. Only the final `770ec51` clean clone above counts as verification evidence.
 
 ## Remaining numbered steps
 
 1. Integration runs `PATH="<rustup-bin>:$PATH" ruby tests/host-smoke/run_host_release_smoke.rb --manual` from the reviewed or integrated revision.
-2. In the visible host: activate **Host Smoke → Record Menu Activation**; confirm `zhongwen` as `中文`; start another Pinyin composition after `取消：` and press Escape; open and cancel the chooser; then refresh and complete.
-3. Integration verifies the runner prints manual PASS and retains no report, log, or temporary root. Any missing event stays fail-closed and must be recorded as an ADR-0001 host blocker, not waved through.
-4. Integration merges/rebases as appropriate and reruns the then-current full and schema-drift gates before accepting Phase 0 evidence.
+2. In the visible release host, activate **Host Smoke → Record Menu Activation**.
+3. Click **Begin confirm capture**, focus the fixed `确认：` editor, use the macOS system Pinyin IME to type `zhongwen`, choose `中文`, then click **Record confirm evidence**.
+4. Click **Begin cancel capture**, focus the fixed `取消：` editor, start a system-Pinyin composition, press Escape so the fixed text remains unchanged, then click **Record cancel evidence**.
+5. Click the chooser control, verify the native file dialog actually opens, cancel it without selecting a file, then refresh and complete the runner flow.
+6. Accept only runner output `manual PASS`. Any missing trusted event, altered sequence, wrong final text, invalid MAC/token, chooser `change`, or incomplete menu evidence stays failed and must be recorded as an `ADR-0001` host blocker.
+7. Integration merges/rebases as appropriate and reruns current full, release-runner, schema-drift, and manual host gates before accepting Phase 0 evidence.
 
 ## Data safety, recovery, and temporary artifacts
 
-All automated runner roots and the clean-clone root were removed by exact canonical path after PASS. The harness read no user file, clipboard image, personal path, Markdown body, filename, or chooser path. Reports contained only fixed schema fields, counts, booleans, enums, and timings; process output remained inside the private root and a failure would expose only its SHA-256 digest. No screenshot or report artifact is committed. A killed/manual-incomplete run is recoverable by rerunning; it cannot modify anything outside its private system-temp root.
+All automatic runner roots and the final clean-clone root were removed by exact canonical path after PASS. One initial cleanup command failed before deletion because it omitted Ruby's `tmpdir` library; the validated retry then securely removed the exact root, and a negative existence check passed. The harness read no user file, clipboard image, personal path, Markdown body, filename, chooser path, or chooser content. Reports contain no token, key, MAC, user text, path, or content. No screenshot, report, log, or temporary fixture is committed. A timed-out/manual-incomplete run terminates only its exact child PID and can write only below its private system-temp root.
 
 ## Single recommended next action
 
-Integration runs the four-step `--manual` release-host flow and accepts only a fail-closed `manualPass` result.
+Integration runs the seven-step manual release-host flow above and accepts only a fail-closed `manualPass` result.
