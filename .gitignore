@@ -1,0 +1,50 @@
+# macOS and editor metadata
+.DS_Store
+.AppleDouble
+.LSOverride
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.swp
+*.swo
+
+# JavaScript dependencies and build output
+node_modules/
+dist/
+coverage/
+.vite/
+*.tsbuildinfo
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Rust and Tauri build output
+target/
+src-tauri/target/
+
+# Test and benchmark output
+test-results/
+playwright-report/
+artifacts/
+benchmark-results/
+
+# Local application state and user data
+.markdown-workspace/
+workspace-data/
+recovery/
+logs/
+*.recovery
+
+# Secrets, signing material, and machine-local configuration
+.env
+.env.*
+!.env.example
+*.pem
+*.p12
+*.mobileprovision
+*.provisionprofile
+*.local
+
+# Local visual reference derived from user-provided screenshots; do not commit.
+docs/prototypes/markdown-workspace-main-v1.png
