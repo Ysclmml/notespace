@@ -10,6 +10,9 @@ export interface EventPayloadSchemaSet {
   schemaVersion: 1;
   apiVersion: ApiVersion;
   generatedBy: string;
+  appError: JsonSchema;
+  recoveryActions: readonly RecoveryAction[];
+  readOnlyRecoveryActions: readonly RecoveryAction[];
   scope: JsonSchema;
   events: Record<IpcEventType, JsonSchema>;
 }
@@ -35,11 +38,9 @@ export interface DecodedAppError {
   knownCode: boolean;
 }
 
-const READ_ONLY_UNKNOWN_ERROR_ACTIONS = [
-  "openSafetyPage",
-  "compare",
-  "openExternal",
-] as const satisfies readonly RecoveryAction[];
+export const RECOVERY_ACTIONS = IPC_EVENT_PAYLOAD_SCHEMAS.recoveryActions;
+export const READ_ONLY_RECOVERY_ACTIONS =
+  IPC_EVENT_PAYLOAD_SCHEMAS.readOnlyRecoveryActions;
 
 const INVALID_SCHEMA_VALUE = Symbol("invalid JSON Schema value");
 type DecodedSchemaValue = unknown | typeof INVALID_SCHEMA_VALUE;
@@ -54,10 +55,6 @@ function isJsonSchema(value: unknown): value is JsonSchema {
 
 function hasOwn(value: JsonRecord, key: string): boolean {
   return Object.prototype.hasOwnProperty.call(value, key);
-}
-
-function isOptionalString(value: unknown): boolean {
-  return value === undefined || typeof value === "string";
 }
 
 export function isJsSafeUnsignedInteger(value: unknown): value is number {
@@ -75,47 +72,34 @@ export function isKnownWriteAction(action: string): boolean {
 function isKnownRecoveryAction(value: unknown): value is RecoveryAction {
   return (
     typeof value === "string" &&
-    [
-      "retry",
-      "requestGrant",
-      "openSafetyPage",
-      "reload",
-      "compare",
-      "overwrite",
-      "saveAs",
-      "openExternal",
-    ].includes(value)
+    (RECOVERY_ACTIONS as readonly string[]).includes(value)
   );
 }
 
 export function decodeAppError(value: unknown): DecodedAppError | null {
-  if (
-    !isRecord(value) ||
-    typeof value.code !== "string" ||
-    value.code.length === 0 ||
-    typeof value.message !== "string" ||
-    !isOptionalString(value.messageKey) ||
-    typeof value.retryable !== "boolean" ||
-    typeof value.correlationId !== "string" ||
-    (value.details !== undefined && !isRecord(value.details)) ||
-    (value.recoveryActions !== undefined &&
-      (!Array.isArray(value.recoveryActions) ||
-        !value.recoveryActions.every((action) => typeof action === "string")))
-  ) {
-    return null;
-  }
+  const decoded = decodeSchemaInternal(
+    value,
+    IPC_EVENT_PAYLOAD_SCHEMAS.appError,
+    IPC_EVENT_PAYLOAD_SCHEMAS.appError,
+    false,
+  );
+  if (decoded === INVALID_SCHEMA_VALUE || !isRecord(decoded)) return null;
 
-  const knownCode = isKnownAppErrorCode(value.code);
-  const knownActions = value.recoveryActions?.filter(isKnownRecoveryAction);
+  const openError = decoded as JsonRecord & {
+    code: string;
+    recoveryActions?: readonly unknown[];
+  };
+  const knownCode = isKnownAppErrorCode(openError.code);
+  const knownActions = openError.recoveryActions?.filter(isKnownRecoveryAction);
   const recoveryActions = knownCode
     ? knownActions
     : knownActions?.filter((action) =>
-        (READ_ONLY_UNKNOWN_ERROR_ACTIONS as readonly string[]).includes(action),
+        (READ_ONLY_RECOVERY_ACTIONS as readonly string[]).includes(action),
       );
   const error = {
-    ...value,
-    ...(value.recoveryActions === undefined ? {} : { recoveryActions }),
-  } as AppError;
+    ...openError,
+    ...(openError.recoveryActions === undefined ? {} : { recoveryActions }),
+  } as unknown as AppError;
   return { error, knownCode };
 }
 
@@ -190,6 +174,7 @@ function decodeObjectKeywords(
   value: JsonRecord,
   schema: JsonRecord,
   root: JsonSchema,
+  normalizeAppErrorReferences: boolean,
 ): DecodedSchemaValue {
   const required = schema.required;
   if (
@@ -209,7 +194,12 @@ function decodeObjectKeywords(
       if (!(typeof propertySchema === "boolean" || isRecord(propertySchema))) {
         return INVALID_SCHEMA_VALUE;
       }
-      const property = decodeSchemaInternal(value[name], propertySchema, root);
+      const property = decodeSchemaInternal(
+        value[name],
+        propertySchema,
+        root,
+        normalizeAppErrorReferences,
+      );
       if (property === INVALID_SCHEMA_VALUE) return INVALID_SCHEMA_VALUE;
       decoded[name] = property;
     }
@@ -223,7 +213,12 @@ function decodeObjectKeywords(
       if (additional === false) return INVALID_SCHEMA_VALUE;
       if (additional === true) continue;
       if (!isRecord(additional)) return INVALID_SCHEMA_VALUE;
-      const property = decodeSchemaInternal(additionalValue, additional, root);
+      const property = decodeSchemaInternal(
+        additionalValue,
+        additional,
+        root,
+        normalizeAppErrorReferences,
+      );
       if (property === INVALID_SCHEMA_VALUE) return INVALID_SCHEMA_VALUE;
       decoded[name] = property;
     }
@@ -235,6 +230,7 @@ function decodeArrayKeywords(
   value: readonly unknown[],
   schema: JsonRecord,
   root: JsonSchema,
+  normalizeAppErrorReferences: boolean,
 ): DecodedSchemaValue {
   if (
     (typeof schema.minItems === "number" && value.length < schema.minItems) ||
@@ -251,7 +247,12 @@ function decodeArrayKeywords(
       if (!(typeof itemSchema === "boolean" || isRecord(itemSchema))) {
         return INVALID_SCHEMA_VALUE;
       }
-      const item = decodeSchemaInternal(value[index], itemSchema, root);
+      const item = decodeSchemaInternal(
+        value[index],
+        itemSchema,
+        root,
+        normalizeAppErrorReferences,
+      );
       if (item === INVALID_SCHEMA_VALUE) return INVALID_SCHEMA_VALUE;
       decoded[index] = item;
     }
@@ -261,7 +262,12 @@ function decodeArrayKeywords(
     if (!(typeof items === "boolean" || isRecord(items))) return INVALID_SCHEMA_VALUE;
     const start = Array.isArray(prefixItems) ? prefixItems.length : 0;
     for (let index = start; index < value.length; index += 1) {
-      const item = decodeSchemaInternal(value[index], items, root);
+      const item = decodeSchemaInternal(
+        value[index],
+        items,
+        root,
+        normalizeAppErrorReferences,
+      );
       if (item === INVALID_SCHEMA_VALUE) return INVALID_SCHEMA_VALUE;
       decoded[index] = item;
     }
@@ -273,6 +279,7 @@ function decodeSchemaInternal(
   value: unknown,
   schema: JsonSchema,
   root: JsonSchema,
+  normalizeAppErrorReferences = true,
 ): DecodedSchemaValue {
   if (schema === true) return value;
   if (schema === false) return INVALID_SCHEMA_VALUE;
@@ -283,12 +290,22 @@ function decodeSchemaInternal(
     if (typeof reference !== "string") return INVALID_SCHEMA_VALUE;
     const resolved = resolveJsonPointer(root, reference);
     if (resolved === null) return INVALID_SCHEMA_VALUE;
-    if (referenceName(reference) === "AppError") {
+    if (normalizeAppErrorReferences && referenceName(reference) === "AppError") {
       const decodedError = decodeAppError(value);
       if (decodedError === null) return INVALID_SCHEMA_VALUE;
-      decodedFromReference = decodeSchemaInternal(decodedError.error, resolved, root);
+      decodedFromReference = decodeSchemaInternal(
+        decodedError.error,
+        resolved,
+        root,
+        false,
+      );
     } else {
-      decodedFromReference = decodeSchemaInternal(value, resolved, root);
+      decodedFromReference = decodeSchemaInternal(
+        value,
+        resolved,
+        root,
+        normalizeAppErrorReferences,
+      );
     }
     if (decodedFromReference === INVALID_SCHEMA_VALUE) return INVALID_SCHEMA_VALUE;
   }
@@ -335,10 +352,10 @@ function decodeSchemaInternal(
 
   let decoded: DecodedSchemaValue = value;
   if (isRecord(value)) {
-    decoded = decodeObjectKeywords(value, schema, root);
+    decoded = decodeObjectKeywords(value, schema, root, normalizeAppErrorReferences);
     if (decoded === INVALID_SCHEMA_VALUE) return INVALID_SCHEMA_VALUE;
   } else if (Array.isArray(value)) {
-    decoded = decodeArrayKeywords(value, schema, root);
+    decoded = decodeArrayKeywords(value, schema, root, normalizeAppErrorReferences);
     if (decoded === INVALID_SCHEMA_VALUE) return INVALID_SCHEMA_VALUE;
   }
 
@@ -347,7 +364,10 @@ function decodeSchemaInternal(
     if (!(typeof notSchema === "boolean" || isRecord(notSchema))) {
       return INVALID_SCHEMA_VALUE;
     }
-    if (decodeSchemaInternal(decoded, notSchema, root) !== INVALID_SCHEMA_VALUE) {
+    if (
+      decodeSchemaInternal(decoded, notSchema, root, normalizeAppErrorReferences) !==
+      INVALID_SCHEMA_VALUE
+    ) {
       return INVALID_SCHEMA_VALUE;
     }
   }
@@ -357,7 +377,12 @@ function decodeSchemaInternal(
     if (!Array.isArray(allOf)) return INVALID_SCHEMA_VALUE;
     for (const branch of allOf) {
       if (!(typeof branch === "boolean" || isRecord(branch))) return INVALID_SCHEMA_VALUE;
-      decoded = decodeSchemaInternal(decoded, branch, root);
+      decoded = decodeSchemaInternal(
+        decoded,
+        branch,
+        root,
+        normalizeAppErrorReferences,
+      );
       if (decoded === INVALID_SCHEMA_VALUE) return INVALID_SCHEMA_VALUE;
     }
   }
@@ -372,7 +397,9 @@ function decodeSchemaInternal(
       return INVALID_SCHEMA_VALUE;
     }
     const candidates = anyOf
-      .map((branch) => decodeSchemaInternal(decoded, branch, root))
+      .map((branch) =>
+        decodeSchemaInternal(decoded, branch, root, normalizeAppErrorReferences),
+      )
       .filter((candidate) => candidate !== INVALID_SCHEMA_VALUE);
     if (candidates.length === 0) return INVALID_SCHEMA_VALUE;
     decoded = candidates[0];
@@ -388,7 +415,9 @@ function decodeSchemaInternal(
       return INVALID_SCHEMA_VALUE;
     }
     const candidates = oneOf
-      .map((branch) => decodeSchemaInternal(decoded, branch, root))
+      .map((branch) =>
+        decodeSchemaInternal(decoded, branch, root, normalizeAppErrorReferences),
+      )
       .filter((candidate) => candidate !== INVALID_SCHEMA_VALUE);
     if (candidates.length !== 1) return INVALID_SCHEMA_VALUE;
     decoded = candidates[0];

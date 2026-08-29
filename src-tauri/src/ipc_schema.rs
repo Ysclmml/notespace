@@ -74,7 +74,7 @@ mod rust_typescript;
 
 use std::collections::BTreeMap;
 
-use crate::domain::KNOWN_APP_ERROR_CODES;
+use crate::domain::{RecoveryAction, KNOWN_APP_ERROR_CODES};
 use serde::Serialize;
 use serde_json::Value;
 
@@ -685,6 +685,9 @@ struct EventPayloadSchemaSet<'a> {
     schema_version: u8,
     api_version: &'a str,
     generated_by: &'a str,
+    app_error: schemars::Schema,
+    recovery_actions: Vec<&'static str>,
+    read_only_recovery_actions: Vec<&'static str>,
     scope: schemars::Schema,
     events: BTreeMap<&'a str, schemars::Schema>,
 }
@@ -829,7 +832,10 @@ pub fn render_event_payload_schemas() -> String {
     let schema_set = EventPayloadSchemaSet {
         schema_version: 1,
         api_version: IPC_API_VERSION,
-        generated_by: "schemars 1.2.2 from Rust serde event payloads",
+        generated_by: "schemars 1.2.2 from Rust serde runtime payloads",
+        app_error: json_schema::app_error_schema(),
+        recovery_actions: RecoveryAction::wire_values(),
+        read_only_recovery_actions: RecoveryAction::read_only_wire_values(),
         scope: json_schema::event_scope_schema(),
         events: json_schema::event_payload_schemas(),
     };
@@ -1041,6 +1047,7 @@ fn validate_canonical_document() -> Result<(), String> {
         return Err("Rust-derived event payload schemas differ from the event catalog".to_owned());
     }
     validate_runtime_schema_keywords(&json_schema::event_scope_schema())?;
+    validate_runtime_schema_keywords(&json_schema::app_error_schema())?;
     for schema in event_schemas.values() {
         validate_runtime_schema_keywords(schema)?;
     }
@@ -1242,6 +1249,26 @@ mod tests {
                 event.event_type
             );
         }
+
+        let runtime: Value = serde_json::from_str(&render_event_payload_schemas())
+            .expect("runtime schema artifact parses");
+        assert_eq!(runtime["appError"]["title"], "AppError");
+        assert_eq!(
+            runtime["recoveryActions"],
+            serde_json::json!(RecoveryAction::wire_values()),
+            "the complete recovery-action registry is generated from the Rust enum"
+        );
+        assert_eq!(
+            runtime["readOnlyRecoveryActions"],
+            serde_json::json!(RecoveryAction::read_only_wire_values()),
+            "the unknown-error safety subset is generated from Rust policy"
+        );
+        let action_schema = serde_json::to_value(schemars::schema_for!(RecoveryAction))
+            .expect("recovery-action schema serializes");
+        assert_eq!(
+            action_schema["enum"], runtime["recoveryActions"],
+            "the generated registry must cover every serde wire enum value"
+        );
 
         let task_progress = serde_json::to_value(&schemas["task.progress"])
             .expect("task progress schema serializes");

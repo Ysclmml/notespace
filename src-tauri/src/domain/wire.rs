@@ -1356,41 +1356,68 @@ impl<'de> Deserialize<'de> for AppError {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
-#[serde(rename_all = "camelCase")]
-pub enum RecoveryAction {
-    Retry,
-    RequestGrant,
-    OpenSafetyPage,
-    Reload,
-    Compare,
-    Overwrite,
-    SaveAs,
-    OpenExternal,
-}
-
-impl RecoveryAction {
-    pub fn from_wire(value: &str) -> Option<Self> {
-        match value {
-            "retry" => Some(Self::Retry),
-            "requestGrant" => Some(Self::RequestGrant),
-            "openSafetyPage" => Some(Self::OpenSafetyPage),
-            "reload" => Some(Self::Reload),
-            "compare" => Some(Self::Compare),
-            "overwrite" => Some(Self::Overwrite),
-            "saveAs" => Some(Self::SaveAs),
-            "openExternal" => Some(Self::OpenExternal),
-            _ => None,
+macro_rules! define_recovery_actions {
+    ($(($variant:ident, $wire:literal, $read_only:literal)),+ $(,)?) => {
+        #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
+        pub enum RecoveryAction {
+            $(
+                #[serde(rename = $wire)]
+                $variant,
+            )+
         }
-    }
 
-    pub fn is_read_only(&self) -> bool {
-        matches!(
-            self,
-            Self::OpenSafetyPage | Self::Compare | Self::OpenExternal
-        )
-    }
+        impl RecoveryAction {
+            pub const ALL: &'static [Self] = &[$(Self::$variant),+];
+
+            pub const fn wire_name(self) -> &'static str {
+                match self {
+                    $(Self::$variant => $wire),+
+                }
+            }
+
+            pub fn from_wire(value: &str) -> Option<Self> {
+                match value {
+                    $($wire => Some(Self::$variant),)+
+                    _ => None,
+                }
+            }
+
+            pub const fn is_read_only(&self) -> bool {
+                match self {
+                    $(Self::$variant => $read_only),+
+                }
+            }
+
+            pub fn wire_values() -> Vec<&'static str> {
+                Self::ALL
+                    .iter()
+                    .copied()
+                    .map(Self::wire_name)
+                    .collect()
+            }
+
+            pub fn read_only_wire_values() -> Vec<&'static str> {
+                Self::ALL
+                    .iter()
+                    .copied()
+                    .filter(Self::is_read_only)
+                    .map(Self::wire_name)
+                    .collect()
+            }
+        }
+    };
 }
+
+define_recovery_actions!(
+    (Retry, "retry", false),
+    (RequestGrant, "requestGrant", false),
+    (OpenSafetyPage, "openSafetyPage", true),
+    (Reload, "reload", false),
+    (Compare, "compare", true),
+    (Overwrite, "overwrite", false),
+    (SaveAs, "saveAs", false),
+    (OpenExternal, "openExternal", true),
+);
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
 #[serde(
@@ -1885,6 +1912,35 @@ mod tests {
         assert_eq!(
             encoded["recoveryActions"],
             serde_json::json!(["openSafetyPage"])
+        );
+    }
+
+    #[test]
+    fn contract_003_app_error_details_and_recovery_registry_follow_serde() {
+        assert!(serde_json::from_value::<AppError>(serde_json::json!({
+            "code": "ERR_INVALID_REQUEST",
+            "message": "Invalid details",
+            "retryable": false,
+            "correlationId": "fixture-correlation",
+            "details": { "kind": "notARealDetailsVariant" }
+        }))
+        .is_err());
+
+        let wire_values = RecoveryAction::ALL
+            .iter()
+            .copied()
+            .map(|action| serde_json::to_value(action).expect("action serializes"))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            wire_values,
+            serde_json::json!(RecoveryAction::wire_values())
+                .as_array()
+                .expect("wire registry is an array")
+                .to_owned()
+        );
+        assert_eq!(
+            RecoveryAction::read_only_wire_values(),
+            vec!["openSafetyPage", "compare", "openExternal"]
         );
     }
 

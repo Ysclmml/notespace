@@ -13,6 +13,8 @@ import {
   isKnownWriteAction,
   KNOWN_APP_ERROR_CODES,
   matchesJsonSchema,
+  READ_ONLY_RECOVERY_ACTIONS,
+  RECOVERY_ACTIONS,
   type JsonSchema,
 } from "../generated/ipc";
 
@@ -44,6 +46,13 @@ const taskProgress = {
   scope: { kind: "operation", operationId: "fixture-operation" },
   sequence: 2,
   payload: { operationId: "fixture-operation", phase: "scan" },
+};
+
+const appErrorBase = {
+  code: "ERR_INVALID_REQUEST",
+  message: "Invalid request",
+  retryable: false,
+  correlationId: "fixture-correlation",
 };
 
 describe("CONTRACT-001 generated IPC catalog", () => {
@@ -140,6 +149,47 @@ describe("CONTRACT-003 forward compatibility and fail-closed writes", () => {
     expect(decoded?.knownCode).toBe(false);
     expect(decoded?.error.code).toBe("ERR_FUTURE_READ_ONLY");
     expect(decoded?.error.recoveryActions).toEqual(["openSafetyPage"]);
+    expect((decoded?.error as unknown as JsonRecord).futureOptionalField).toEqual({
+      version: 2,
+    });
+  });
+
+  it("uses the Rust-generated recovery-action registry and safety subset", () => {
+    expect(RECOVERY_ACTIONS).toHaveLength(8);
+    expect(new Set(RECOVERY_ACTIONS).size).toBe(RECOVERY_ACTIONS.length);
+    expect(READ_ONLY_RECOVERY_ACTIONS).toHaveLength(3);
+    expect(
+      READ_ONLY_RECOVERY_ACTIONS.every((action) => RECOVERY_ACTIONS.includes(action)),
+    ).toBe(true);
+  });
+
+  it("rejects an invalid AppErrorDetails discriminator through the direct decoder", () => {
+    expect(
+      decodeAppError({
+        ...appErrorBase,
+        details: { kind: "notARealDetailsVariant" },
+      }),
+    ).toBeNull();
+  });
+
+  it("accepts every concrete Rust AppErrorDetails variant", () => {
+    const detailsFixtures = CONTRACT_UNION_FIXTURES.unions.AppErrorDetails;
+    expect(detailsFixtures).toHaveLength(8);
+    for (const details of detailsFixtures) {
+      expect(decodeAppError({ ...appErrorBase, details })).not.toBeNull();
+    }
+  });
+
+  it("accepts exactly the Rust-derived required AppError field shape", () => {
+    expect(decodeAppError(appErrorBase)).not.toBeNull();
+    const withoutCorrelationId: JsonRecord = { ...appErrorBase };
+    delete withoutCorrelationId.correlationId;
+    expect(
+      decodeAppError({
+        ...withoutCorrelationId,
+        correlationToken: "fixture-correlation",
+      }),
+    ).toBeNull();
   });
 
   it("sanitizes a nested AppError through the recovery event entry point", () => {
@@ -185,6 +235,24 @@ describe("CONTRACT-003 forward compatibility and fail-closed writes", () => {
             message: "Invalid empty code",
             retryable: false,
             correlationId: "fixture-correlation",
+          },
+        },
+      }),
+    ).toBeNull();
+  });
+
+  it("rejects invalid nested AppErrorDetails through the event entry point", () => {
+    expect(
+      decodeEventEnvelope({
+        ...eventBase,
+        eventType: "recovery.snapshotFailed",
+        scope: { kind: "document", documentId: "fixture-document" },
+        sequence: 7,
+        payload: {
+          documentId: "fixture-document",
+          error: {
+            ...appErrorBase,
+            details: { kind: "notARealDetailsVariant" },
           },
         },
       }),

@@ -8,7 +8,7 @@ use schemars::{JsonSchema, Schema, SchemaGenerator};
 use serde_json::Value;
 
 use crate::domain::{
-    AppCloseRequest, DocumentExternalChanged, EventScope, NativeOpenResourcesRequested,
+    AppCloseRequest, AppError, DocumentExternalChanged, EventScope, NativeOpenResourcesRequested,
     RecoverySnapshotFailed, TaskFinished, TaskProgress, WorkspaceCapabilityChanged,
     WorkspaceFilesChanged,
 };
@@ -29,6 +29,10 @@ pub fn event_payload_schemas() -> BTreeMap<&'static str, Schema> {
 
 pub fn event_scope_schema() -> Schema {
     decoder_schema::<EventScope>()
+}
+
+pub fn app_error_schema() -> Schema {
+    decoder_schema::<AppError>()
 }
 
 fn decoder_schema<T: JsonSchema>() -> Schema {
