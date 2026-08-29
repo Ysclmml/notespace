@@ -1,8 +1,8 @@
 # P0-CONTRACT-01 — IPC v1 契约冻结与生成绑定
 
-- Status: REVIEW
-- Owner / next owner: Contract/Domain (`/root/p0_contract_01`) / Integration + independent Contract reviewer
-- Base revision / head revision: original base `576a435`; third-review rework base `91a2782`; implementation head `af6302e98580368db34eddbdd3caa313567ed669`; handoff revision is the final REVIEW checkpoint commit containing this note
+- Status: CLAIMED
+- Owner / next owner: Contract/Domain (`/root/p0_contract_01`) / same owner until AppError schema parity rework reaches REVIEW
+- Base revision / head revision: original base `576a435`; fourth-review rework base `556b279`; current head is this CLAIMED checkpoint
 - Requirement IDs: `DATA-REVISION-001`, `SAFE-IPC-001`, `EXT-ROUTER-001`, `EXT-COMMAND-001`, `OPS-CONTEXT-001`, `OPS-HANDOFF-001`
 - Product UX IDs: `UX-EXT-001`
 - Test / acceptance IDs: `CORE-001`, `SEC-001`, `EXT-001`, `EXT-002`, `CONTRACT-001`–`CONTRACT-024`, `PROC-001`, `PROC-002`; supporting clean-checkout evidence for `BUILD-001`
@@ -16,7 +16,13 @@ The branch defines the executable Rust-owned IPC v1 wire surface, deterministic 
 
 No Tauri command handler, frontend invoke/listener, filesystem, clipboard, renderer, real IPC transport, feature behavior, or Phase 1 implementation was added. `CONTRACT-004`–`CONTRACT-024` remain non-behavioral `frozenPort` entries.
 
+### Fourth-review rework boundary
+
+Independent review of `556b279` found one remaining `CONTRACT-003` parity defect: direct `decodeAppError` accepts an unknown `AppErrorDetails.kind` that the Rust-derived nested event schema rejects, and the full recovery-action registry is still duplicated in TypeScript. This iteration is limited to generating the standalone `AppError` validator/registry and recovery-action policy from Rust, routing direct and nested decoding through that executable schema, adding the requested regressions/mutation evidence, and re-running all gates. Previously accepted union/external-change behavior and frozen ports `CONTRACT-004`–`CONTRACT-024` are not reopened.
+
 ## Acceptance criteria status
+
+The prior REVIEW table below is historical evidence from `af6302e`; `CONTRACT-003` is reopened until the fourth-review direct/nested AppError parity boundary is fixed and independently reviewable.
 
 | Requirement / acceptance ID | Expected evidence | Status |
 |---|---|---|
