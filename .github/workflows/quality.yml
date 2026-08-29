@@ -1,0 +1,90 @@
+name: Quality gate
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: quality-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CI: "true"
+  CARGO_TERM_COLOR: always
+
+jobs:
+  macos-quality:
+    name: macOS quality and debug artifact
+    runs-on: macos-15
+    timeout-minutes: 60
+
+    steps:
+      - name: Check out the exact revision
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Install the pinned Node runtime
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+          package-manager-cache: false
+
+      - name: Install the pinned pnpm and Rust components
+        run: |
+          npm install --global pnpm@10.32.1
+          rustup component add rustfmt clippy
+
+      - name: Record toolchain versions
+        run: |
+          node --version
+          pnpm --version
+          rustc --version
+          cargo --version
+          ruby --version
+
+      - name: Install JavaScript dependencies from the lockfile
+        run: pnpm install --frozen-lockfile
+
+      - name: Validate repository privacy and workflow policy
+        run: |
+          ruby scripts/check_repository_hygiene.rb --self-test
+          ruby scripts/check_repository_hygiene.rb
+
+      - name: Validate the durable design baseline
+        run: ruby scripts/validate_design_docs.rb
+
+      - name: Audit JavaScript dependencies
+        run: pnpm audit --registry=https://registry.npmjs.org --audit-level high
+
+      - name: Install and run the pinned RustSec audit
+        run: |
+          cargo install cargo-audit --locked --version 0.22.2
+          cargo audit --file src-tauri/Cargo.lock
+
+      - name: Run the authoritative local gate
+        run: pnpm verify
+
+      - name: Build the macOS debug app bundle
+        run: pnpm tauri build --debug --bundles app
+
+      - name: Preserve the debug app as a zip
+        run: |
+          mkdir -p artifacts/ci
+          ditto -c -k --sequesterRsrc --keepParent \
+            "src-tauri/target/debug/bundle/macos/Markdown Workspace.app" \
+            artifacts/ci/markdown-workspace-debug-macos.zip
+
+      - name: Upload the debug app
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: markdown-workspace-debug-macos-${{ github.sha }}
+          path: artifacts/ci/markdown-workspace-debug-macos.zip
+          if-no-files-found: error
+          retention-days: 7
