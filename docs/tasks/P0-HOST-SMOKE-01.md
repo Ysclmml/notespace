@@ -1,8 +1,8 @@
 # P0-HOST-SMOKE-01 — macOS release host smoke harness
 
-- Status: REVIEW
+- Status: CLAIMED
 - Owner / next owner: `/root/p0_host_smoke` / Integration
-- Base revision / head revision: `4fcc284` / `9d33b40`
+- Base revision / head revision: `4fcc284` / `263d750` (NO-MERGE review restart; fix pending)
 - Requirement IDs: `EDIT-IME-001`, `FILE-SAVE-001`, `OPS-BUILD-001`, `OPS-CONTEXT-001`, `OPS-HANDOFF-001`
 - Product UX IDs: `UX-EDIT-003`, `UX-KEY-001`, `UX-PLATFORM-001` (Phase 0 host evidence only; this task does not complete product acceptance)
 - Test / acceptance IDs: `IME-001`, `FILE-001`, `AC-KEY-001`, `AC-PLATFORM-001`, `BUILD-001`, `PROC-001`, `PROC-002`
@@ -72,6 +72,7 @@ The harness is test-only. It does not implement Phase 1 open/save/session behavi
 
 ## Open questions and blockers
 
+- Owner `/root/p0_host_smoke`: independent review rejected `263d750` because React-authored counts/flags/event kinds could fabricate `manualPass`; `Event.isTrusted`, `InputEvent.data/inputType/isComposing`, a strict single-composition sequence, and chooser trust were not enforced, while fixed zero read-attempt counters were not an observed fact. Replace this with native-nonce-bound private capture/state-machine evidence, malicious synthetic-event negatives, and an accurately labeled static no-read audit before returning to REVIEW.
 - Owner Integration: run the final real macOS system-Pinyin candidate-confirm/cancel plus visual system-menu/native-chooser interaction. A valid report must be `manualPass`, menu activation at least one, both IME sections `passed`, chooser event `cancel`, selected-count `zero`, and both read-attempt counts zero. This is required because synthetic DOM events are not platform evidence; all automated work may continue safely.
 - Owner Integration / Contract: after combining this branch with the current `P0-CONTRACT-01` result, run that revision's schema-drift gate. This branch has no IPC or generated-file delta, so review and manual host verification may continue.
 - Owner Integration / Release: triage the 17 pre-existing RustSec warnings in the shared Tauri lock graph separately. This task introduced no crate or lockfile delta; the scan reported no vulnerabilities, so it does not require widening this harness task.
