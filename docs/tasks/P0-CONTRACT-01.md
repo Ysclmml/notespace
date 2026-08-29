@@ -1,8 +1,8 @@
 # P0-CONTRACT-01 — IPC v1 契约冻结与生成绑定
 
-- Status: REVIEW
-- Owner / next owner: Contract/Domain (`/root/p0_contract_01`) / Integration (`/root`)
-- Base revision / head revision: `576a435` / implementation `bfe1dd5`; handoff metadata is the current branch tip
+- Status: CLAIMED — independent-review rework
+- Owner / next owner: Contract/Domain (`/root/p0_contract_01`) / same owner until REVIEW
+- Base revision / head revision: original base `576a435`; rework base `0387139` / working tree
 - Requirement IDs: `DATA-REVISION-001`, `SAFE-IPC-001`, `EXT-ROUTER-001`, `EXT-COMMAND-001`, `OPS-CONTEXT-001`, `OPS-HANDOFF-001`
 - Product UX IDs: `UX-EXT-001`
 - Test / acceptance IDs: `CORE-001`, `SEC-001`, `EXT-001`, `EXT-002`, `CONTRACT-001`–`CONTRACT-024`, `PROC-001`, `PROC-002`; supporting clean-checkout evidence for `BUILD-001`
@@ -22,19 +22,31 @@ Non-goals remain unchanged: no Tauri command handlers, filesystem or clipboard a
 - Baseline validator PASS: `design_snapshot_sha256=e0905a48147eee7c3264b382aeab2a8c2c2e40dab2ef6b7f5b9963a96cca8509`.
 - The first fresh-worktree `pnpm verify` correctly failed because `node_modules` did not exist. `pnpm install --frozen-lockfile` introduced no lockfile change, after which the same baseline command passed.
 
+## Independent-review rework checkpoint
+
+Integration recorded a NO-MERGE review against `0387139`. All earlier completion evidence below is historical and revoked for merge purposes until the replacement generator and regression gates pass. Confirmed findings:
+
+- `src-tauri/src/ipc_schema/typescript.rs` is a second handwritten type source; substring checks do not make Rust serde models authoritative.
+- Generated union fixtures describe required fields instead of serializing concrete Rust variants, so discriminator/tag/nullability drift can remain green.
+- The Rust model set does not cover the complete generated TypeScript surface, including `AppCapabilities`, `AppReconcileOutcome`, `WorkspaceOpenRequest`, `AppCloseRequest`, and `RecoverySnapshotFailed`.
+- Safe-integer, `missing.lastKnown`, external-change state, event scope/payload/sequence, unknown-error recovery action, and real Rust write-request validation are incomplete.
+
+The rework will use mechanically generated TypeScript from complete Rust serde wire types, concrete serde JSON fixtures, and mutation-style regressions. It will not implement handlers or `CONTRACT-004`–`CONTRACT-024` behavior.
+
 ## Acceptance criteria status
 
 | Requirement / acceptance ID | Expected evidence | Status |
 |---|---|---|
-| `CONTRACT-001` | Rust generator reproduces committed TypeScript, manifest, and fixture artifacts with zero drift | PASS — `generate_ipc --check` exits 0 and the runner validates the exact 37-command, 8-event, 24-error, 24-contract catalog |
-| `CONTRACT-002` | Rust serde JSON fixtures round-trip through TypeScript union validators with matching tags and required fields | PASS — 4 focused Rust tests and 6 focused TypeScript tests pass; every declared union variant has a generated fixture |
-| `CONTRACT-003` | Unknown event/error/optional fields remain readable while unknown write actions fail closed | PASS — open error-code preservation and fail-closed event/write-action decoders are tested in Rust and TypeScript |
-| `CONTRACT-004`–`CONTRACT-024` | Canonical manifest freezes ID, layer, fixture port, and mapped future task without pretending behavior is implemented | PASS for the F0 freeze — all 21 entries are `frozenPort` with a source path and future owner; behavior remains deferred to the mapped feature tasks |
-| `CORE-001`, `SEC-001`, `EXT-001`, `EXT-002` | Core models, versioned/fail-closed envelopes, router/command vocabulary are available to both languages | Contract portion PASS — Rust and generated TypeScript expose the frozen surface; transaction ordering, authorization, payload enforcement, and routed UI behavior remain owned by later mapped tasks |
-| `PROC-001`, `PROC-002` | Durable task state and reproducible handoff contain exact commands, revisions, risks, and next action | PASS for this handoff; Integration should verify cold-read sufficiency during review |
+| `CONTRACT-001` | Rust generator reproduces committed TypeScript, manifest, and fixture artifacts with zero drift | REWORK — replace handwritten template and prove serde discriminator mutation fails the gate |
+| `CONTRACT-002` | Concrete Rust variants serialize to fixtures and validate across TypeScript | REWORK — replace required-field placeholders with nested serde JSON values |
+| `CONTRACT-003` | Unknown event/error/optional fields remain readable while unknown writes fail closed | REWORK — add safe-integer, scope, payload, recovery-action, and Rust request-decoder regressions |
+| `CONTRACT-004`–`CONTRACT-024` | Canonical manifest freezes ID, layer, fixture port, and mapped future task without pretending behavior is implemented | RETAIN — keep all 21 entries `frozenPort`; do not add behavior |
+| `CORE-001`, `SEC-001`, `EXT-001`, `EXT-002` | Core models, versioned/fail-closed envelopes, router/command vocabulary are available to both languages | REWORK — complete Rust surface and regenerate TypeScript |
+| `PROC-001`, `PROC-002` | Durable task state and reproducible handoff contain exact commands, revisions, risks, and next action | IN PROGRESS — this claim checkpoint supersedes the rejected REVIEW handoff |
 
 ## Changes made
 
+- Reopened the task at `0387139` after independent review and revoked the prior merge recommendation.
 - Added pure serde wire/domain models for opaque IDs, `Workspace`, `Resource`, `DocumentSession`, `Tab`, `NavEntry`, `ViewState`, `Asset`, `AppError`, requests/responses, cancellation metadata, and events. Literal success/failure discriminators are enforced rather than represented as arbitrary booleans.
 - Added the Rust-owned canonical catalog for 37 commands, 8 events, 24 known error codes, payload budgets, cancellability, known write actions, union specifications, and `CONTRACT-001`–`CONTRACT-024` mappings.
 - Added mechanical consistency validation against the canonical command/event/error tables and generated TypeScript declarations in `docs/design/03-domain-model-and-contracts.md`.
@@ -69,7 +81,7 @@ Environment for implementation and clean-checkout runs: macOS/Darwin arm64; `pnp
 
 ## Open questions and blockers
 
-No release-blocking question or implementation blocker remains in this task.
+No external dependency blocks safe rework. The NO-MERGE findings above are active implementation blockers; Contract/Domain owns resolving them before returning to REVIEW.
 
 - Integration owns the planned decision point to publish schema status beyond `1.0-draft`; affected tasks are `P0-CONTRACT-01` and downstream `P0-FLAG-01`. Safe work may continue only against the generated draft contract until Integration records F0 publication.
 - Known maintenance risk: the generator uses an audited Rust-owned TypeScript template rather than a third-party derive generator. Canonical table parsing, per-union declaration checks, cross-language fixtures, and `--check` mitigate drift; Contract/Domain owns updating all four surfaces together when a future accepted contract change occurs.
@@ -77,9 +89,9 @@ No release-blocking question or implementation blocker remains in this task.
 
 ## Remaining numbered steps
 
-1. Integration reviews and integrates the full branch in the Phase 0 order without dropping either generated artifacts or the direct serialization dependencies.
-2. Integration reruns the design validator, canonical contract runner, and `pnpm verify` on the integration branch.
-3. Integration publishes F0 only after every required Phase 0 task passes; until then keep schema status `1.0-draft` and `CONTRACT-004`–`CONTRACT-024` non-executable.
+1. Replace the handwritten TypeScript source with mechanically generated declarations from the complete Rust serde model set.
+2. Generate concrete nested fixtures from Rust variants and implement fail-closed Rust/TypeScript decoders plus mutation regressions.
+3. Audit the exact dependency/lock delta, rerun all local and clean-clone gates, then rewrite this note and the ledger row to REVIEW.
 
 ## Data safety, recovery, and temporary artifacts
 
@@ -87,4 +99,4 @@ No user document, clipboard content, personal absolute path, Base64 image, secre
 
 ## Single recommended next action
 
-Integration should review and integrate this branch after the applicable Phase 0 CI ordering point, then run `ruby scripts/validate_design_docs.rb`, `PATH="${CARGO_BIN_DIR}:$PATH" pnpm exec node contracts/run.mjs`, and `PATH="${CARGO_BIN_DIR}:$PATH" pnpm verify` before publishing F0.
+Contract/Domain should replace the dual-source generator with Rust-derived TypeScript and concrete serde fixtures, then make the reviewer regressions fail before the fix and pass after it.
