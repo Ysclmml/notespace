@@ -94,7 +94,7 @@
 | `P0-FIXTURE-01` | READY | unowned | `52dc387` / — | `DATA-ROUNDTRIP-001`、`DATA-UNKNOWN-001`、`EDIT-IME-001`、`EDIT-TABLE-001` / privacy-safe fixtures | 领取后创建 task note；危险大夹具只允许运行时生成 |
 | `P0-SPIKE-01` | READY | unowned | `52dc387` / — | `EDIT-IME-001`、`EDIT-TABLE-001`、`PERF-LARGE-001` / CodeMirror feasibility | 领取后创建 task note；仅 spike/测量，不实现 Phase 1 编辑器 |
 | `P0-SPIKE-02` | READY | unowned | `52dc387` / — | `FILE-PREFLIGHT-001`、`PERF-LARGE-001`、`SAFE-DATAURI-001`、`SAFE-IPC-001` / native safety feasibility | 领取后创建 task note；仅 spike/测量，不实现 Phase 1 file open |
-| `P0-TRANSPORT-01` | CLAIMED | Performance/Integration / `/root` | `28e6d8e` / working tree | `SAFE-IPC-001`、`PERF-LARGE-001` / real Tauri 32 MiB raw + 193 MiB worst-wire feasibility | [`P0-TRANSPORT-01.md`](tasks/P0-TRANSPORT-01.md)；实现 non-default feature harness，失败则 F0 前转 chunk/handle ADR |
+| `P0-TRANSPORT-01` | REVIEW | Performance/Integration / independent reviewer | `28e6d8e` / `e07efb8` | `SAFE-IPC-001`、`PERF-LARGE-001` / real Tauri 32 MiB raw + 193 MiB worst-wire feasibility | [`P0-TRANSPORT-01.md`](tasks/P0-TRANSPORT-01.md)；macOS arm64 真实 WKWebView 3+3 进程 PASS，下一步独立复核 harness 与结果 |
 
 只列出了依赖已满足的第一批任务；`P0-FLAG-01` 必须等待 `P0-CONTRACT-01` 生成初始契约后才能进入 READY。
 
