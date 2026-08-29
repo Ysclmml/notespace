@@ -1,8 +1,8 @@
 # P0-SPIKE-02 — Native/Safety feasibility
 
-- Status: REVIEW
-- Owner / next owner: Native/Safety spike agent / Integration
-- Base revision / head revision: `576a435` / `d395624` (verified implementation revision; handoff metadata follows)
+- Status: CLAIMED
+- Owner / next owner: Native/Safety remediation agent / Integration
+- Base revision / head revision: `576a435` / `de87aaa` (independent-review remediation starts here)
 - Requirement IDs: `FILE-PREFLIGHT-001`, `FILE-SAVE-001`, `PERF-LARGE-001`, `SAFE-DATAURI-001`, `SAFE-IPC-001`, `OPS-CONTEXT-001`, `OPS-HANDOFF-001`
 - Product UX IDs: `UX-SAFE-001`
 - Test / acceptance IDs: `SAFE-001`, `SAFE-003`, `PERF-010`, `FILE-001`, `AC-SAFE-002`, `AC-SAFE-005`, `CONTRACT-010`, `CONTRACT-011`, `CONTRACT-024`, `PROC-001`, `PROC-002`
