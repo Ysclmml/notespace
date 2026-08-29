@@ -8,12 +8,12 @@
 
 ## 1. 当前终态
 
-- 当前阶段：**Phase 0 基础壳已集成，第一批契约/CI/夹具/技术 Spike 可并行执行**。
+- 当前阶段：**Phase 0 基础壳、Rust 单源契约、脱敏夹具与编辑器技术 Spike 已集成；其余安全/传输/宿主证据并行收口**。
 - 应用代码：`P0-BOOT-01` 已建立 Tauri 2 + React/TypeScript/Vite + Rust 桌面壳和 Paper & Ink 合成空状态；尚未实现任何 Phase 1 产品能力。
 - 构建与测试：任务分支和全新 clone 均通过格式、lint、类型、前端单测、Rust fmt/clippy/tests、Vite build 与 Tauri debug build；CI 仍由后续独立任务建立。
-- 工作区：Git 仓库已建立；`main` 已 fast-forward 集成 `P0-BOOT-01`，已验证 revision `52dc387`。
-- 下一个可执行动作：为下表 READY 任务建立各自 task note 与独立 branch/worktree；优先并行 `P0-CONTRACT-01`、`P0-CI-01`、`P0-SPIKE-01`、`P0-SPIKE-02`，`P0-FIXTURE-01` 可由空闲 QA 随后领取。
-- 基线不等于字段 schema 已冻结：`03-domain-model-and-contracts.md` 的 `1.0-draft` 必须在 `P0-CONTRACT-01` 中生成 Rust/TypeScript 类型、通过契约测试后才能发布 F0。
+- 工作区：Git 仓库已建立；`main` 已集成并验证到编辑器 Spike merge `9688df8`。
+- 下一个可执行动作：按既定顺序集成已独立复审的 native safety 与 real transport；同时收口 typed flags、可信 host release smoke 和 hosted CI 证据。
+- `03-domain-model-and-contracts.md` 的 `1.0-draft` 已由 Rust 单源生成 TypeScript/JSON Schema 并接入 canonical drift gate；仍需 Phase 0 其余出口全部满足后才发布 F0。
 
 ## 2. 已接受且实现不得自行改动的决策
 
@@ -93,7 +93,7 @@
 | `P0-CONTRACT-01` | DONE | Integration / none | merge `9b0ea10` / gate `055084b` | `DATA-REVISION-001`、`SAFE-IPC-001`、`EXT-ROUTER-001`、`EXT-COMMAND-001` / IPC `1.0-draft` Rust single-source contract | [`P0-CONTRACT-01.md`](tasks/P0-CONTRACT-01.md)；独立终审 MERGE；canonical runner 已纳入 root `verify`/CI；main Rust 15/15 + TS 29/29、full verify PASS；`004`–`024` 保持 frozen ports |
 | `P0-FLAG-01` | READY | unowned | `055084b` / — | `DATA-REVISION-001`、`SAFE-IPC-001`、`EXT-ROUTER-001`、`EXT-COMMAND-001`、`UX-EXT-001` / typed feature registry | 从已集成契约的 main 领取；实现 production defaults、test overrides、dependency/capability validation 与脱敏 diagnostics |
 | `P0-FIXTURE-01` | DONE | Integration / downstream fixture consumers | implementation `80e434a` / merge `9172a9c` | `DATA-ROUNDTRIP-001`、`DATA-UNKNOWN-001`、`EDIT-IME-001`、`EDIT-TABLE-001` + 09 §4.3 safety/recovery corpus / privacy-safe fixtures | [`P0-FIXTURE-01.md`](tasks/P0-FIXTURE-01.md)；14 manifests、18 committed files、18 runtime artifacts、33 `-text` paths；独立终审 MERGE；fixture/canonical/full main 门禁 PASS |
-| `P0-SPIKE-01` | REVIEW | Editor review fixes (`/root/p0_spike_01_fix`) / Integration | `576a435` / implementation `2e0beb2`, reviewed handoff `4fcc284` | `EDIT-IME-001`、`EDIT-TABLE-001`、`PERF-VIEWPORT-001` / isolated CodeMirror spike | [`P0-SPIKE-01.md`](tasks/P0-SPIKE-01.md)；18/18 focused、21/21 全量前端、30-sample measurement、`pnpm verify`、文档门禁 PASS；list/quote marker 始终保留源码；下一步 Integration 在当前 contract/fixture 主线跑全门禁 |
+| `P0-SPIKE-01` | DONE | Integration / `P1-EDITOR-01` | implementation `2e0beb2`, reviewed handoff `4fcc284` / merge `9688df8` | `EDIT-IME-001`、`EDIT-TABLE-001`、`PERF-VIEWPORT-001` / isolated CodeMirror spike | [`P0-SPIKE-01.md`](tasks/P0-SPIKE-01.md)；独立终审 MERGE；main focused 18/18、30-sample measurement、frontend 50/50、canonical contract/fixture/Rust/Vite/Tauri 全门禁 PASS |
 | `P0-SPIKE-02` | READY | unowned | `52dc387` / — | `FILE-PREFLIGHT-001`、`PERF-LARGE-001`、`SAFE-DATAURI-001`、`SAFE-IPC-001` / native safety feasibility | 领取后创建 task note；仅 spike/测量，不实现 Phase 1 file open |
 
 只列出了依赖已满足的第一批任务；`P0-FLAG-01` 必须等待 `P0-CONTRACT-01` 生成初始契约后才能进入 READY。
@@ -117,6 +117,7 @@
 - 2026-08-30 Integration fast-forward 合并 `P0-BOOT-01` 到 `main` revision `52dc387`；`ruby scripts/validate_design_docs.rb` PASS（snapshot `3be99dea...`），补齐已记录的 Rustup `PATH` 前提后 `pnpm verify` 全部 PASS。
 - 2026-08-30 Integration no-ff 合并 `P0-CONTRACT-01` 到 `main` revision `9b0ea10`，并以 `055084b` 把 `contracts/run.mjs` 接入 root `check`/`verify`/CI；design snapshot `a9644030...`、repository hygiene、cargo audit、canonical Rust 15/15 + TS 29/29、full Vitest 32/32 + Rust 17/17、Vite/Tauri debug build 全部 PASS。
 - 2026-08-30 Integration no-ff 合并 `P0-FIXTURE-01` 到 `main` revision `9172a9c`，保留 canonical contract gate 并把 `fixtures:check` 接入 root `check`/`verify`/CI；fixture validator（14/18/18/33）、canonical Rust 15/15 + TS 29/29、full Vitest 32/32 + Rust 17/17、Vite/Tauri debug build 全部 PASS。
+- 2026-08-30 Integration no-ff 合并 `P0-SPIKE-01` 到 `main` revision `9688df8`；focused 18/18、30-sample editor measurement、full Vitest 50/50、canonical contract Rust 15/15 + TS 29/29、fixture validator（14/18/18/33）、Rust 17/17、Vite/Tauri debug build 全部 PASS。当前桌面 shell 首次运行未继承 Rustup PATH，显式加入 `${HOME}/.cargo/bin` 后同一代码门禁通过。
 
 ## 9. 标准任务交接
 

@@ -1,8 +1,8 @@
 # P0-SPIKE-01 — CodeMirror editor feasibility spike
 
-- Status: REVIEW
-- Owner / next owner: Editor review fixes (`/root/p0_spike_01_fix`) / Integration
-- Base revision / head revision: `576a435` / `2e0beb2` (second-review implementation)
+- Status: DONE
+- Owner / next owner: Integration / `P1-EDITOR-01`
+- Base revision / head revision: `576a435` / implementation `2e0beb2`, reviewed handoff `4fcc284`, main merge `9688df8`
 - Requirement IDs: `DATA-SOURCE-001`, `DATA-ROUNDTRIP-001`, `DATA-UNKNOWN-001`, `EDIT-LIVE-001`, `EDIT-UNDO-001`, `EDIT-IME-001`, `EDIT-TABLE-001`, `PERF-VIEWPORT-001`, `PERF-LARGE-001`
 - Product UX IDs: none; this is a disposable Phase 0 feasibility spike and cannot complete product acceptance
 - Test / acceptance IDs: `RT-001`, `RT-002`, `EDT-LIVE-001`, `EDT-UNDO-001`, `IME-001`, `TABLE-001`, `PERF-001`, `PERF-010`, `PROC-002`
@@ -69,6 +69,7 @@ This task does not implement the Phase 1 editor, does not connect CodeMirror to 
 | `IME-001`, `EDT-LIVE-001`, `EDT-UNDO-001`, `RT-002`, `TABLE-001`, `PERF-001`, `PERF-010` | `volta run --node 24.14.0 --pnpm 10.32.1 pnpm exec vitest run src/features/editor/spike/editorSpike.test.ts --reporter=verbose` at `2e0beb2` | PASS; 18/18 tests, including opening/closing fence, list continuation, quote/fence, reference-definition propagation, post-composition final input, table structural priority, and list/quote marker current/non-current/composition safety | stdout only; no document-content artifact |
 | `PERF-001`, `PERF-010` | `volta run --node 24.14.0 --pnpm 10.32.1 pnpm test:editor-spike:measure --reporter=verbose --logHeapUsage`; Apple M3 Max, 16 logical CPUs, 48 GiB, macOS 26.6.2 arm64, Node 24.14.0, Vitest 3.2.7 + jsdom 26.1.0; 3 warm-ups + 30 samples at `2e0beb2` | PASS. p95 ms: 243 KiB Markdown mount 6.28/edit 0.43; 10 MiB source-only mount 11.03/edit 0.11; 256 KiB + 1 line mount 0.51; 1 MiB line mount 0.48. RSS delta 309,182,464 B < 512 MiB ceiling | ignored `benchmark-results/P0-SPIKE-01/editor-spike.json`; metrics/limitations only |
 | `BUILD-001` repository gate | `PATH="${CARGO_HOME:-${HOME}/.cargo}/bin:${PATH}" volta run --node 24.14.0 --pnpm 10.32.1 pnpm verify` at `2e0beb2`; macOS 26.6.2 arm64, Rust 1.98.0 | PASS; formatter, lint, typecheck, 21/21 frontend tests, Rust fmt/clippy/tests, Vite and Tauri debug build | ignored build output; Vite product bundle unchanged at 33 modules / 193.99 kB JS (61.22 kB gzip) |
+| Integration gate | `pnpm vitest run src/features/editor/spike/editorSpike.test.ts`; `pnpm test:editor-spike:measure`; `PATH="${HOME}/.cargo/bin:${PATH}" pnpm verify` on main merge `9688df8` | PASS; focused 18/18; 30-sample measurement; full frontend 50/50, canonical contract Rust 15/15 + TS 29/29, fixtures 14/18/18/33, Rust 17/17, Vite and Tauri debug build | Main measurement p95 ms: normal mount 9.52/edit 0.61; 10 MiB source-only mount 12.00/edit 0.10; RSS delta 342,966,272 B < 512 MiB spike ceiling |
 | dependency security/license | `volta run --node 24.14.0 --pnpm 10.32.1 pnpm audit --registry=https://registry.npmjs.org --audit-level high` and `pnpm licenses list --json` | PASS; no known vulnerabilities; CodeMirror/Lezer dependency set MIT | stdout only |
 | isolation/privacy/schema check | `git diff --check`; scoped `rg` scans for product imports, personal paths, embedded data images; inspect `src/generated/ipc.ts` / `tests/contract` presence at `2e0beb2` | PASS; no product import, personal path, embedded payload, or whitespace error. Schema-drift runner is not present on this branch because parallel `P0-CONTRACT-01` has not integrated; Integration must run it after merge | stdout only |
 | `PROC-001`, `PROC-002` documentation gate | `ruby scripts/validate_design_docs.rb` after implementation | PASS; 22 Markdown files, 69 relative links, 83 test IDs, 43 implementation tasks | stdout only; snapshot is intentionally not embedded because task-note content participates in that hash |
@@ -79,12 +80,11 @@ This task does not implement the Phase 1 editor, does not connect CodeMirror to 
 - Owner `P1-EDITOR-01` / `P4-A11Y-01`: run real macOS Pinyin in WKWebView and Windows Microsoft Pinyin in WebView2 for candidate confirm/cancel, both observed final-input orderings, cursor movement, mouse selection, and Tab/view-switch. The new harness proves DOM event/transaction policy but explicitly substitutes the browser-observer mutation and is not platform IME evidence.
 - Owner `P1-EDITOR-01` / `P5-LARGE-01`: rerun the 30-sample timing and memory-plateau matrix in release WebKit/WebView2 with actual layout, animation frames, five views of one session, and ten different documents.
 - Owner Integration / `P1-EDITOR-01`: decide whether to promote the five direct CodeMirror packages to runtime dependencies. `@codemirror/lang-markdown` brings HTML/JavaScript parser support transitively even though this spike renders no raw HTML; product bundling should remain driven by used imports and CSP review.
-- Owner `P0-CONTRACT-01`: provide the schema-drift runner. It is not available on this task's base, and this spike changes no schema or IPC code.
+- The Rust-single-source schema-drift runner was integrated independently and passed together with this spike on main merge `9688df8`.
 
 ## Remaining numbered steps
 
-1. Integration reviews the feasibility claims and dependency footprint, merges the branch in Phase 0 order, and reruns the full gate plus the then-current schema-drift runner.
-2. `P1-EDITOR-01` consumes the findings only after F0; it must not treat this disposable harness as the frozen editor/session adapter.
+1. `P1-EDITOR-01` consumes the findings only after F0; it must not treat this disposable harness as the frozen editor/session adapter.
 
 ## Data safety, recovery, and temporary artifacts
 
@@ -92,4 +92,4 @@ No user documents or clipboard data are read. Large/long-line sources are determ
 
 ## Single recommended next action
 
-Integration reviews and merges `task/P0-SPIKE-01-editor`, then reruns `ruby scripts/validate_design_docs.rb`, the full repository gate, the editor measurement command, and the schema-drift command available on the integration head.
+After F0, `P1-EDITOR-01` should reuse the proven policies through a product adapter and repeat the release-WebKit IME, lifecycle, and multi-view measurements.
