@@ -1764,6 +1764,7 @@ dependencies = [
  "tauri",
  "tauri-build",
  "ts-rs",
+ "uuid",
 ]
 
 [[package]]
