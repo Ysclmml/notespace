@@ -8,6 +8,8 @@ publish = false
 default-run = "markdown-workspace"
 
 [features]
+default = []
+host-release-smoke = []
 ipc-transport-spike = []
 
 [lib]
