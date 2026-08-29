@@ -1,0 +1,15 @@
+fixtureVersion: 1
+id: markdown.links.duplicates-relative-001
+purpose: Duplicate anchors, percent-encoded spaces, and Unicode anchors
+encoding: utf-8
+newline: lf
+expectedMode: editable/normal
+sensitive: false
+generatedBy: committed-synthetic
+ownerIntent:
+  owner: QA
+  evidenceIds: [LINK-001]
+  consumerTasks: [P2-LINK-01, P2-E2E-01]
+files:
+  - duplicate-headings.md
+  - target page.md

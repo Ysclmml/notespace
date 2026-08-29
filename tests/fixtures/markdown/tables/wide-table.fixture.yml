@@ -1,0 +1,14 @@
+fixtureVersion: 1
+id: markdown.tables.wide-24-columns-001
+purpose: Wide GFM table source for horizontal overflow and exact source fallback
+encoding: utf-8
+newline: lf
+expectedMode: editable/normal
+sensitive: false
+generatedBy: committed-synthetic
+ownerIntent:
+  owner: QA
+  evidenceIds: [TABLE-001, PERF-001]
+  consumerTasks: [P4-TABLE-01, P5-LARGE-01]
+files:
+  - wide-table.md

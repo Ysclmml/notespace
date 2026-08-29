@@ -1,0 +1,14 @@
+fixtureVersion: 1
+id: asset.images.corrupt-png-001
+purpose: Corrupt bytes with a PNG extension for decoder rejection tests
+encoding: binary
+newline: none
+expectedMode: asset
+sensitive: false
+generatedBy: committed-synthetic
+ownerIntent:
+  owner: QA
+  evidenceIds: [SEC-003, ASSET-001]
+  consumerTasks: [P3-ASSET-01, P5-SECURITY-01]
+files:
+  - corrupt.png

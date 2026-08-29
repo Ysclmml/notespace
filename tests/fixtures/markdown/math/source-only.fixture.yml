@@ -1,0 +1,14 @@
+fixtureVersion: 1
+id: markdown.math.source-only-001
+purpose: Math source preservation before the optional renderer exists
+encoding: utf-8
+newline: lf
+expectedMode: editable/normal
+sensitive: false
+generatedBy: committed-synthetic
+ownerIntent:
+  owner: QA
+  evidenceIds: [AC-MATH-001]
+  consumerTasks: [P4-MATH-01]
+files:
+  - source-only.md

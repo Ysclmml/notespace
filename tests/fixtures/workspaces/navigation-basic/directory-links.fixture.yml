@@ -1,0 +1,15 @@
+fixtureVersion: 1
+id: workspace.navigation.directory-links-001
+purpose: Directory targets and explicit index targets through the shared resource router
+encoding: utf-8
+newline: lf
+expectedMode: workspace
+sensitive: false
+generatedBy: committed-synthetic
+ownerIntent:
+  owner: QA
+  evidenceIds: [LINK-001, WORKSPACE-001]
+  consumerTasks: [P2-ROUTER-01, P2-INDEX-01]
+files:
+  - index.md
+  - guide/index.md

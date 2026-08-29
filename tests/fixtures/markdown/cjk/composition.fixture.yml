@@ -1,0 +1,14 @@
+fixtureVersion: 1
+id: markdown.cjk.composition-001
+purpose: CJK IME, combining marks, astral characters, and emoji ZWJ source
+encoding: utf-8
+newline: lf
+expectedMode: editable/normal
+sensitive: false
+generatedBy: committed-synthetic
+ownerIntent:
+  owner: QA
+  evidenceIds: [IME-001]
+  consumerTasks: [P0-SPIKE-01, P1-EDITOR-01]
+files:
+  - composition.md

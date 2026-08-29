@@ -1,0 +1,14 @@
+fixtureVersion: 1
+id: markdown.canonical.source-basics-001
+purpose: Canonical Markdown source and unknown raw HTML round-trip
+encoding: utf-8
+newline: lf
+expectedMode: editable/normal
+sensitive: false
+generatedBy: committed-synthetic
+ownerIntent:
+  owner: QA
+  evidenceIds: [RT-001, RT-002]
+  consumerTasks: [P1-E2E-01, P4-LIVE-01]
+files:
+  - source-basics.md
