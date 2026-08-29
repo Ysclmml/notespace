@@ -22,6 +22,7 @@ yarn-error.log*
 # Rust and Tauri build output
 target/
 src-tauri/target/
+src-tauri/gen/schemas/
 
 # Test and benchmark output
 test-results/

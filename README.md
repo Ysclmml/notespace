@@ -2,7 +2,7 @@
 
 一个面向本地 Markdown 文件的桌面编辑与浏览工作台。项目暂名 **Markdown Workspace**。
 
-当前仓库处于设计阶段，尚未开始应用代码实现。第一目标不是复刻全部 Typora 功能，而是在保留单画面编辑体验的基础上，解决以下真实工作流：
+当前仓库已进入 Phase 0 实现。第一目标不是复刻全部 Typora 功能，而是在保留单画面编辑体验的基础上，解决以下真实工作流：
 
 - Markdown 原文是唯一真相，未编辑内容应保持零差异。
 - 截图零配置落盘并插入相对链接，不写入 Base64。
@@ -52,7 +52,24 @@
 
 设计文档版本：Approved design baseline 0.1  
 设计日期：2026-08-29  
-实现状态：未开始
+实现状态：Phase 0 进行中；Tauri/React/Rust 桌面壳已建立，产品能力尚未接入
+
+## 本地开发
+
+基线工具链是 Node 24.14、pnpm 10.32 和 Rust 1.98；macOS desktop 开发需要 Xcode Command Line Tools。
+
+```bash
+pnpm install --frozen-lockfile
+pnpm desktop:dev
+```
+
+运行完整的本地基础门禁与 debug desktop build：
+
+```bash
+pnpm verify
+```
+
+当前空状态中的打开、Tab、历史和编辑入口会明确保持禁用；它们分别等待 Phase 0 契约冻结以及 Phase 1–4 的实现任务，不代表构建故障。
 
 ## AI 上下文恢复
 

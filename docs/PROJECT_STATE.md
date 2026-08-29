@@ -80,14 +80,14 @@
 | 里程碑 | 状态 | 准入条件 |
 |---|---|---|
 | Design baseline 0.1 | DONE | 本文档包冻结并通过文档校验 |
-| Phase 0 / F0 | IN_PROGRESS | `P0-BOOT-01` 已领取；先建立 Git 基线，再创建桌面壳 |
+| Phase 0 / F0 | IN_PROGRESS | Git 基线 `7f98624` 已建立；`P0-BOOT-01` 正在创建桌面壳 |
 | Phase 1–6 | NOT_STARTED | 严格按 `IMPLEMENTATION_PLAN.md` 的依赖和 Freeze Gate |
 
 实施任务 ledger（claim/交接时只修改自己的一行，详细证据在 task note）：
 
 | Task | Status | Owner / next owner | Base / head | IDs / scope | Task note / exact next action |
 |---|---|---|---|---|---|
-| `P0-BOOT-01` | CLAIMED | Integration / `/root` | `unversioned` / — | `OPS-BUILD-001`、`OPS-CONTEXT-001` / Git baseline + desktop shell | [`P0-BOOT-01.md`](tasks/P0-BOOT-01.md)；创建 privacy-safe Git baseline，然后 scaffold Tauri/React/Rust 壳 |
+| `P0-BOOT-01` | CLAIMED | Integration / `/root` | `unversioned` / `7f98624` | `OPS-BUILD-001`、`OPS-CONTEXT-001` / Git baseline + desktop shell | [`P0-BOOT-01.md`](tasks/P0-BOOT-01.md)；在 `task/P0-BOOT-01-bootstrap` 创建并验证 Tauri/React/Rust 壳 |
 
 当前只有 `P0-BOOT-01` 为 `CLAIMED`；其余任务必须等待依赖满足后再进入 READY/CLAIMED，不要预建整张空表。
 
