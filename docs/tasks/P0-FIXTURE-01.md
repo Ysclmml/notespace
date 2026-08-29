@@ -1,8 +1,8 @@
 # P0-FIXTURE-01 — 脱敏 Markdown 与病态输入语料
 
-- Status: REVIEW
-- Owner / next owner: QA (`/root/p0_fixture_01_fix`) / Integration
-- Base revision / head revision: `28e6d8e` / verified implementation `80e434a`; terminal handoff metadata is the task branch tip
+- Status: DONE
+- Owner / next owner: Integration / downstream fixture consumers
+- Base revision / head revision: `28e6d8e` / verified implementation `80e434a`; reviewed handoff `4a427022a7f11c7afedf9fb6699838e2a50c4906`; main merge `9172a9c`
 - Requirement IDs: `DATA-ROUNDTRIP-001`, `DATA-UNKNOWN-001`, `EDIT-IME-001`, `EDIT-TABLE-001`, `NAV-ANCHOR-001`, `FILE-PREFLIGHT-001`, `DATA-CONFLICT-001`, `ASSET-STAGING-001`, `RECOVERY-DIRTY-001`, `RECOVERY-LOOP-001`, `PERF-LARGE-001`, `SAFE-DATAURI-001`, `SAFE-URL-001`, `SAFE-RENDER-001`
 - Product UX IDs: fixture 基础设施任务，不直接关闭任何产品 UX / AC
 - Test / acceptance IDs: `RT-001`, `RT-002`, `IME-001`, `TABLE-001`, `LINK-001`, `WORKSPACE-001`, `SAFE-001`, `SAFE-003`, `SEC-002`, `SEC-003`, `VIS-001`, `PERF-001`, `PERF-002`, `PERF-010`, `FILE-004`, `ASSET-001`, `ASSET-002`, `REC-001`, `REC-002`
@@ -60,19 +60,18 @@ Environment: macOS arm64; Ruby 2.6.10; Git 2.50.1; `pnpm exec node --version` = 
 | privacy/repository hygiene | `ruby scripts/check_repository_hygiene.rb --self-test`; `ruby scripts/check_repository_hygiene.rb` | PASS | self-test 4/4; 125 tracked files; no large blob, personal path, secret, or committed hazardous output |
 | design invariants | `ruby scripts/validate_design_docs.rb` | PASS | 39 Markdown, 77 relative links, 89 fence pairs, 56 requirements, 83 test IDs, 37 IPC commands; authoritative post-handoff snapshot is mirrored in `PROJECT_STATE.md` because that file is excluded from the digest |
 | full repository gate | `PATH` including rustup toolchain, then `pnpm verify` | PASS | Prettier, ESLint, TypeScript, Vitest 3/3, fixture gate, Rust fmt/clippy/tests, Vite build, and Tauri debug build all passed |
+| Integration / main gate | `ruby scripts/validate_design_docs.rb`; `ruby scripts/validate_fixtures.rb`; `PATH` including rustup toolchain, then `pnpm verify` after merge `9172a9c` | PASS | 14 manifests, 18 committed files, 18 runtime artifacts, 33 attributed paths; canonical Rust 15/15 + TS 29/29; full Vitest 32/32 + Rust 17/17; Vite/Tauri debug build PASS |
 | staged patch | `git diff --cached --check` | PASS | no whitespace error before implementation commit `80e434a` |
 
 ## Open questions and blockers
 
-- 无实现 blocker。Integration 仍需要审查并合并；只有 Integration 可标记 `DONE`。
+- 无实现 blocker。独立终审已给出 MERGE，Integration 已合并并在主线重跑全门禁。
 - 非阻断观察：故意以 `core.autocrlf=true` 克隆时，非 fixture 的 Ruby shebang 因全局换行策略产生警告，但 validator 完整 PASS 且 33 个 fixture 字节全部一致。根据授权，本任务没有扩大 `.gitattributes` 到其他路径；若 Windows CI 直接执行 Ruby，由 Integration/CI 后续评估全局源码换行策略。
 - 运行时 symlink fixture 在 macOS 门禁上通过；未来 Windows 运行器若不允许创建 symlink，`P5-SECURITY-01` 的 Platform/QA owner 必须用等价的平台隔离 harness，不得删除 `SEC-002` 语义。
 
 ## Remaining numbered steps
 
-1. Integration 在既定 `P0-CONTRACT-01` 顺序之后审查并合并任务分支 tip，合并时保留其他任务对 `package.json` 和 `PROJECT_STATE.md` 的改动。
-2. Integration 重跑 design validator、hygiene、fixture validator 与 `pnpm verify`，然后才可标记 `DONE`。
-3. 后续 feature/E2E owner 按 `ownerIntent` 消费语料执行真实产品行为验收；本任务不替代这些测试。
+No work remains in `P0-FIXTURE-01`. 后续 feature/E2E owner 按 `ownerIntent` 消费语料执行真实产品行为验收；本任务不替代这些测试。
 
 ## Data safety, recovery, and temporary artifacts
 
@@ -81,4 +80,4 @@ Environment: macOS arm64; Ruby 2.6.10; Git 2.50.1; `pnpm exec node --version` = 
 
 ## Single recommended next action
 
-Integration 审查并合并 `task/P0-FIXTURE-01-corpus` 的分支 tip，然后在集成头重跑 `ruby scripts/validate_fixtures.rb` 与 `pnpm verify`。
+继续集成 `P0-SPIKE-01`；后续功能任务必须复用本语料而不得提交危险大 blob。

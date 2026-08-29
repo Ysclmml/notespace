@@ -81,7 +81,7 @@
 | 里程碑 | 状态 | 准入条件 |
 |---|---|---|
 | Design baseline 0.1 | DONE | 本文档包冻结并通过文档校验 |
-| Phase 0 / F0 | IN_PROGRESS | 应用壳、本地 CI 门禁与 Rust 单源 IPC 契约已在 `main` 集成并通过；hosted CI、typed flags、夹具与技术 Spike 尚待收口，F0 尚未发布 |
+| Phase 0 / F0 | IN_PROGRESS | 应用壳、本地 CI 门禁、Rust 单源 IPC 契约与脱敏夹具已在 `main` 集成并通过；hosted CI、typed flags 与技术 Spike 尚待收口，F0 尚未发布 |
 | Phase 1–6 | NOT_STARTED | 严格按 `IMPLEMENTATION_PLAN.md` 的依赖和 Freeze Gate |
 
 实施任务 ledger（claim/交接时只修改自己的一行，详细证据在 task note）：
@@ -92,7 +92,7 @@
 | `P0-CI-01` | REVIEW | Integration/QA / Integration | `576a435` / `2cdc7df` | `OPS-CI-001`、`OPS-BUILD-001`、`OPS-CONTEXT-001` / pinned CI quality gates and artifact build | [`P0-CI-01.md`](tasks/P0-CI-01.md)；本地等价门禁与 artifact PASS；合并后等待首次 GitHub hosted run 补证 |
 | `P0-CONTRACT-01` | DONE | Integration / none | merge `9b0ea10` / gate `055084b` | `DATA-REVISION-001`、`SAFE-IPC-001`、`EXT-ROUTER-001`、`EXT-COMMAND-001` / IPC `1.0-draft` Rust single-source contract | [`P0-CONTRACT-01.md`](tasks/P0-CONTRACT-01.md)；独立终审 MERGE；canonical runner 已纳入 root `verify`/CI；main Rust 15/15 + TS 29/29、full verify PASS；`004`–`024` 保持 frozen ports |
 | `P0-FLAG-01` | READY | unowned | `055084b` / — | `DATA-REVISION-001`、`SAFE-IPC-001`、`EXT-ROUTER-001`、`EXT-COMMAND-001`、`UX-EXT-001` / typed feature registry | 从已集成契约的 main 领取；实现 production defaults、test overrides、dependency/capability validation 与脱敏 diagnostics |
-| `P0-FIXTURE-01` | REVIEW | QA (`/root/p0_fixture_01_fix`) / Integration | `28e6d8e` / verified implementation `80e434a` | `DATA-ROUNDTRIP-001`、`DATA-UNKNOWN-001`、`EDIT-IME-001`、`EDIT-TABLE-001` + 09 §4.3 safety/recovery corpus / privacy-safe fixtures | [`P0-FIXTURE-01.md`](tasks/P0-FIXTURE-01.md)；14 manifests、18 committed files、18 runtime artifacts、33 `-text` paths、schema self-tests 4、symlink self-tests 3、`core.autocrlf=true` byte digest `afae2944...`、design snapshot `2af848681e21437841a231e926b87cf394c320c9cd0e7224bcd99ef8e9cee001`、`pnpm verify` PASS；Integration 审查并合并分支 tip |
+| `P0-FIXTURE-01` | DONE | Integration / downstream fixture consumers | implementation `80e434a` / merge `9172a9c` | `DATA-ROUNDTRIP-001`、`DATA-UNKNOWN-001`、`EDIT-IME-001`、`EDIT-TABLE-001` + 09 §4.3 safety/recovery corpus / privacy-safe fixtures | [`P0-FIXTURE-01.md`](tasks/P0-FIXTURE-01.md)；14 manifests、18 committed files、18 runtime artifacts、33 `-text` paths；独立终审 MERGE；fixture/canonical/full main 门禁 PASS |
 | `P0-SPIKE-01` | READY | unowned | `52dc387` / — | `EDIT-IME-001`、`EDIT-TABLE-001`、`PERF-LARGE-001` / CodeMirror feasibility | 领取后创建 task note；仅 spike/测量，不实现 Phase 1 编辑器 |
 | `P0-SPIKE-02` | READY | unowned | `52dc387` / — | `FILE-PREFLIGHT-001`、`PERF-LARGE-001`、`SAFE-DATAURI-001`、`SAFE-IPC-001` / native safety feasibility | 领取后创建 task note；仅 spike/测量，不实现 Phase 1 file open |
 
@@ -116,6 +116,7 @@
 - 2026-08-30 `P0-BOOT-01` 在任务分支和系统临时目录中的全新 clone 均执行 `pnpm verify` 并 PASS；Tauri debug `.app` 通过原生窗口 smoke，未读取或提交用户文档。详细命令与证据见 [`P0-BOOT-01.md`](tasks/P0-BOOT-01.md)。
 - 2026-08-30 Integration fast-forward 合并 `P0-BOOT-01` 到 `main` revision `52dc387`；`ruby scripts/validate_design_docs.rb` PASS（snapshot `3be99dea...`），补齐已记录的 Rustup `PATH` 前提后 `pnpm verify` 全部 PASS。
 - 2026-08-30 Integration no-ff 合并 `P0-CONTRACT-01` 到 `main` revision `9b0ea10`，并以 `055084b` 把 `contracts/run.mjs` 接入 root `check`/`verify`/CI；design snapshot `a9644030...`、repository hygiene、cargo audit、canonical Rust 15/15 + TS 29/29、full Vitest 32/32 + Rust 17/17、Vite/Tauri debug build 全部 PASS。
+- 2026-08-30 Integration no-ff 合并 `P0-FIXTURE-01` 到 `main` revision `9172a9c`，保留 canonical contract gate 并把 `fixtures:check` 接入 root `check`/`verify`/CI；fixture validator（14/18/18/33）、canonical Rust 15/15 + TS 29/29、full Vitest 32/32 + Rust 17/17、Vite/Tauri debug build 全部 PASS。
 
 ## 9. 标准任务交接
 
