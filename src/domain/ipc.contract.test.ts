@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import fixtureJson from "../../contracts/generated/ipc-v1-union-fixtures.json?raw";
+import unionSchemaJson from "../../contracts/generated/ipc-v1-union-schemas.json?raw";
 import {
   CONTRACT_UNION_FIXTURES,
+  CONTRACT_UNION_VARIANT_COUNTS,
   decodeAppError,
   decodeEventEnvelope,
   IPC_API_VERSION,
@@ -10,7 +12,25 @@ import {
   IPC_EVENT_SPECS,
   isKnownWriteAction,
   KNOWN_APP_ERROR_CODES,
+  matchesJsonSchema,
+  type JsonSchema,
 } from "../generated/ipc";
+
+type JsonRecord = Record<string, unknown>;
+
+function asRecord(value: unknown): JsonRecord {
+  expect(value).not.toBeNull();
+  expect(typeof value).toBe("object");
+  expect(Array.isArray(value)).toBe(false);
+  return value as JsonRecord;
+}
+
+function schemaBranches(schema: unknown): readonly unknown[] {
+  const record = asRecord(schema);
+  if (Array.isArray(record.oneOf)) return record.oneOf;
+  if (Array.isArray(record.anyOf)) return record.anyOf;
+  return [schema];
+}
 
 const eventBase = {
   apiVersion: IPC_API_VERSION,
@@ -39,10 +59,55 @@ describe("CONTRACT-002 Rust serde to TypeScript union fixtures", () => {
   it("keeps the committed JSON value-aligned with concrete Rust variants", () => {
     const fixtureSet: unknown = JSON.parse(fixtureJson);
     expect(fixtureSet).toEqual(CONTRACT_UNION_FIXTURES);
-    expect(Object.keys(CONTRACT_UNION_FIXTURES.unions)).toHaveLength(44);
+    expect(Object.keys(CONTRACT_UNION_FIXTURES.unions)).toEqual(
+      Object.keys(CONTRACT_UNION_VARIANT_COUNTS),
+    );
+    expect(CONTRACT_UNION_FIXTURES.variantCounts).toEqual(CONTRACT_UNION_VARIANT_COUNTS);
     expect(CONTRACT_UNION_FIXTURES.generatedBy).toBe(
       "src-tauri/src/ipc_schema/fixtures.rs",
     );
+  });
+
+  it("mechanically covers every branch in every registered Rust wire union", () => {
+    const schemaSet = asRecord(JSON.parse(unionSchemaJson));
+    const schemas = asRecord(schemaSet.unions);
+    const variantCounts: Readonly<Record<string, number>> = CONTRACT_UNION_VARIANT_COUNTS;
+    expect(Object.keys(schemas)).toEqual(Object.keys(CONTRACT_UNION_VARIANT_COUNTS));
+
+    for (const [name, fixtures] of Object.entries(CONTRACT_UNION_FIXTURES.unions)) {
+      const schema = schemas[name];
+      const expectedVariants = variantCounts[name];
+      expect(schema, `${name} schema`).toBeDefined();
+      if (expectedVariants === undefined) {
+        throw new Error(`${name} has no mechanically generated variant count`);
+      }
+      expect(fixtures).toHaveLength(expectedVariants);
+      expect(
+        fixtures.every((fixture) => matchesJsonSchema(fixture, schema as JsonSchema)),
+        `${name} fixtures must satisfy their Rust schema`,
+      ).toBe(true);
+
+      const branches = schemaBranches(schema);
+      expect(branches).toHaveLength(expectedVariants);
+      for (const [index, branch] of branches.entries()) {
+        expect(
+          fixtures.some((fixture) =>
+            matchesJsonSchema(fixture, branch as JsonSchema, schema as JsonSchema),
+          ),
+          `${name} branch ${index} has no concrete Rust fixture`,
+        ).toBe(true);
+      }
+      if (asRecord(schema).oneOf !== undefined) {
+        for (const fixture of fixtures) {
+          expect(
+            branches.filter((branch) =>
+              matchesJsonSchema(fixture, branch as JsonSchema, schema as JsonSchema),
+            ),
+            `${name} fixture must map to exactly one oneOf branch`,
+          ).toHaveLength(1);
+        }
+      }
+    }
   });
 
   it("contains valid nested wire values rather than placeholder objects", () => {
@@ -77,6 +142,35 @@ describe("CONTRACT-003 forward compatibility and fail-closed writes", () => {
     expect(decoded?.error.recoveryActions).toEqual(["openSafetyPage"]);
   });
 
+  it("sanitizes a nested AppError through the recovery event entry point", () => {
+    const decoded = decodeEventEnvelope({
+      ...eventBase,
+      eventType: "recovery.snapshotFailed",
+      scope: { kind: "document", documentId: "fixture-document" },
+      sequence: 5,
+      payload: {
+        documentId: "fixture-document",
+        error: {
+          code: "ERR_FUTURE_READ_ONLY",
+          message: "Future recovery error",
+          retryable: false,
+          correlationId: "fixture-correlation",
+          recoveryActions: ["overwrite", "openSafetyPage", "futureAction"],
+        },
+      },
+    });
+
+    expect(decoded).toMatchObject({
+      kind: "known",
+      eventType: "recovery.snapshotFailed",
+      envelope: {
+        payload: {
+          error: { recoveryActions: ["openSafetyPage"] },
+        },
+      },
+    });
+  });
+
   it("returns a valid unknown read-only event envelope instead of throwing", () => {
     const decoded = decodeEventEnvelope({
       ...eventBase,
@@ -97,6 +191,23 @@ describe("CONTRACT-003 forward compatibility and fail-closed writes", () => {
     );
   });
 
+  it("accepts exactly the Rust-derived workspace.filesChanged payload shape", () => {
+    const event = {
+      ...eventBase,
+      eventType: "workspace.filesChanged",
+      scope: { kind: "workspace", workspaceId: "fixture-workspace" },
+      sequence: 3,
+      payload: { generationHint: 1, overflow: false, changes: [] },
+    };
+    expect(decodeEventEnvelope(event)?.kind).toBe("known");
+    expect(
+      decodeEventEnvelope({
+        ...event,
+        payload: { generationCounter: 1, overflow: false, changes: [] },
+      }),
+    ).toBeNull();
+  });
+
   it.each([
     ["wrong scope", { ...taskProgress, scope: { kind: "app" } }],
     [
@@ -110,6 +221,10 @@ describe("CONTRACT-003 forward compatibility and fail-closed writes", () => {
     ["negative sequence", { ...taskProgress, sequence: -1 }],
     ["fractional sequence", { ...taskProgress, sequence: 1.5 }],
     ["unsafe sequence", { ...taskProgress, sequence: Number.MAX_SAFE_INTEGER + 1 }],
+    [
+      "explicit null optional string",
+      { ...taskProgress, payload: { ...taskProgress.payload, messageKey: null } },
+    ],
     [
       "unsafe payload counter",
       {
@@ -162,6 +277,52 @@ describe("CONTRACT-003 forward compatibility and fail-closed writes", () => {
           observedDiskRevision: { kind: "absent" },
           source: "ownWrite",
         },
+      }),
+    ).toBeNull();
+  });
+
+  it.each([
+    [
+      "modified external writeId",
+      {
+        change: "modified",
+        documentId: "fixture-document",
+        observedDiskRevision: { kind: "absent" },
+        source: "external",
+        writeId: "forbidden-write",
+      },
+    ],
+    [
+      "permissionChanged external writeId",
+      {
+        change: "permissionChanged",
+        documentId: "fixture-document",
+        readOnly: true,
+        capabilityEpoch: 2,
+        source: "external",
+        writeId: "forbidden-write",
+      },
+    ],
+  ])("rejects document.externalChanged with %s", (_name, payload) => {
+    expect(
+      decodeEventEnvelope({
+        ...eventBase,
+        eventType: "document.externalChanged",
+        scope: { kind: "document", documentId: "fixture-document" },
+        sequence: 4,
+        payload,
+      }),
+    ).toBeNull();
+  });
+
+  it("rejects explicit null for an optional app.closeRequested counter", () => {
+    expect(
+      decodeEventEnvelope({
+        ...eventBase,
+        eventType: "app.closeRequested",
+        scope: { kind: "app" },
+        sequence: 5,
+        payload: { closeRequestId: "fixture-close", deadlineUnixMs: null },
       }),
     ).toBeNull();
   });

@@ -306,49 +306,57 @@
       "id": "IPC-EVT-010",
       "eventType": "workspace.filesChanged",
       "payloadType": "WorkspaceFilesChanged",
-      "scopeKind": "workspace"
+      "scopeKind": "workspace",
+      "identityField": null
     },
     {
       "id": "IPC-EVT-011",
       "eventType": "workspace.capabilityChanged",
       "payloadType": "WorkspaceCapabilityChanged",
-      "scopeKind": "workspace"
+      "scopeKind": "workspace",
+      "identityField": "workspaceId"
     },
     {
       "id": "IPC-EVT-020",
       "eventType": "document.externalChanged",
       "payloadType": "DocumentExternalChanged",
-      "scopeKind": "document"
+      "scopeKind": "document",
+      "identityField": "documentId"
     },
     {
       "id": "IPC-EVT-030",
       "eventType": "task.progress",
       "payloadType": "TaskProgress",
-      "scopeKind": "operation"
+      "scopeKind": "operation",
+      "identityField": "operationId"
     },
     {
       "id": "IPC-EVT-031",
       "eventType": "task.finished",
       "payloadType": "TaskFinished",
-      "scopeKind": "operation"
+      "scopeKind": "operation",
+      "identityField": "operationId"
     },
     {
       "id": "IPC-EVT-040",
       "eventType": "recovery.snapshotFailed",
       "payloadType": "RecoverySnapshotFailed",
-      "scopeKind": "document"
+      "scopeKind": "document",
+      "identityField": "documentId"
     },
     {
       "id": "IPC-EVT-050",
       "eventType": "app.closeRequested",
       "payloadType": "AppCloseRequest",
-      "scopeKind": "app"
+      "scopeKind": "app",
+      "identityField": null
     },
     {
       "id": "IPC-EVT-060",
       "eventType": "app.openResourcesRequested",
       "payloadType": "NativeOpenResourcesRequested",
-      "scopeKind": "app"
+      "scopeKind": "app",
+      "identityField": null
     }
   ],
   "knownAppErrorCodes": [

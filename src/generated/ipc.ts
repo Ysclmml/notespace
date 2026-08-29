@@ -1568,48 +1568,56 @@ export const IPC_EVENT_SPECS = [
     eventType: "workspace.filesChanged",
     payloadType: "WorkspaceFilesChanged",
     scopeKind: "workspace",
+    identityField: null,
   },
   {
     id: "IPC-EVT-011",
     eventType: "workspace.capabilityChanged",
     payloadType: "WorkspaceCapabilityChanged",
     scopeKind: "workspace",
+    identityField: "workspaceId",
   },
   {
     id: "IPC-EVT-020",
     eventType: "document.externalChanged",
     payloadType: "DocumentExternalChanged",
     scopeKind: "document",
+    identityField: "documentId",
   },
   {
     id: "IPC-EVT-030",
     eventType: "task.progress",
     payloadType: "TaskProgress",
     scopeKind: "operation",
+    identityField: "operationId",
   },
   {
     id: "IPC-EVT-031",
     eventType: "task.finished",
     payloadType: "TaskFinished",
     scopeKind: "operation",
+    identityField: "operationId",
   },
   {
     id: "IPC-EVT-040",
     eventType: "recovery.snapshotFailed",
     payloadType: "RecoverySnapshotFailed",
     scopeKind: "document",
+    identityField: "documentId",
   },
   {
     id: "IPC-EVT-050",
     eventType: "app.closeRequested",
     payloadType: "AppCloseRequest",
     scopeKind: "app",
+    identityField: null,
   },
   {
     id: "IPC-EVT-060",
     eventType: "app.openResourcesRequested",
     payloadType: "NativeOpenResourcesRequested",
     scopeKind: "app",
+    identityField: null,
   },
 ] as const;
 
@@ -1653,11 +1661,121 @@ export const KNOWN_WRITE_ACTIONS = [
   "recoveryAbandoned",
 ] as const;
 
+export const CONTRACT_UNION_VARIANT_COUNTS = {
+  AbsentDiskRevision: 1,
+  AppCloseRespondOutcome: 4,
+  AppErrorDetails: 8,
+  AppOpenResourcesAckOutcome: 3,
+  AssetImportClipboardOutcome: 2,
+  AssetOwner: 2,
+  AssetState: 6,
+  CommandResponse: 2,
+  ConflictResolutionOutcome: 2,
+  ConflictResolutionRequest: 3,
+  DiscardReturnState: 5,
+  DocumentAnchor: 3,
+  DocumentChangeProvenance: 2,
+  DocumentCompareOutcome: 3,
+  DocumentExternalChanged: 5,
+  DocumentLoadState: 4,
+  DocumentLocator: 3,
+  DocumentOpenOutcome: 3,
+  DocumentPickOutcome: 2,
+  DocumentPrepareSaveAsOutcome: 4,
+  DocumentRepairAction: 2,
+  DocumentSaveAsAbortOutcome: 3,
+  DocumentSaveAsAckOutcome: 3,
+  DocumentSaveAsOutcome: 1,
+  DocumentSaveAsStatusOutcome: 6,
+  DocumentSaveOutcome: 2,
+  EventScope: 4,
+  ExpectedDiskRevision: 2,
+  MarkdownResourceRef: 1,
+  NativeOpenTarget: 2,
+  NavigateTarget: 2,
+  PersistenceState: 9,
+  RecoveryInitialPersistence: 3,
+  RecoveryOpenOutcome: 2,
+  ResourceGrantOutcome: 3,
+  ResourcePreviewOutcome: 3,
+  ResourceRef: 4,
+  ResourceResolution: 5,
+  ResourceResolutionWithoutGrant: 4,
+  ResourceScope: 3,
+  RevealTarget: 4,
+  SafetyReport: 2,
+  SaveAsTarget: 2,
+  SessionEditResult: 3,
+  TaskCancelOutcome: 3,
+  WindowLayout: 2,
+  WorkspaceFileChange: 4,
+  WorkspacePickOutcome: 2,
+  WorkspaceRescanRequest: 2,
+  WorkspaceState: 6,
+} as const;
+
 export const CONTRACT_UNION_FIXTURES = {
   schemaVersion: 1,
   apiVersion: "1.0",
   generatedBy: "src-tauri/src/ipc_schema/fixtures.rs",
+  variantCounts: {
+    AbsentDiskRevision: 1,
+    AppCloseRespondOutcome: 4,
+    AppErrorDetails: 8,
+    AppOpenResourcesAckOutcome: 3,
+    AssetImportClipboardOutcome: 2,
+    AssetOwner: 2,
+    AssetState: 6,
+    CommandResponse: 2,
+    ConflictResolutionOutcome: 2,
+    ConflictResolutionRequest: 3,
+    DiscardReturnState: 5,
+    DocumentAnchor: 3,
+    DocumentChangeProvenance: 2,
+    DocumentCompareOutcome: 3,
+    DocumentExternalChanged: 5,
+    DocumentLoadState: 4,
+    DocumentLocator: 3,
+    DocumentOpenOutcome: 3,
+    DocumentPickOutcome: 2,
+    DocumentPrepareSaveAsOutcome: 4,
+    DocumentRepairAction: 2,
+    DocumentSaveAsAbortOutcome: 3,
+    DocumentSaveAsAckOutcome: 3,
+    DocumentSaveAsOutcome: 1,
+    DocumentSaveAsStatusOutcome: 6,
+    DocumentSaveOutcome: 2,
+    EventScope: 4,
+    ExpectedDiskRevision: 2,
+    MarkdownResourceRef: 1,
+    NativeOpenTarget: 2,
+    NavigateTarget: 2,
+    PersistenceState: 9,
+    RecoveryInitialPersistence: 3,
+    RecoveryOpenOutcome: 2,
+    ResourceGrantOutcome: 3,
+    ResourcePreviewOutcome: 3,
+    ResourceRef: 4,
+    ResourceResolution: 5,
+    ResourceResolutionWithoutGrant: 4,
+    ResourceScope: 3,
+    RevealTarget: 4,
+    SafetyReport: 2,
+    SaveAsTarget: 2,
+    SessionEditResult: 3,
+    TaskCancelOutcome: 3,
+    WindowLayout: 2,
+    WorkspaceFileChange: 4,
+    WorkspacePickOutcome: 2,
+    WorkspaceRescanRequest: 2,
+    WorkspaceState: 6,
+  },
   unions: {
+    AbsentDiskRevision: [
+      {
+        kind: "absent",
+      },
+    ],
     AppCloseRespondOutcome: [
       {
         kind: "cancelled",
@@ -2547,6 +2665,38 @@ export const CONTRACT_UNION_FIXTURES = {
         kind: "unknown",
       },
     ],
+    DocumentSaveAsOutcome: [
+      {
+        kind: "saved",
+        newDescriptor: {
+          displayName: "fixture.md",
+          documentId: "fixture-document",
+          locator: {
+            kind: "workspacePath",
+            relativePath: "docs/fixture.md",
+            workspaceId: "fixture-workspace",
+          },
+          readOnly: false,
+          relativePath: "docs/fixture.md",
+          workspaceId: "fixture-workspace",
+        },
+        result: {
+          bytesWritten: 128,
+          documentId: "fixture-document",
+          kind: "saved",
+          newDiskRevision: {
+            contentHash: "fixture-content-hash",
+            fileIdentityHint: "fixture-file-identity",
+            modifiedAtUnixMs: 2000000000000,
+            sizeBytes: 128,
+            token: "fixture-revision-token",
+          },
+          savedSessionRevision: 14,
+          writeId: "fixture-write",
+        },
+        saveAsIntentId: "fixture-save-as",
+      },
+    ],
     DocumentSaveAsStatusOutcome: [
       {
         kind: "unknown",
@@ -2677,6 +2827,20 @@ export const CONTRACT_UNION_FIXTURES = {
         kind: "absent",
       },
     ],
+    MarkdownResourceRef: [
+      {
+        anchor: {
+          kind: "heading",
+          slug: "fixture-heading",
+        },
+        kind: "markdown",
+        locator: {
+          kind: "workspacePath",
+          relativePath: "docs/fixture.md",
+          workspaceId: "fixture-workspace",
+        },
+      },
+    ],
     NativeOpenTarget: [
       {
         displayPath: "/fixture/workspace",
@@ -2697,6 +2861,25 @@ export const CONTRACT_UNION_FIXTURES = {
             workspaceId: "fixture-workspace",
           },
         },
+      },
+    ],
+    NavigateTarget: [
+      {
+        anchor: {
+          kind: "heading",
+          slug: "fixture-heading",
+        },
+        kind: "markdown",
+        locator: {
+          kind: "workspacePath",
+          relativePath: "docs/fixture.md",
+          workspaceId: "fixture-workspace",
+        },
+      },
+      {
+        linkKindHint: "markdown",
+        rawDestination: "../fixture.md#fixture-heading",
+        sourceDocumentId: "fixture-document",
       },
     ],
     PersistenceState: [
@@ -3183,6 +3366,56 @@ export const CONTRACT_UNION_FIXTURES = {
         kind: "invalid",
       },
     ],
+    ResourceResolutionWithoutGrant: [
+      {
+        documentId: "fixture-document",
+        kind: "resolved",
+        resource: {
+          anchor: {
+            kind: "heading",
+            slug: "fixture-heading",
+          },
+          kind: "markdown",
+          locator: {
+            kind: "workspacePath",
+            relativePath: "docs/fixture.md",
+            workspaceId: "fixture-workspace",
+          },
+        },
+      },
+      {
+        candidate: {
+          anchor: {
+            kind: "heading",
+            slug: "fixture-heading",
+          },
+          kind: "markdown",
+          locator: {
+            kind: "workspacePath",
+            relativePath: "docs/fixture.md",
+            workspaceId: "fixture-workspace",
+          },
+        },
+        displayTarget: "missing.md",
+        kind: "missing",
+      },
+      {
+        displayTarget: "fixture://resource",
+        kind: "unsupported",
+        scheme: "fixture",
+      },
+      {
+        error: {
+          code: "ERR_IO",
+          correlationId: "fixture-correlation",
+          message: "Fixture I/O failure",
+          messageKey: "fixture.io",
+          recoveryActions: ["retry", "compare"],
+          retryable: true,
+        },
+        kind: "invalid",
+      },
+    ],
     ResourceScope: [
       {
         kind: "workspace",
@@ -3241,6 +3474,16 @@ export const CONTRACT_UNION_FIXTURES = {
         maxLineBytes: 64,
         reasons: ["invalidUtf8"],
         sizeBytes: 128,
+      },
+    ],
+    SaveAsTarget: [
+      {
+        kind: "prompt",
+        suggestedName: "fixture-copy.md",
+      },
+      {
+        grantToken: "fixture-save-as-grant",
+        kind: "grant",
       },
     ],
     SessionEditResult: [
@@ -3377,12 +3620,27 @@ export const CONTRACT_UNION_FIXTURES = {
   },
 } as const;
 
+export const IPC_EVENT_PAYLOAD_SCHEMAS = JSON.parse(
+  '{\n  "schemaVersion": 1,\n  "apiVersion": "1.0",\n  "generatedBy": "schemars 1.2.2 from Rust serde event payloads",\n  "scope": {\n    "$schema": "https://json-schema.org/draft/2020-12/schema",\n    "title": "EventScope",\n    "oneOf": [\n      {\n        "type": "object",\n        "properties": {\n          "kind": {\n            "type": "string",\n            "const": "app"\n          }\n        },\n        "required": [\n          "kind"\n        ]\n      },\n      {\n        "type": "object",\n        "properties": {\n          "kind": {\n            "type": "string",\n            "const": "workspace"\n          },\n          "workspaceId": {\n            "$ref": "#/$defs/WorkspaceId"\n          }\n        },\n        "required": [\n          "kind",\n          "workspaceId"\n        ]\n      },\n      {\n        "type": "object",\n        "properties": {\n          "documentId": {\n            "$ref": "#/$defs/DocumentId"\n          },\n          "kind": {\n            "type": "string",\n            "const": "document"\n          }\n        },\n        "required": [\n          "kind",\n          "documentId"\n        ]\n      },\n      {\n        "type": "object",\n        "properties": {\n          "kind": {\n            "type": "string",\n            "const": "operation"\n          },\n          "operationId": {\n            "$ref": "#/$defs/OperationId"\n          }\n        },\n        "required": [\n          "kind",\n          "operationId"\n        ]\n      }\n    ],\n    "$defs": {\n      "DocumentId": {\n        "type": "string"\n      },\n      "OperationId": {\n        "type": "string"\n      },\n      "WorkspaceId": {\n        "type": "string"\n      }\n    }\n  },\n  "events": {\n    "app.closeRequested": {\n      "$schema": "https://json-schema.org/draft/2020-12/schema",\n      "title": "AppCloseRequest",\n      "type": "object",\n      "properties": {\n        "closeRequestId": {\n          "type": "string"\n        },\n        "deadlineUnixMs": {\n          "type": [\n            "integer"\n          ],\n          "maximum": 9007199254740991,\n          "minimum": 0\n        }\n      },\n      "required": [\n        "closeRequestId"\n      ]\n    },\n    "app.openResourcesRequested": {\n      "$schema": "https://json-schema.org/draft/2020-12/schema",\n      "title": "NativeOpenResourcesRequested",\n      "type": "object",\n      "properties": {\n        "nativeRequestId": {\n          "type": "string"\n        },\n        "originPaneId": {\n          "anyOf": [\n            {\n              "$ref": "#/$defs/PaneId"\n            }\n          ]\n        },\n        "source": {\n          "$ref": "#/$defs/NativeOpenSource"\n        },\n        "targets": {\n          "type": "array",\n          "items": {\n            "$ref": "#/$defs/NativeOpenTarget"\n          }\n        }\n      },\n      "required": [\n        "nativeRequestId",\n        "source",\n        "targets"\n      ],\n      "$defs": {\n        "DocumentAnchor": {\n          "oneOf": [\n            {\n              "type": "object",\n              "properties": {\n                "kind": {\n                  "type": "string",\n                  "const": "heading"\n                },\n                "slug": {\n                  "type": "string"\n                }\n              },\n              "required": [\n                "kind",\n                "slug"\n              ]\n            },\n            {\n              "type": "object",\n              "properties": {\n                "blockId": {\n                  "type": "string"\n                },\n                "kind": {\n                  "type": "string",\n                  "const": "block"\n                }\n              },\n              "required": [\n                "kind",\n                "blockId"\n              ]\n            },\n            {\n              "type": "object",\n              "properties": {\n                "column": {\n                  "type": [\n                    "integer"\n                  ],\n                  "maximum": 9007199254740991,\n                  "minimum": 0\n                },\n                "kind": {\n                  "type": "string",\n                  "const": "sourcePosition"\n                },\n                "line": {\n                  "type": "integer",\n                  "maximum": 9007199254740991,\n                  "minimum": 0\n                }\n              },\n              "required": [\n                "kind",\n                "line"\n              ]\n            }\n          ]\n        },\n        "DocumentId": {\n          "type": "string"\n        },\n        "DocumentLocator": {\n          "oneOf": [\n            {\n              "type": "object",\n              "properties": {\n                "kind": {\n                  "type": "string",\n                  "const": "workspacePath"\n                },\n                "relativePath": {\n                  "$ref": "#/$defs/RelativePath"\n                },\n                "workspaceId": {\n                  "$ref": "#/$defs/WorkspaceId"\n                }\n              },\n              "required": [\n                "kind",\n                "workspaceId",\n                "relativePath"\n              ]\n            },\n            {\n              "type": "object",\n              "properties": {\n                "draftId": {\n                  "$ref": "#/$defs/DraftId"\n                },\n                "kind": {\n                  "type": "string",\n                  "const": "draft"\n                },\n                "suggestedName": {\n                  "type": [\n                    "string"\n                  ]\n                }\n              },\n              "required": [\n                "kind",\n                "draftId"\n              ]\n            },\n            {\n              "type": "object",\n              "properties": {\n                "displayName": {\n                  "type": "string"\n                },\n                "grantId": {\n                  "$ref": "#/$defs/GrantId"\n                },\n                "kind": {\n                  "type": "string",\n                  "const": "grantedFile"\n                }\n              },\n              "required": [\n                "kind",\n                "grantId",\n                "displayName"\n              ]\n            }\n          ]\n        },\n        "DraftId": {\n          "type": "string"\n        },\n        "GrantId": {\n          "type": "string"\n        },\n        "MarkdownResourceRef": {\n          "type": "object",\n          "properties": {\n            "anchor": {\n              "anyOf": [\n                {\n                  "$ref": "#/$defs/DocumentAnchor"\n                }\n              ]\n            },\n            "kind": {\n              "type": "string",\n              "const": "markdown"\n            },\n            "locator": {\n              "$ref": "#/$defs/DocumentLocator"\n            }\n          },\n          "required": [\n            "kind",\n            "locator"\n          ]\n        },\n        "NativeOpenSource": {\n          "type": "string",\n          "enum": [\n            "launch",\n            "finder",\n            "dragDrop"\n          ]\n        },\n        "NativeOpenTarget": {\n          "oneOf": [\n            {\n              "type": "object",\n              "properties": {\n                "displayPath": {\n                  "type": "string"\n                },\n                "grantToken": {\n                  "type": "string"\n                },\n                "kind": {\n                  "type": "string",\n                  "const": "workspace"\n                }\n              },\n              "required": [\n                "kind",\n                "grantToken",\n                "displayPath"\n              ]\n            },\n            {\n              "type": "object",\n              "properties": {\n                "kind": {\n                  "type": "string",\n                  "const": "document"\n                },\n                "resource": {\n                  "$ref": "#/$defs/MarkdownResourceRef"\n                }\n              },\n              "required": [\n                "kind",\n                "resource"\n              ]\n            }\n          ]\n        },\n        "PaneId": {\n          "type": "string"\n        },\n        "RelativePath": {\n          "type": "string"\n        },\n        "ResourceScope": {\n          "oneOf": [\n            {\n              "type": "object",\n              "properties": {\n                "kind": {\n                  "type": "string",\n                  "const": "workspace"\n                },\n                "workspaceId": {\n                  "$ref": "#/$defs/WorkspaceId"\n                }\n              },\n              "required": [\n                "kind",\n                "workspaceId"\n              ]\n            },\n            {\n              "type": "object",\n              "properties": {\n                "documentId": {\n                  "$ref": "#/$defs/DocumentId"\n                },\n                "kind": {\n                  "type": "string",\n                  "const": "document"\n                }\n              },\n              "required": [\n                "kind",\n                "documentId"\n              ]\n            },\n            {\n              "type": "object",\n              "properties": {\n                "draftId": {\n                  "$ref": "#/$defs/DraftId"\n                },\n                "kind": {\n                  "type": "string",\n                  "const": "draft"\n                }\n              },\n              "required": [\n                "kind",\n                "draftId"\n              ]\n            }\n          ]\n        },\n        "WorkspaceId": {\n          "type": "string"\n        }\n      }\n    },\n    "document.externalChanged": {\n      "$schema": "https://json-schema.org/draft/2020-12/schema",\n      "title": "DocumentExternalChanged",\n      "oneOf": [\n        {\n          "type": "object",\n          "properties": {\n            "change": {\n              "type": "string",\n              "const": "modified"\n            },\n            "documentId": {\n              "$ref": "#/$defs/DocumentId"\n            },\n            "observedDiskRevision": {\n              "$ref": "#/$defs/ExpectedDiskRevision"\n            }\n          },\n          "oneOf": [\n            {\n              "type": "object",\n              "properties": {\n                "source": {\n                  "type": "string",\n                  "const": "external"\n                }\n              },\n              "not": {\n                "required": [\n                  "writeId"\n                ]\n              },\n              "required": [\n                "source"\n              ]\n            },\n            {\n              "type": "object",\n              "properties": {\n                "source": {\n                  "type": "string",\n                  "const": "ownWrite"\n                },\n                "writeId": {\n                  "type": "string"\n                }\n              },\n              "required": [\n                "source",\n                "writeId"\n              ]\n            }\n          ],\n          "required": [\n            "change",\n            "documentId",\n            "observedDiskRevision"\n          ]\n        },\n        {\n          "type": "object",\n          "properties": {\n            "change": {\n              "type": "string",\n              "const": "deleted"\n            },\n            "documentId": {\n              "$ref": "#/$defs/DocumentId"\n            },\n            "observedDiskRevision": {\n              "$ref": "#/$defs/ExpectedDiskRevision"\n            }\n          },\n          "oneOf": [\n            {\n              "type": "object",\n              "properties": {\n                "source": {\n                  "type": "string",\n                  "const": "external"\n                }\n              },\n              "not": {\n                "required": [\n                  "writeId"\n                ]\n              },\n              "required": [\n                "source"\n              ]\n            },\n            {\n              "type": "object",\n              "properties": {\n                "source": {\n                  "type": "string",\n                  "const": "ownWrite"\n                },\n                "writeId": {\n                  "type": "string"\n                }\n              },\n              "required": [\n                "source",\n                "writeId"\n              ]\n            }\n          ],\n          "required": [\n            "change",\n            "documentId",\n            "observedDiskRevision"\n          ]\n        },\n        {\n          "type": "object",\n          "properties": {\n            "change": {\n              "type": "string",\n              "const": "replaced"\n            },\n            "documentId": {\n              "$ref": "#/$defs/DocumentId"\n            },\n            "observedDiskRevision": {\n              "$ref": "#/$defs/ExpectedDiskRevision"\n            }\n          },\n          "oneOf": [\n            {\n              "type": "object",\n              "properties": {\n                "source": {\n                  "type": "string",\n                  "const": "external"\n                }\n              },\n              "not": {\n                "required": [\n                  "writeId"\n                ]\n              },\n              "required": [\n                "source"\n              ]\n            },\n            {\n              "type": "object",\n              "properties": {\n                "source": {\n                  "type": "string",\n                  "const": "ownWrite"\n                },\n                "writeId": {\n                  "type": "string"\n                }\n              },\n              "required": [\n                "source",\n                "writeId"\n              ]\n            }\n          ],\n          "required": [\n            "change",\n            "documentId",\n            "observedDiskRevision"\n          ]\n        },\n        {\n          "type": "object",\n          "properties": {\n            "change": {\n              "type": "string",\n              "const": "metadataOnly"\n            },\n            "documentId": {\n              "$ref": "#/$defs/DocumentId"\n            },\n            "observedDiskRevision": {\n              "$ref": "#/$defs/ExpectedDiskRevision"\n            }\n          },\n          "oneOf": [\n            {\n              "type": "object",\n              "properties": {\n                "source": {\n                  "type": "string",\n                  "const": "external"\n                }\n              },\n              "not": {\n                "required": [\n                  "writeId"\n                ]\n              },\n              "required": [\n                "source"\n              ]\n            },\n            {\n              "type": "object",\n              "properties": {\n                "source": {\n                  "type": "string",\n                  "const": "ownWrite"\n                },\n                "writeId": {\n                  "type": "string"\n                }\n              },\n              "required": [\n                "source",\n                "writeId"\n              ]\n            }\n          ],\n          "required": [\n            "change",\n            "documentId",\n            "observedDiskRevision"\n          ]\n        },\n        {\n          "type": "object",\n          "properties": {\n            "capabilityEpoch": {\n              "type": "integer",\n              "maximum": 9007199254740991,\n              "minimum": 0\n            },\n            "change": {\n              "type": "string",\n              "const": "permissionChanged"\n            },\n            "documentId": {\n              "$ref": "#/$defs/DocumentId"\n            },\n            "error": {\n              "anyOf": [\n                {\n                  "$ref": "#/$defs/AppError"\n                }\n              ]\n            },\n            "readOnly": {\n              "type": "boolean"\n            },\n            "source": {\n              "$ref": "#/$defs/ExternalChangeSource"\n            }\n          },\n          "not": {\n            "required": [\n              "writeId"\n            ]\n          },\n          "required": [\n            "change",\n            "documentId",\n            "readOnly",\n            "capabilityEpoch",\n            "source"\n          ]\n        }\n      ],\n      "$defs": {\n        "AppError": {\n          "type": "object",\n          "properties": {\n            "code": {\n              "$ref": "#/$defs/AppErrorCode"\n            },\n            "correlationId": {\n              "type": "string"\n            },\n            "details": {\n              "anyOf": [\n                {\n                  "$ref": "#/$defs/AppErrorDetails"\n                }\n              ],\n              "default": null\n            },\n            "message": {\n              "type": "string"\n            },\n            "messageKey": {\n              "type": [\n                "string"\n              ],\n              "default": null\n            },\n            "recoveryActions": {\n              "type": [\n                "array"\n              ],\n              "default": null,\n              "items": {\n                "type": "string"\n              }\n            },\n            "retryable": {\n              "type": "boolean"\n            }\n          },\n          "required": [\n            "code",\n            "message",\n            "retryable",\n            "correlationId"\n          ]\n        },\n        "AppErrorCode": {\n          "type": "string"\n        },\n        "AppErrorDetails": {\n          "oneOf": [\n            {\n              "type": "object",\n              "properties": {\n                "displayPath": {\n                  "type": [\n                    "string"\n                  ]\n                },\n                "kind": {\n                  "type": "string",\n                  "const": "path"\n                }\n              },\n              "required": [\n                "kind"\n              ]\n            },\n            {\n              "type": "object",\n              "properties": {\n                "actual": {\n                  "$ref": "#/$defs/ExpectedDiskRevision"\n                },\n                "expected": {\n                  "$ref": "#/$defs/ExpectedDiskRevision"\n                },\n                "kind": {\n                  "type": "string",\n                  "const": "conflict"\n                }\n              },\n              "required": [\n                "kind",\n                "expected",\n                "actual"\n              ]\n            },\n            {\n              "type": "object",\n              "properties": {\n                "kind": {\n                  "type": "string",\n                  "const": "safety"\n                },\n                "report": {\n                  "$ref": "#/$defs/SafetyReport"\n                }\n              },\n              "required": [\n                "kind",\n                "report"\n              ]\n            },\n            {\n              "type": "object",\n              "properties": {\n                "field": {\n                  "type": [\n                    "string"\n                  ]\n                },\n                "kind": {\n                  "type": "string",\n                  "const": "validation"\n                },\n                "reason": {\n                  "type": "string"\n                }\n              },\n              "required": [\n                "kind",\n                "reason"\n              ]\n            },\n            {\n              "type": "object",\n              "properties": {\n                "kind": {\n                  "type": "string",\n                  "const": "operation"\n                },\n                "operationId": {\n                  "$ref": "#/$defs/OperationId"\n                },\n                "phase": {\n                  "type": [\n                    "string"\n                  ]\n                }\n              },\n              "required": [\n                "kind",\n                "operationId"\n              ]\n            },\n            {\n              "type": "object",\n              "properties": {\n                "displayTarget": {\n                  "type": "string"\n                },\n                "grantRequestId": {\n                  "$ref": "#/$defs/GrantRequestId"\n                },\n                "kind": {\n                  "type": "string",\n                  "const": "grant"\n                },\n                "purpose": {\n                  "$ref": "#/$defs/GrantPurpose"\n                }\n              },\n              "required": [\n                "kind",\n                "grantRequestId",\n                "purpose",\n                "displayTarget"\n              ]\n            },\n            {\n              "type": "object",\n              "properties": {\n                "cause": {\n                  "$ref": "#/$defs/IoFailureCause"\n                },\n                "displayTarget": {\n                  "type": [\n                    "string"\n                  ]\n                },\n                "kind": {\n                  "type": "string",\n                  "const": "assetWrite"\n                },\n                "owner": {\n                  "$ref": "#/$defs/AssetOwner"\n                }\n              },\n              "required": [\n                "kind",\n                "cause",\n                "owner"\n              ]\n            },\n            {\n              "type": "object",\n              "properties": {\n                "cause": {\n                  "$ref": "#/$defs/IoFailureCause"\n                },\n                "displayPath": {\n                  "type": [\n                    "string"\n                  ]\n                },\n                "kind": {\n                  "type": "string",\n                  "const": "io"\n                },\n                "operation": {\n                  "$ref": "#/$defs/IoOperation"\n                }\n              },\n              "required": [\n                "kind",\n                "operation",\n                "cause"\n              ]\n            }\n          ]\n        },\n        "AssetOwner": {\n          "oneOf": [\n            {\n              "type": "object",\n              "properties": {\n                "documentId": {\n                  "$ref": "#/$defs/DocumentId"\n                },\n                "kind": {\n                  "type": "string",\n                  "const": "document"\n                }\n              },\n              "required": [\n                "kind",\n                "documentId"\n              ]\n            },\n            {\n              "type": "object",\n              "properties": {\n                "draftId": {\n                  "$ref": "#/$defs/DraftId"\n                },\n                "kind": {\n                  "type": "string",\n                  "const": "draft"\n                }\n              },\n              "required": [\n                "kind",\n                "draftId"\n              ]\n            }\n          ]\n        },\n        "ContentHash": {\n          "type": "string"\n        },\n        "DiskRevision": {\n          "type": "object",\n          "properties": {\n            "contentHash": {\n              "$ref": "#/$defs/ContentHash"\n            },\n            "fileIdentityHint": {\n              "type": [\n                "string"\n              ]\n            },\n            "modifiedAtUnixMs": {\n              "type": "integer",\n              "maximum": 9007199254740991,\n              "minimum": 0\n            },\n            "sizeBytes": {\n              "type": "integer",\n              "maximum": 9007199254740991,\n              "minimum": 0\n            },\n            "token": {\n              "$ref": "#/$defs/RevisionToken"\n            }\n          },\n          "required": [\n            "token",\n            "sizeBytes",\n            "modifiedAtUnixMs",\n            "contentHash"\n          ]\n        },\n        "DocumentId": {\n          "type": "string"\n        },\n        "DraftId": {\n          "type": "string"\n        },\n        "ExpectedDiskRevision": {\n          "oneOf": [\n            {\n              "type": "object",\n              "properties": {\n                "kind": {\n                  "type": "string",\n                  "const": "present"\n                },\n                "revision": {\n                  "$ref": "#/$defs/DiskRevision"\n                }\n              },\n              "required": [\n                "kind",\n                "revision"\n              ]\n            },\n            {\n              "type": "object",\n              "properties": {\n                "kind": {\n                  "type": "string",\n                  "const": "absent"\n                }\n              },\n              "required": [\n                "kind"\n              ]\n            }\n          ]\n        },\n        "ExternalChangeSource": {\n          "type": "string",\n          "enum": [\n            "external"\n          ]\n        },\n        "GrantPurpose": {\n          "type": "string",\n          "enum": [\n            "resourceResolution",\n            "assetDirectory"\n          ]\n        },\n        "GrantRequestId": {\n          "type": "string"\n        },\n        "IoFailureCause": {\n          "type": "string",\n          "enum": [\n            "readOnly",\n            "permissionRevoked",\n            "diskFull",\n            "quotaExceeded",\n            "nameConflict",\n            "pathConflict",\n            "notFound",\n            "deviceUnavailable",\n            "unknown"\n          ]\n        },\n        "IoOperation": {\n          "type": "string",\n          "enum": [\n            "read",\n            "write",\n            "flush",\n            "rename",\n            "remove",\n            "stat"\n          ]\n        },\n        "OperationId": {\n          "type": "string"\n        },\n        "RevisionToken": {\n          "type": "string"\n        },\n        "SafetyBlockedAction": {\n          "type": "string",\n          "enum": [\n            "extractDataImages",\n            "deleteDataImages",\n            "openExternal",\n            "cancel"\n          ]\n        },\n        "SafetyBlockedReason": {\n          "type": "string",\n          "enum": [\n            "lineTooLong",\n            "largeDataImage"\n          ]\n        },\n        "SafetyBlockedReport": {\n          "type": "object",\n          "properties": {\n            "allowedActions": {\n              "type": "array",\n              "items": {\n                "$ref": "#/$defs/SafetyBlockedAction"\n              }\n            },\n            "detectedDataImageCount": {\n              "type": "integer",\n              "maximum": 9007199254740991,\n              "minimum": 0\n            },\n            "hasUtf8Bom": {\n              "type": "boolean"\n            },\n            "kind": {\n              "$ref": "#/$defs/SafetyBlockedReportKind"\n            },\n            "largestDataImageEstimateBytes": {\n              "type": [\n                "integer"\n              ],\n              "maximum": 9007199254740991,\n              "minimum": 0\n            },\n            "lineCountEstimate": {\n              "type": [\n                "integer"\n              ],\n              "maximum": 9007199254740991,\n              "minimum": 0\n            },\n            "maxLineBytes": {\n              "type": "integer",\n              "maximum": 9007199254740991,\n              "minimum": 0\n            },\n            "reasons": {\n              "type": "array",\n              "items": {\n                "$ref": "#/$defs/SafetyBlockedReason"\n              }\n            },\n            "sizeBytes": {\n              "type": "integer",\n              "maximum": 9007199254740991,\n              "minimum": 0\n            }\n          },\n          "required": [\n            "kind",\n            "sizeBytes",\n            "maxLineBytes",\n            "hasUtf8Bom",\n            "detectedDataImageCount",\n            "reasons",\n            "allowedActions"\n          ]\n        },\n        "SafetyBlockedReportKind": {\n          "type": "string",\n          "enum": [\n            "safetyBlocked"\n          ]\n        },\n        "SafetyReport": {\n          "anyOf": [\n            {\n              "$ref": "#/$defs/SafetyBlockedReport"\n            },\n            {\n              "$ref": "#/$defs/UnsupportedReport"\n            }\n          ]\n        },\n        "UnsupportedAction": {\n          "type": "string",\n          "enum": [\n            "openExternal",\n            "cancel"\n          ]\n        },\n        "UnsupportedReason": {\n          "type": "string",\n          "enum": [\n            "binary",\n            "fileTooLarge",\n            "invalidUtf8",\n            "unsupportedEncoding"\n          ]\n        },\n        "UnsupportedReport": {\n          "type": "object",\n          "properties": {\n            "allowedActions": {\n              "type": "array",\n              "items": {\n                "$ref": "#/$defs/UnsupportedAction"\n              }\n            },\n            "detectedDataImageCount": {\n              "type": "integer",\n              "maximum": 9007199254740991,\n              "minimum": 0\n            },\n            "hasUtf8Bom": {\n              "type": "boolean"\n            },\n            "kind": {\n              "$ref": "#/$defs/UnsupportedReportKind"\n            },\n            "largestDataImageEstimateBytes": {\n              "type": [\n                "integer"\n              ],\n              "maximum": 9007199254740991,\n              "minimum": 0\n            },\n            "lineCountEstimate": {\n              "type": [\n                "integer"\n              ],\n              "maximum": 9007199254740991,\n              "minimum": 0\n            },\n            "maxLineBytes": {\n              "type": "integer",\n              "maximum": 9007199254740991,\n              "minimum": 0\n            },\n            "reasons": {\n              "type": "array",\n              "items": {\n                "$ref": "#/$defs/UnsupportedReason"\n              }\n            },\n            "sizeBytes": {\n              "type": "integer",\n              "maximum": 9007199254740991,\n              "minimum": 0\n            }\n          },\n          "required": [\n            "kind",\n            "sizeBytes",\n            "maxLineBytes",\n            "hasUtf8Bom",\n            "detectedDataImageCount",\n            "reasons",\n            "allowedActions"\n          ]\n        },\n        "UnsupportedReportKind": {\n          "type": "string",\n          "enum": [\n            "unsupported"\n          ]\n        }\n      }\n    },\n    "recovery.snapshotFailed": {\n      "$schema": "https://json-schema.org/draft/2020-12/schema",\n      "title": "RecoverySnapshotFailed",\n      "type": "object",\n      "properties": {\n        "documentId": {\n          "$ref": "#/$defs/DocumentId"\n        },\n        "error": {\n          "$ref": "#/$defs/AppError"\n        }\n      },\n      "required": [\n        "documentId",\n        "error"\n      ],\n      "$defs": {\n        "AppError": {\n          "type": "object",\n          "properties": {\n            "code": {\n              "$ref": "#/$defs/AppErrorCode"\n            },\n            "correlationId": {\n              "type": "string"\n            },\n            "details": {\n              "anyOf": [\n                {\n                  "$ref": "#/$defs/AppErrorDetails"\n                }\n              ],\n              "default": null\n            },\n            "message": {\n              "type": "string"\n            },\n            "messageKey": {\n              "type": [\n                "string"\n              ],\n              "default": null\n            },\n            "recoveryActions": {\n              "type": [\n                "array"\n              ],\n              "default": null,\n              "items": {\n                "type": "string"\n              }\n            },\n            "retryable": {\n              "type": "boolean"\n            }\n          },\n          "required": [\n            "code",\n            "message",\n            "retryable",\n            "correlationId"\n          ]\n        },\n        "AppErrorCode": {\n          "type": "string"\n        },\n        "AppErrorDetails": {\n          "oneOf": [\n            {\n              "type": "object",\n              "properties": {\n                "displayPath": {\n                  "type": [\n                    "string"\n                  ]\n                },\n                "kind": {\n                  "type": "string",\n                  "const": "path"\n                }\n              },\n              "required": [\n                "kind"\n              ]\n            },\n            {\n              "type": "object",\n              "properties": {\n                "actual": {\n                  "$ref": "#/$defs/ExpectedDiskRevision"\n                },\n                "expected": {\n                  "$ref": "#/$defs/ExpectedDiskRevision"\n                },\n                "kind": {\n                  "type": "string",\n                  "const": "conflict"\n                }\n              },\n              "required": [\n                "kind",\n                "expected",\n                "actual"\n              ]\n            },\n            {\n              "type": "object",\n              "properties": {\n                "kind": {\n                  "type": "string",\n                  "const": "safety"\n                },\n                "report": {\n                  "$ref": "#/$defs/SafetyReport"\n                }\n              },\n              "required": [\n                "kind",\n                "report"\n              ]\n            },\n            {\n              "type": "object",\n              "properties": {\n                "field": {\n                  "type": [\n                    "string"\n                  ]\n                },\n                "kind": {\n                  "type": "string",\n                  "const": "validation"\n                },\n                "reason": {\n                  "type": "string"\n                }\n              },\n              "required": [\n                "kind",\n                "reason"\n              ]\n            },\n            {\n              "type": "object",\n              "properties": {\n                "kind": {\n                  "type": "string",\n                  "const": "operation"\n                },\n                "operationId": {\n                  "$ref": "#/$defs/OperationId"\n                },\n                "phase": {\n                  "type": [\n                    "string"\n                  ]\n                }\n              },\n              "required": [\n                "kind",\n                "operationId"\n              ]\n            },\n            {\n              "type": "object",\n              "properties": {\n                "displayTarget": {\n                  "type": "string"\n                },\n                "grantRequestId": {\n                  "$ref": "#/$defs/GrantRequestId"\n                },\n                "kind": {\n                  "type": "string",\n                  "const": "grant"\n                },\n                "purpose": {\n                  "$ref": "#/$defs/GrantPurpose"\n                }\n              },\n              "required": [\n                "kind",\n                "grantRequestId",\n                "purpose",\n                "displayTarget"\n              ]\n            },\n            {\n              "type": "object",\n              "properties": {\n                "cause": {\n                  "$ref": "#/$defs/IoFailureCause"\n                },\n                "displayTarget": {\n                  "type": [\n                    "string"\n                  ]\n                },\n                "kind": {\n                  "type": "string",\n                  "const": "assetWrite"\n                },\n                "owner": {\n                  "$ref": "#/$defs/AssetOwner"\n                }\n              },\n              "required": [\n                "kind",\n                "cause",\n                "owner"\n              ]\n            },\n            {\n              "type": "object",\n              "properties": {\n                "cause": {\n                  "$ref": "#/$defs/IoFailureCause"\n                },\n                "displayPath": {\n                  "type": [\n                    "string"\n                  ]\n                },\n                "kind": {\n                  "type": "string",\n                  "const": "io"\n                },\n                "operation": {\n                  "$ref": "#/$defs/IoOperation"\n                }\n              },\n              "required": [\n                "kind",\n                "operation",\n                "cause"\n              ]\n            }\n          ]\n        },\n        "AssetOwner": {\n          "oneOf": [\n            {\n              "type": "object",\n              "properties": {\n                "documentId": {\n                  "$ref": "#/$defs/DocumentId"\n                },\n                "kind": {\n                  "type": "string",\n                  "const": "document"\n                }\n              },\n              "required": [\n                "kind",\n                "documentId"\n              ]\n            },\n            {\n              "type": "object",\n              "properties": {\n                "draftId": {\n                  "$ref": "#/$defs/DraftId"\n                },\n                "kind": {\n                  "type": "string",\n                  "const": "draft"\n                }\n              },\n              "required": [\n                "kind",\n                "draftId"\n              ]\n            }\n          ]\n        },\n        "ContentHash": {\n          "type": "string"\n        },\n        "DiskRevision": {\n          "type": "object",\n          "properties": {\n            "contentHash": {\n              "$ref": "#/$defs/ContentHash"\n            },\n            "fileIdentityHint": {\n              "type": [\n                "string"\n              ]\n            },\n            "modifiedAtUnixMs": {\n              "type": "integer",\n              "maximum": 9007199254740991,\n              "minimum": 0\n            },\n            "sizeBytes": {\n              "type": "integer",\n              "maximum": 9007199254740991,\n              "minimum": 0\n            },\n            "token": {\n              "$ref": "#/$defs/RevisionToken"\n            }\n          },\n          "required": [\n            "token",\n            "sizeBytes",\n            "modifiedAtUnixMs",\n            "contentHash"\n          ]\n        },\n        "DocumentId": {\n          "type": "string"\n        },\n        "DraftId": {\n          "type": "string"\n        },\n        "ExpectedDiskRevision": {\n          "oneOf": [\n            {\n              "type": "object",\n              "properties": {\n                "kind": {\n                  "type": "string",\n                  "const": "present"\n                },\n                "revision": {\n                  "$ref": "#/$defs/DiskRevision"\n                }\n              },\n              "required": [\n                "kind",\n                "revision"\n              ]\n            },\n            {\n              "type": "object",\n              "properties": {\n                "kind": {\n                  "type": "string",\n                  "const": "absent"\n                }\n              },\n              "required": [\n                "kind"\n              ]\n            }\n          ]\n        },\n        "GrantPurpose": {\n          "type": "string",\n          "enum": [\n            "resourceResolution",\n            "assetDirectory"\n          ]\n        },\n        "GrantRequestId": {\n          "type": "string"\n        },\n        "IoFailureCause": {\n          "type": "string",\n          "enum": [\n            "readOnly",\n            "permissionRevoked",\n            "diskFull",\n            "quotaExceeded",\n            "nameConflict",\n            "pathConflict",\n            "notFound",\n            "deviceUnavailable",\n            "unknown"\n          ]\n        },\n        "IoOperation": {\n          "type": "string",\n          "enum": [\n            "read",\n            "write",\n            "flush",\n            "rename",\n            "remove",\n            "stat"\n          ]\n        },\n        "OperationId": {\n          "type": "string"\n        },\n        "RevisionToken": {\n          "type": "string"\n        },\n        "SafetyBlockedAction": {\n          "type": "string",\n          "enum": [\n            "extractDataImages",\n            "deleteDataImages",\n            "openExternal",\n            "cancel"\n          ]\n        },\n        "SafetyBlockedReason": {\n          "type": "string",\n          "enum": [\n            "lineTooLong",\n            "largeDataImage"\n          ]\n        },\n        "SafetyBlockedReport": {\n          "type": "object",\n          "properties": {\n            "allowedActions": {\n              "type": "array",\n              "items": {\n                "$ref": "#/$defs/SafetyBlockedAction"\n              }\n            },\n            "detectedDataImageCount": {\n              "type": "integer",\n              "maximum": 9007199254740991,\n              "minimum": 0\n            },\n            "hasUtf8Bom": {\n              "type": "boolean"\n            },\n            "kind": {\n              "$ref": "#/$defs/SafetyBlockedReportKind"\n            },\n            "largestDataImageEstimateBytes": {\n              "type": [\n                "integer"\n              ],\n              "maximum": 9007199254740991,\n              "minimum": 0\n            },\n            "lineCountEstimate": {\n              "type": [\n                "integer"\n              ],\n              "maximum": 9007199254740991,\n              "minimum": 0\n            },\n            "maxLineBytes": {\n              "type": "integer",\n              "maximum": 9007199254740991,\n              "minimum": 0\n            },\n            "reasons": {\n              "type": "array",\n              "items": {\n                "$ref": "#/$defs/SafetyBlockedReason"\n              }\n            },\n            "sizeBytes": {\n              "type": "integer",\n              "maximum": 9007199254740991,\n              "minimum": 0\n            }\n          },\n          "required": [\n            "kind",\n            "sizeBytes",\n            "maxLineBytes",\n            "hasUtf8Bom",\n            "detectedDataImageCount",\n            "reasons",\n            "allowedActions"\n          ]\n        },\n        "SafetyBlockedReportKind": {\n          "type": "string",\n          "enum": [\n            "safetyBlocked"\n          ]\n        },\n        "SafetyReport": {\n          "anyOf": [\n            {\n              "$ref": "#/$defs/SafetyBlockedReport"\n            },\n            {\n              "$ref": "#/$defs/UnsupportedReport"\n            }\n          ]\n        },\n        "UnsupportedAction": {\n          "type": "string",\n          "enum": [\n            "openExternal",\n            "cancel"\n          ]\n        },\n        "UnsupportedReason": {\n          "type": "string",\n          "enum": [\n            "binary",\n            "fileTooLarge",\n            "invalidUtf8",\n            "unsupportedEncoding"\n          ]\n        },\n        "UnsupportedReport": {\n          "type": "object",\n          "properties": {\n            "allowedActions": {\n              "type": "array",\n              "items": {\n                "$ref": "#/$defs/UnsupportedAction"\n              }\n            },\n            "detectedDataImageCount": {\n              "type": "integer",\n              "maximum": 9007199254740991,\n              "minimum": 0\n            },\n            "hasUtf8Bom": {\n              "type": "boolean"\n            },\n            "kind": {\n              "$ref": "#/$defs/UnsupportedReportKind"\n            },\n            "largestDataImageEstimateBytes": {\n              "type": [\n                "integer"\n              ],\n              "maximum": 9007199254740991,\n              "minimum": 0\n            },\n            "lineCountEstimate": {\n              "type": [\n                "integer"\n              ],\n              "maximum": 9007199254740991,\n              "minimum": 0\n            },\n            "maxLineBytes": {\n              "type": "integer",\n              "maximum": 9007199254740991,\n              "minimum": 0\n            },\n            "reasons": {\n              "type": "array",\n              "items": {\n                "$ref": "#/$defs/UnsupportedReason"\n              }\n            },\n            "sizeBytes": {\n              "type": "integer",\n              "maximum": 9007199254740991,\n              "minimum": 0\n            }\n          },\n          "required": [\n            "kind",\n            "sizeBytes",\n            "maxLineBytes",\n            "hasUtf8Bom",\n            "detectedDataImageCount",\n            "reasons",\n            "allowedActions"\n          ]\n        },\n        "UnsupportedReportKind": {\n          "type": "string",\n          "enum": [\n            "unsupported"\n          ]\n        }\n      }\n    },\n    "task.finished": {\n      "$schema": "https://json-schema.org/draft/2020-12/schema",\n      "title": "TaskFinished",\n      "type": "object",\n      "properties": {\n        "error": {\n          "anyOf": [\n            {\n              "$ref": "#/$defs/AppError"\n            }\n          ]\n        },\n        "operationId": {\n          "$ref": "#/$defs/OperationId"\n        },\n        "outcome": {\n          "$ref": "#/$defs/TaskOutcome"\n        }\n      },\n      "required": [\n        "operationId",\n        "outcome"\n      ],\n      "$defs": {\n        "AppError": {\n          "type": "object",\n          "properties": {\n            "code": {\n              "$ref": "#/$defs/AppErrorCode"\n            },\n            "correlationId": {\n              "type": "string"\n            },\n            "details": {\n              "anyOf": [\n                {\n                  "$ref": "#/$defs/AppErrorDetails"\n                }\n              ],\n              "default": null\n            },\n            "message": {\n              "type": "string"\n            },\n            "messageKey": {\n              "type": [\n                "string"\n              ],\n              "default": null\n            },\n            "recoveryActions": {\n              "type": [\n                "array"\n              ],\n              "default": null,\n              "items": {\n                "type": "string"\n              }\n            },\n            "retryable": {\n              "type": "boolean"\n            }\n          },\n          "required": [\n            "code",\n            "message",\n            "retryable",\n            "correlationId"\n          ]\n        },\n        "AppErrorCode": {\n          "type": "string"\n        },\n        "AppErrorDetails": {\n          "oneOf": [\n            {\n              "type": "object",\n              "properties": {\n                "displayPath": {\n                  "type": [\n                    "string"\n                  ]\n                },\n                "kind": {\n                  "type": "string",\n                  "const": "path"\n                }\n              },\n              "required": [\n                "kind"\n              ]\n            },\n            {\n              "type": "object",\n              "properties": {\n                "actual": {\n                  "$ref": "#/$defs/ExpectedDiskRevision"\n                },\n                "expected": {\n                  "$ref": "#/$defs/ExpectedDiskRevision"\n                },\n                "kind": {\n                  "type": "string",\n                  "const": "conflict"\n                }\n              },\n              "required": [\n                "kind",\n                "expected",\n                "actual"\n              ]\n            },\n            {\n              "type": "object",\n              "properties": {\n                "kind": {\n                  "type": "string",\n                  "const": "safety"\n                },\n                "report": {\n                  "$ref": "#/$defs/SafetyReport"\n                }\n              },\n              "required": [\n                "kind",\n                "report"\n              ]\n            },\n            {\n              "type": "object",\n              "properties": {\n                "field": {\n                  "type": [\n                    "string"\n                  ]\n                },\n                "kind": {\n                  "type": "string",\n                  "const": "validation"\n                },\n                "reason": {\n                  "type": "string"\n                }\n              },\n              "required": [\n                "kind",\n                "reason"\n              ]\n            },\n            {\n              "type": "object",\n              "properties": {\n                "kind": {\n                  "type": "string",\n                  "const": "operation"\n                },\n                "operationId": {\n                  "$ref": "#/$defs/OperationId"\n                },\n                "phase": {\n                  "type": [\n                    "string"\n                  ]\n                }\n              },\n              "required": [\n                "kind",\n                "operationId"\n              ]\n            },\n            {\n              "type": "object",\n              "properties": {\n                "displayTarget": {\n                  "type": "string"\n                },\n                "grantRequestId": {\n                  "$ref": "#/$defs/GrantRequestId"\n                },\n                "kind": {\n                  "type": "string",\n                  "const": "grant"\n                },\n                "purpose": {\n                  "$ref": "#/$defs/GrantPurpose"\n                }\n              },\n              "required": [\n                "kind",\n                "grantRequestId",\n                "purpose",\n                "displayTarget"\n              ]\n            },\n            {\n              "type": "object",\n              "properties": {\n                "cause": {\n                  "$ref": "#/$defs/IoFailureCause"\n                },\n                "displayTarget": {\n                  "type": [\n                    "string"\n                  ]\n                },\n                "kind": {\n                  "type": "string",\n                  "const": "assetWrite"\n                },\n                "owner": {\n                  "$ref": "#/$defs/AssetOwner"\n                }\n              },\n              "required": [\n                "kind",\n                "cause",\n                "owner"\n              ]\n            },\n            {\n              "type": "object",\n              "properties": {\n                "cause": {\n                  "$ref": "#/$defs/IoFailureCause"\n                },\n                "displayPath": {\n                  "type": [\n                    "string"\n                  ]\n                },\n                "kind": {\n                  "type": "string",\n                  "const": "io"\n                },\n                "operation": {\n                  "$ref": "#/$defs/IoOperation"\n                }\n              },\n              "required": [\n                "kind",\n                "operation",\n                "cause"\n              ]\n            }\n          ]\n        },\n        "AssetOwner": {\n          "oneOf": [\n            {\n              "type": "object",\n              "properties": {\n                "documentId": {\n                  "$ref": "#/$defs/DocumentId"\n                },\n                "kind": {\n                  "type": "string",\n                  "const": "document"\n                }\n              },\n              "required": [\n                "kind",\n                "documentId"\n              ]\n            },\n            {\n              "type": "object",\n              "properties": {\n                "draftId": {\n                  "$ref": "#/$defs/DraftId"\n                },\n                "kind": {\n                  "type": "string",\n                  "const": "draft"\n                }\n              },\n              "required": [\n                "kind",\n                "draftId"\n              ]\n            }\n          ]\n        },\n        "ContentHash": {\n          "type": "string"\n        },\n        "DiskRevision": {\n          "type": "object",\n          "properties": {\n            "contentHash": {\n              "$ref": "#/$defs/ContentHash"\n            },\n            "fileIdentityHint": {\n              "type": [\n                "string"\n              ]\n            },\n            "modifiedAtUnixMs": {\n              "type": "integer",\n              "maximum": 9007199254740991,\n              "minimum": 0\n            },\n            "sizeBytes": {\n              "type": "integer",\n              "maximum": 9007199254740991,\n              "minimum": 0\n            },\n            "token": {\n              "$ref": "#/$defs/RevisionToken"\n            }\n          },\n          "required": [\n            "token",\n            "sizeBytes",\n            "modifiedAtUnixMs",\n            "contentHash"\n          ]\n        },\n        "DocumentId": {\n          "type": "string"\n        },\n        "DraftId": {\n          "type": "string"\n        },\n        "ExpectedDiskRevision": {\n          "oneOf": [\n            {\n              "type": "object",\n              "properties": {\n                "kind": {\n                  "type": "string",\n                  "const": "present"\n                },\n                "revision": {\n                  "$ref": "#/$defs/DiskRevision"\n                }\n              },\n              "required": [\n                "kind",\n                "revision"\n              ]\n            },\n            {\n              "type": "object",\n              "properties": {\n                "kind": {\n                  "type": "string",\n                  "const": "absent"\n                }\n              },\n              "required": [\n                "kind"\n              ]\n            }\n          ]\n        },\n        "GrantPurpose": {\n          "type": "string",\n          "enum": [\n            "resourceResolution",\n            "assetDirectory"\n          ]\n        },\n        "GrantRequestId": {\n          "type": "string"\n        },\n        "IoFailureCause": {\n          "type": "string",\n          "enum": [\n            "readOnly",\n            "permissionRevoked",\n            "diskFull",\n            "quotaExceeded",\n            "nameConflict",\n            "pathConflict",\n            "notFound",\n            "deviceUnavailable",\n            "unknown"\n          ]\n        },\n        "IoOperation": {\n          "type": "string",\n          "enum": [\n            "read",\n            "write",\n            "flush",\n            "rename",\n            "remove",\n            "stat"\n          ]\n        },\n        "OperationId": {\n          "type": "string"\n        },\n        "RevisionToken": {\n          "type": "string"\n        },\n        "SafetyBlockedAction": {\n          "type": "string",\n          "enum": [\n            "extractDataImages",\n            "deleteDataImages",\n            "openExternal",\n            "cancel"\n          ]\n        },\n        "SafetyBlockedReason": {\n          "type": "string",\n          "enum": [\n            "lineTooLong",\n            "largeDataImage"\n          ]\n        },\n        "SafetyBlockedReport": {\n          "type": "object",\n          "properties": {\n            "allowedActions": {\n              "type": "array",\n              "items": {\n                "$ref": "#/$defs/SafetyBlockedAction"\n              }\n            },\n            "detectedDataImageCount": {\n              "type": "integer",\n              "maximum": 9007199254740991,\n              "minimum": 0\n            },\n            "hasUtf8Bom": {\n              "type": "boolean"\n            },\n            "kind": {\n              "$ref": "#/$defs/SafetyBlockedReportKind"\n            },\n            "largestDataImageEstimateBytes": {\n              "type": [\n                "integer"\n              ],\n              "maximum": 9007199254740991,\n              "minimum": 0\n            },\n            "lineCountEstimate": {\n              "type": [\n                "integer"\n              ],\n              "maximum": 9007199254740991,\n              "minimum": 0\n            },\n            "maxLineBytes": {\n              "type": "integer",\n              "maximum": 9007199254740991,\n              "minimum": 0\n            },\n            "reasons": {\n              "type": "array",\n              "items": {\n                "$ref": "#/$defs/SafetyBlockedReason"\n              }\n            },\n            "sizeBytes": {\n              "type": "integer",\n              "maximum": 9007199254740991,\n              "minimum": 0\n            }\n          },\n          "required": [\n            "kind",\n            "sizeBytes",\n            "maxLineBytes",\n            "hasUtf8Bom",\n            "detectedDataImageCount",\n            "reasons",\n            "allowedActions"\n          ]\n        },\n        "SafetyBlockedReportKind": {\n          "type": "string",\n          "enum": [\n            "safetyBlocked"\n          ]\n        },\n        "SafetyReport": {\n          "anyOf": [\n            {\n              "$ref": "#/$defs/SafetyBlockedReport"\n            },\n            {\n              "$ref": "#/$defs/UnsupportedReport"\n            }\n          ]\n        },\n        "TaskOutcome": {\n          "type": "string",\n          "enum": [\n            "succeeded",\n            "failed",\n            "cancelled"\n          ]\n        },\n        "UnsupportedAction": {\n          "type": "string",\n          "enum": [\n            "openExternal",\n            "cancel"\n          ]\n        },\n        "UnsupportedReason": {\n          "type": "string",\n          "enum": [\n            "binary",\n            "fileTooLarge",\n            "invalidUtf8",\n            "unsupportedEncoding"\n          ]\n        },\n        "UnsupportedReport": {\n          "type": "object",\n          "properties": {\n            "allowedActions": {\n              "type": "array",\n              "items": {\n                "$ref": "#/$defs/UnsupportedAction"\n              }\n            },\n            "detectedDataImageCount": {\n              "type": "integer",\n              "maximum": 9007199254740991,\n              "minimum": 0\n            },\n            "hasUtf8Bom": {\n              "type": "boolean"\n            },\n            "kind": {\n              "$ref": "#/$defs/UnsupportedReportKind"\n            },\n            "largestDataImageEstimateBytes": {\n              "type": [\n                "integer"\n              ],\n              "maximum": 9007199254740991,\n              "minimum": 0\n            },\n            "lineCountEstimate": {\n              "type": [\n                "integer"\n              ],\n              "maximum": 9007199254740991,\n              "minimum": 0\n            },\n            "maxLineBytes": {\n              "type": "integer",\n              "maximum": 9007199254740991,\n              "minimum": 0\n            },\n            "reasons": {\n              "type": "array",\n              "items": {\n                "$ref": "#/$defs/UnsupportedReason"\n              }\n            },\n            "sizeBytes": {\n              "type": "integer",\n              "maximum": 9007199254740991,\n              "minimum": 0\n            }\n          },\n          "required": [\n            "kind",\n            "sizeBytes",\n            "maxLineBytes",\n            "hasUtf8Bom",\n            "detectedDataImageCount",\n            "reasons",\n            "allowedActions"\n          ]\n        },\n        "UnsupportedReportKind": {\n          "type": "string",\n          "enum": [\n            "unsupported"\n          ]\n        }\n      }\n    },\n    "task.progress": {\n      "$schema": "https://json-schema.org/draft/2020-12/schema",\n      "title": "TaskProgress",\n      "type": "object",\n      "properties": {\n        "completedUnits": {\n          "type": [\n            "integer"\n          ],\n          "maximum": 9007199254740991,\n          "minimum": 0\n        },\n        "messageKey": {\n          "type": [\n            "string"\n          ]\n        },\n        "operationId": {\n          "$ref": "#/$defs/OperationId"\n        },\n        "phase": {\n          "type": "string"\n        },\n        "totalUnits": {\n          "type": [\n            "integer"\n          ],\n          "maximum": 9007199254740991,\n          "minimum": 0\n        }\n      },\n      "required": [\n        "operationId",\n        "phase"\n      ],\n      "$defs": {\n        "OperationId": {\n          "type": "string"\n        }\n      }\n    },\n    "workspace.capabilityChanged": {\n      "$schema": "https://json-schema.org/draft/2020-12/schema",\n      "title": "WorkspaceCapabilityChanged",\n      "type": "object",\n      "properties": {\n        "capabilityEpoch": {\n          "type": "integer",\n          "maximum": 9007199254740991,\n          "minimum": 0\n        },\n        "error": {\n          "anyOf": [\n            {\n              "$ref": "#/$defs/AppError"\n            }\n          ]\n        },\n        "previousEpoch": {\n          "type": "integer",\n          "maximum": 9007199254740991,\n          "minimum": 0\n        },\n        "state": {\n          "$ref": "#/$defs/CapabilityState"\n        },\n        "workspaceId": {\n          "$ref": "#/$defs/WorkspaceId"\n        }\n      },\n      "required": [\n        "workspaceId",\n        "previousEpoch",\n        "capabilityEpoch",\n        "state"\n      ],\n      "$defs": {\n        "AppError": {\n          "type": "object",\n          "properties": {\n            "code": {\n              "$ref": "#/$defs/AppErrorCode"\n            },\n            "correlationId": {\n              "type": "string"\n            },\n            "details": {\n              "anyOf": [\n                {\n                  "$ref": "#/$defs/AppErrorDetails"\n                }\n              ],\n              "default": null\n            },\n            "message": {\n              "type": "string"\n            },\n            "messageKey": {\n              "type": [\n                "string"\n              ],\n              "default": null\n            },\n            "recoveryActions": {\n              "type": [\n                "array"\n              ],\n              "default": null,\n              "items": {\n                "type": "string"\n              }\n            },\n            "retryable": {\n              "type": "boolean"\n            }\n          },\n          "required": [\n            "code",\n            "message",\n            "retryable",\n            "correlationId"\n          ]\n        },\n        "AppErrorCode": {\n          "type": "string"\n        },\n        "AppErrorDetails": {\n          "oneOf": [\n            {\n              "type": "object",\n              "properties": {\n                "displayPath": {\n                  "type": [\n                    "string"\n                  ]\n                },\n                "kind": {\n                  "type": "string",\n                  "const": "path"\n                }\n              },\n              "required": [\n                "kind"\n              ]\n            },\n            {\n              "type": "object",\n              "properties": {\n                "actual": {\n                  "$ref": "#/$defs/ExpectedDiskRevision"\n                },\n                "expected": {\n                  "$ref": "#/$defs/ExpectedDiskRevision"\n                },\n                "kind": {\n                  "type": "string",\n                  "const": "conflict"\n                }\n              },\n              "required": [\n                "kind",\n                "expected",\n                "actual"\n              ]\n            },\n            {\n              "type": "object",\n              "properties": {\n                "kind": {\n                  "type": "string",\n                  "const": "safety"\n                },\n                "report": {\n                  "$ref": "#/$defs/SafetyReport"\n                }\n              },\n              "required": [\n                "kind",\n                "report"\n              ]\n            },\n            {\n              "type": "object",\n              "properties": {\n                "field": {\n                  "type": [\n                    "string"\n                  ]\n                },\n                "kind": {\n                  "type": "string",\n                  "const": "validation"\n                },\n                "reason": {\n                  "type": "string"\n                }\n              },\n              "required": [\n                "kind",\n                "reason"\n              ]\n            },\n            {\n              "type": "object",\n              "properties": {\n                "kind": {\n                  "type": "string",\n                  "const": "operation"\n                },\n                "operationId": {\n                  "$ref": "#/$defs/OperationId"\n                },\n                "phase": {\n                  "type": [\n                    "string"\n                  ]\n                }\n              },\n              "required": [\n                "kind",\n                "operationId"\n              ]\n            },\n            {\n              "type": "object",\n              "properties": {\n                "displayTarget": {\n                  "type": "string"\n                },\n                "grantRequestId": {\n                  "$ref": "#/$defs/GrantRequestId"\n                },\n                "kind": {\n                  "type": "string",\n                  "const": "grant"\n                },\n                "purpose": {\n                  "$ref": "#/$defs/GrantPurpose"\n                }\n              },\n              "required": [\n                "kind",\n                "grantRequestId",\n                "purpose",\n                "displayTarget"\n              ]\n            },\n            {\n              "type": "object",\n              "properties": {\n                "cause": {\n                  "$ref": "#/$defs/IoFailureCause"\n                },\n                "displayTarget": {\n                  "type": [\n                    "string"\n                  ]\n                },\n                "kind": {\n                  "type": "string",\n                  "const": "assetWrite"\n                },\n                "owner": {\n                  "$ref": "#/$defs/AssetOwner"\n                }\n              },\n              "required": [\n                "kind",\n                "cause",\n                "owner"\n              ]\n            },\n            {\n              "type": "object",\n              "properties": {\n                "cause": {\n                  "$ref": "#/$defs/IoFailureCause"\n                },\n                "displayPath": {\n                  "type": [\n                    "string"\n                  ]\n                },\n                "kind": {\n                  "type": "string",\n                  "const": "io"\n                },\n                "operation": {\n                  "$ref": "#/$defs/IoOperation"\n                }\n              },\n              "required": [\n                "kind",\n                "operation",\n                "cause"\n              ]\n            }\n          ]\n        },\n        "AssetOwner": {\n          "oneOf": [\n            {\n              "type": "object",\n              "properties": {\n                "documentId": {\n                  "$ref": "#/$defs/DocumentId"\n                },\n                "kind": {\n                  "type": "string",\n                  "const": "document"\n                }\n              },\n              "required": [\n                "kind",\n                "documentId"\n              ]\n            },\n            {\n              "type": "object",\n              "properties": {\n                "draftId": {\n                  "$ref": "#/$defs/DraftId"\n                },\n                "kind": {\n                  "type": "string",\n                  "const": "draft"\n                }\n              },\n              "required": [\n                "kind",\n                "draftId"\n              ]\n            }\n          ]\n        },\n        "CapabilityState": {\n          "type": "string",\n          "enum": [\n            "ready",\n            "revoked"\n          ]\n        },\n        "ContentHash": {\n          "type": "string"\n        },\n        "DiskRevision": {\n          "type": "object",\n          "properties": {\n            "contentHash": {\n              "$ref": "#/$defs/ContentHash"\n            },\n            "fileIdentityHint": {\n              "type": [\n                "string"\n              ]\n            },\n            "modifiedAtUnixMs": {\n              "type": "integer",\n              "maximum": 9007199254740991,\n              "minimum": 0\n            },\n            "sizeBytes": {\n              "type": "integer",\n              "maximum": 9007199254740991,\n              "minimum": 0\n            },\n            "token": {\n              "$ref": "#/$defs/RevisionToken"\n            }\n          },\n          "required": [\n            "token",\n            "sizeBytes",\n            "modifiedAtUnixMs",\n            "contentHash"\n          ]\n        },\n        "DocumentId": {\n          "type": "string"\n        },\n        "DraftId": {\n          "type": "string"\n        },\n        "ExpectedDiskRevision": {\n          "oneOf": [\n            {\n              "type": "object",\n              "properties": {\n                "kind": {\n                  "type": "string",\n                  "const": "present"\n                },\n                "revision": {\n                  "$ref": "#/$defs/DiskRevision"\n                }\n              },\n              "required": [\n                "kind",\n                "revision"\n              ]\n            },\n            {\n              "type": "object",\n              "properties": {\n                "kind": {\n                  "type": "string",\n                  "const": "absent"\n                }\n              },\n              "required": [\n                "kind"\n              ]\n            }\n          ]\n        },\n        "GrantPurpose": {\n          "type": "string",\n          "enum": [\n            "resourceResolution",\n            "assetDirectory"\n          ]\n        },\n        "GrantRequestId": {\n          "type": "string"\n        },\n        "IoFailureCause": {\n          "type": "string",\n          "enum": [\n            "readOnly",\n            "permissionRevoked",\n            "diskFull",\n            "quotaExceeded",\n            "nameConflict",\n            "pathConflict",\n            "notFound",\n            "deviceUnavailable",\n            "unknown"\n          ]\n        },\n        "IoOperation": {\n          "type": "string",\n          "enum": [\n            "read",\n            "write",\n            "flush",\n            "rename",\n            "remove",\n            "stat"\n          ]\n        },\n        "OperationId": {\n          "type": "string"\n        },\n        "RevisionToken": {\n          "type": "string"\n        },\n        "SafetyBlockedAction": {\n          "type": "string",\n          "enum": [\n            "extractDataImages",\n            "deleteDataImages",\n            "openExternal",\n            "cancel"\n          ]\n        },\n        "SafetyBlockedReason": {\n          "type": "string",\n          "enum": [\n            "lineTooLong",\n            "largeDataImage"\n          ]\n        },\n        "SafetyBlockedReport": {\n          "type": "object",\n          "properties": {\n            "allowedActions": {\n              "type": "array",\n              "items": {\n                "$ref": "#/$defs/SafetyBlockedAction"\n              }\n            },\n            "detectedDataImageCount": {\n              "type": "integer",\n              "maximum": 9007199254740991,\n              "minimum": 0\n            },\n            "hasUtf8Bom": {\n              "type": "boolean"\n            },\n            "kind": {\n              "$ref": "#/$defs/SafetyBlockedReportKind"\n            },\n            "largestDataImageEstimateBytes": {\n              "type": [\n                "integer"\n              ],\n              "maximum": 9007199254740991,\n              "minimum": 0\n            },\n            "lineCountEstimate": {\n              "type": [\n                "integer"\n              ],\n              "maximum": 9007199254740991,\n              "minimum": 0\n            },\n            "maxLineBytes": {\n              "type": "integer",\n              "maximum": 9007199254740991,\n              "minimum": 0\n            },\n            "reasons": {\n              "type": "array",\n              "items": {\n                "$ref": "#/$defs/SafetyBlockedReason"\n              }\n            },\n            "sizeBytes": {\n              "type": "integer",\n              "maximum": 9007199254740991,\n              "minimum": 0\n            }\n          },\n          "required": [\n            "kind",\n            "sizeBytes",\n            "maxLineBytes",\n            "hasUtf8Bom",\n            "detectedDataImageCount",\n            "reasons",\n            "allowedActions"\n          ]\n        },\n        "SafetyBlockedReportKind": {\n          "type": "string",\n          "enum": [\n            "safetyBlocked"\n          ]\n        },\n        "SafetyReport": {\n          "anyOf": [\n            {\n              "$ref": "#/$defs/SafetyBlockedReport"\n            },\n            {\n              "$ref": "#/$defs/UnsupportedReport"\n            }\n          ]\n        },\n        "UnsupportedAction": {\n          "type": "string",\n          "enum": [\n            "openExternal",\n            "cancel"\n          ]\n        },\n        "UnsupportedReason": {\n          "type": "string",\n          "enum": [\n            "binary",\n            "fileTooLarge",\n            "invalidUtf8",\n            "unsupportedEncoding"\n          ]\n        },\n        "UnsupportedReport": {\n          "type": "object",\n          "properties": {\n            "allowedActions": {\n              "type": "array",\n              "items": {\n                "$ref": "#/$defs/UnsupportedAction"\n              }\n            },\n            "detectedDataImageCount": {\n              "type": "integer",\n              "maximum": 9007199254740991,\n              "minimum": 0\n            },\n            "hasUtf8Bom": {\n              "type": "boolean"\n            },\n            "kind": {\n              "$ref": "#/$defs/UnsupportedReportKind"\n            },\n            "largestDataImageEstimateBytes": {\n              "type": [\n                "integer"\n              ],\n              "maximum": 9007199254740991,\n              "minimum": 0\n            },\n            "lineCountEstimate": {\n              "type": [\n                "integer"\n              ],\n              "maximum": 9007199254740991,\n              "minimum": 0\n            },\n            "maxLineBytes": {\n              "type": "integer",\n              "maximum": 9007199254740991,\n              "minimum": 0\n            },\n            "reasons": {\n              "type": "array",\n              "items": {\n                "$ref": "#/$defs/UnsupportedReason"\n              }\n            },\n            "sizeBytes": {\n              "type": "integer",\n              "maximum": 9007199254740991,\n              "minimum": 0\n            }\n          },\n          "required": [\n            "kind",\n            "sizeBytes",\n            "maxLineBytes",\n            "hasUtf8Bom",\n            "detectedDataImageCount",\n            "reasons",\n            "allowedActions"\n          ]\n        },\n        "UnsupportedReportKind": {\n          "type": "string",\n          "enum": [\n            "unsupported"\n          ]\n        },\n        "WorkspaceId": {\n          "type": "string"\n        }\n      }\n    },\n    "workspace.filesChanged": {\n      "$schema": "https://json-schema.org/draft/2020-12/schema",\n      "title": "WorkspaceFilesChanged",\n      "type": "object",\n      "properties": {\n        "changes": {\n          "type": "array",\n          "items": {\n            "$ref": "#/$defs/WorkspaceFileChange"\n          }\n        },\n        "generationHint": {\n          "type": "integer",\n          "maximum": 9007199254740991,\n          "minimum": 0\n        },\n        "overflow": {\n          "type": "boolean"\n        }\n      },\n      "required": [\n        "generationHint",\n        "overflow",\n        "changes"\n      ],\n      "$defs": {\n        "RelativePath": {\n          "type": "string"\n        },\n        "RenameConfidence": {\n          "type": "string",\n          "enum": [\n            "certain",\n            "likely"\n          ]\n        },\n        "WorkspaceFileChange": {\n          "oneOf": [\n            {\n              "type": "object",\n              "properties": {\n                "kind": {\n                  "type": "string",\n                  "const": "created"\n                },\n                "relativePath": {\n                  "$ref": "#/$defs/RelativePath"\n                }\n              },\n              "required": [\n                "kind",\n                "relativePath"\n              ]\n            },\n            {\n              "type": "object",\n              "properties": {\n                "kind": {\n                  "type": "string",\n                  "const": "modified"\n                },\n                "relativePath": {\n                  "$ref": "#/$defs/RelativePath"\n                }\n              },\n              "required": [\n                "kind",\n                "relativePath"\n              ]\n            },\n            {\n              "type": "object",\n              "properties": {\n                "kind": {\n                  "type": "string",\n                  "const": "removed"\n                },\n                "relativePath": {\n                  "$ref": "#/$defs/RelativePath"\n                }\n              },\n              "required": [\n                "kind",\n                "relativePath"\n              ]\n            },\n            {\n              "type": "object",\n              "properties": {\n                "confidence": {\n                  "$ref": "#/$defs/RenameConfidence"\n                },\n                "from": {\n                  "$ref": "#/$defs/RelativePath"\n                },\n                "kind": {\n                  "type": "string",\n                  "const": "renamed"\n                },\n                "to": {\n                  "$ref": "#/$defs/RelativePath"\n                }\n              },\n              "required": [\n                "kind",\n                "from",\n                "to",\n                "confidence"\n              ]\n            }\n          ]\n        }\n      }\n    }\n  }\n}\n',
+) as EventPayloadSchemaSet;
+
 type JsonRecord = Record<string, unknown>;
+
+export type JsonSchema = boolean | JsonRecord;
+
+export interface EventPayloadSchemaSet {
+  schemaVersion: 1;
+  apiVersion: ApiVersion;
+  generatedBy: string;
+  scope: JsonSchema;
+  events: Record<IpcEventType, JsonSchema>;
+}
 
 export interface ContractUnionFixtureSet {
   schemaVersion: 1;
   apiVersion: ApiVersion;
   generatedBy: string;
+  variantCounts: Record<string, number>;
   unions: Record<string, readonly unknown[]>;
 }
 
@@ -3405,8 +3663,19 @@ const READ_ONLY_UNKNOWN_ERROR_ACTIONS = [
   "openExternal",
 ] as const satisfies readonly RecoveryAction[];
 
+const INVALID_SCHEMA_VALUE = Symbol("invalid JSON Schema value");
+type DecodedSchemaValue = unknown | typeof INVALID_SCHEMA_VALUE;
+
 function isRecord(value: unknown): value is JsonRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isJsonSchema(value: unknown): value is JsonSchema {
+  return typeof value === "boolean" || isRecord(value);
+}
+
+function hasOwn(value: JsonRecord, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(value, key);
 }
 
 function isOptionalString(value: unknown): boolean {
@@ -3472,209 +3741,292 @@ export function decodeAppError(value: unknown): DecodedAppError | null {
   return { error, knownCode };
 }
 
-function isEventScope(value: unknown): value is EventScope {
-  if (!isRecord(value) || typeof value.kind !== "string") return false;
-  switch (value.kind) {
-    case "app":
-      return true;
-    case "workspace":
-      return typeof value.workspaceId === "string";
-    case "document":
-      return typeof value.documentId === "string";
-    case "operation":
-      return typeof value.operationId === "string";
+function jsonEquals(left: unknown, right: unknown): boolean {
+  if (Object.is(left, right)) return true;
+  if (Array.isArray(left) && Array.isArray(right)) {
+    return (
+      left.length === right.length &&
+      left.every((value, index) => jsonEquals(value, right[index]))
+    );
+  }
+  if (isRecord(left) && isRecord(right)) {
+    const leftKeys = Object.keys(left);
+    const rightKeys = Object.keys(right);
+    return (
+      leftKeys.length === rightKeys.length &&
+      leftKeys.every((key) => hasOwn(right, key) && jsonEquals(left[key], right[key]))
+    );
+  }
+  return false;
+}
+
+function resolveJsonPointer(root: JsonSchema, reference: string): JsonSchema | null {
+  if (!reference.startsWith("#/")) return null;
+  let current: unknown = root;
+  for (const encodedToken of reference.slice(2).split("/")) {
+    if (!isRecord(current)) return null;
+    const token = encodedToken.replaceAll("~1", "/").replaceAll("~0", "~");
+    current = current[token];
+  }
+  return typeof current === "boolean" || isRecord(current) ? current : null;
+}
+
+function referenceName(reference: string): string | null {
+  const token = reference.split("/").at(-1);
+  return token === undefined ? null : token.replaceAll("~1", "/").replaceAll("~0", "~");
+}
+
+function matchesType(value: unknown, type: string): boolean {
+  switch (type) {
+    case "null":
+      return value === null;
+    case "boolean":
+      return typeof value === "boolean";
+    case "string":
+      return typeof value === "string";
+    case "number":
+      return typeof value === "number" && Number.isFinite(value);
+    case "integer":
+      return typeof value === "number" && Number.isSafeInteger(value);
+    case "array":
+      return Array.isArray(value);
+    case "object":
+      return isRecord(value);
     default:
       return false;
   }
 }
 
-function isExpectedDiskRevision(value: unknown): value is ExpectedDiskRevision {
-  if (!isRecord(value) || typeof value.kind !== "string") return false;
-  if (value.kind === "absent") return true;
-  if (value.kind !== "present" || !isRecord(value.revision)) return false;
-  const revision = value.revision;
+function matchesDeclaredType(value: unknown, declaredType: unknown): boolean {
+  if (typeof declaredType === "string") return matchesType(value, declaredType);
   return (
-    typeof revision.token === "string" &&
-    isJsSafeUnsignedInteger(revision.sizeBytes) &&
-    isJsSafeUnsignedInteger(revision.modifiedAtUnixMs) &&
-    typeof revision.contentHash === "string" &&
-    isOptionalString(revision.fileIdentityHint)
+    Array.isArray(declaredType) &&
+    declaredType.every((type) => typeof type === "string") &&
+    declaredType.some((type) => matchesType(value, type))
   );
 }
 
-function isWorkspaceFileChange(value: unknown): boolean {
-  if (!isRecord(value) || typeof value.kind !== "string") return false;
-  if (["created", "modified", "removed"].includes(value.kind)) {
-    return typeof value.relativePath === "string";
+function decodeObjectKeywords(
+  value: JsonRecord,
+  schema: JsonRecord,
+  root: JsonSchema,
+): DecodedSchemaValue {
+  const required = schema.required;
+  if (
+    required !== undefined &&
+    (!Array.isArray(required) ||
+      !required.every((key) => typeof key === "string" && hasOwn(value, key)))
+  ) {
+    return INVALID_SCHEMA_VALUE;
   }
-  return (
-    value.kind === "renamed" &&
-    typeof value.from === "string" &&
-    typeof value.to === "string" &&
-    (value.confidence === "certain" || value.confidence === "likely")
-  );
-}
 
-function isWorkspaceFilesChanged(value: unknown): value is WorkspaceFilesChanged {
-  return (
-    isRecord(value) &&
-    isJsSafeUnsignedInteger(value.generationHint) &&
-    typeof value.overflow === "boolean" &&
-    Array.isArray(value.changes) &&
-    value.changes.every(isWorkspaceFileChange)
-  );
-}
-
-function isOptionalAppError(value: unknown): boolean {
-  return value === undefined || decodeAppError(value) !== null;
-}
-
-function isWorkspaceCapabilityChanged(value: unknown): value is WorkspaceCapabilityChanged {
-  return (
-    isRecord(value) &&
-    typeof value.workspaceId === "string" &&
-    isJsSafeUnsignedInteger(value.previousEpoch) &&
-    isJsSafeUnsignedInteger(value.capabilityEpoch) &&
-    (value.state === "ready" || value.state === "revoked") &&
-    isOptionalAppError(value.error)
-  );
-}
-
-function hasValidProvenance(value: JsonRecord): boolean {
-  if (value.source === "external") return !("writeId" in value);
-  return value.source === "ownWrite" && typeof value.writeId === "string";
-}
-
-function isDocumentExternalChanged(value: unknown): value is DocumentExternalChanged {
-  if (!isRecord(value) || typeof value.documentId !== "string") return false;
-  if (["modified", "deleted", "replaced", "metadataOnly"].includes(String(value.change))) {
-    return isExpectedDiskRevision(value.observedDiskRevision) && hasValidProvenance(value);
+  const properties = schema.properties;
+  if (properties !== undefined && !isRecord(properties)) return INVALID_SCHEMA_VALUE;
+  const decoded: JsonRecord = { ...value };
+  if (isRecord(properties)) {
+    for (const [name, propertySchema] of Object.entries(properties)) {
+      if (!hasOwn(value, name)) continue;
+      if (!(typeof propertySchema === "boolean" || isRecord(propertySchema))) {
+        return INVALID_SCHEMA_VALUE;
+      }
+      const property = decodeSchemaInternal(value[name], propertySchema, root);
+      if (property === INVALID_SCHEMA_VALUE) return INVALID_SCHEMA_VALUE;
+      decoded[name] = property;
+    }
   }
-  return (
-    value.change === "permissionChanged" &&
-    typeof value.readOnly === "boolean" &&
-    isJsSafeUnsignedInteger(value.capabilityEpoch) &&
-    value.source === "external" &&
-    !("writeId" in value) &&
-    isOptionalAppError(value.error)
-  );
-}
 
-function isTaskProgress(value: unknown): value is TaskProgress {
-  return (
-    isRecord(value) &&
-    typeof value.operationId === "string" &&
-    typeof value.phase === "string" &&
-    (value.completedUnits === undefined || isJsSafeUnsignedInteger(value.completedUnits)) &&
-    (value.totalUnits === undefined || isJsSafeUnsignedInteger(value.totalUnits)) &&
-    isOptionalString(value.messageKey)
-  );
-}
-
-function isTaskFinished(value: unknown): value is TaskFinished {
-  return (
-    isRecord(value) &&
-    typeof value.operationId === "string" &&
-    ["succeeded", "failed", "cancelled"].includes(String(value.outcome)) &&
-    isOptionalAppError(value.error)
-  );
-}
-
-function isRecoverySnapshotFailed(value: unknown): value is RecoverySnapshotFailed {
-  return (
-    isRecord(value) &&
-    typeof value.documentId === "string" &&
-    decodeAppError(value.error) !== null
-  );
-}
-
-function isAppCloseRequest(value: unknown): value is AppCloseRequest {
-  return (
-    isRecord(value) &&
-    typeof value.closeRequestId === "string" &&
-    (value.deadlineUnixMs === undefined || isJsSafeUnsignedInteger(value.deadlineUnixMs))
-  );
-}
-
-function isMarkdownResource(value: unknown): value is MarkdownResourceRef {
-  if (!isRecord(value) || value.kind !== "markdown" || !isRecord(value.locator)) {
-    return false;
+  const additional = schema.additionalProperties;
+  if (additional !== undefined) {
+    const knownProperties = new Set(isRecord(properties) ? Object.keys(properties) : []);
+    for (const [name, additionalValue] of Object.entries(value)) {
+      if (knownProperties.has(name)) continue;
+      if (additional === false) return INVALID_SCHEMA_VALUE;
+      if (additional === true) continue;
+      if (!isRecord(additional)) return INVALID_SCHEMA_VALUE;
+      const property = decodeSchemaInternal(additionalValue, additional, root);
+      if (property === INVALID_SCHEMA_VALUE) return INVALID_SCHEMA_VALUE;
+      decoded[name] = property;
+    }
   }
-  const locator = value.locator;
-  const validLocator =
-    (locator.kind === "workspacePath" &&
-      typeof locator.workspaceId === "string" &&
-      typeof locator.relativePath === "string") ||
-    (locator.kind === "draft" &&
-      typeof locator.draftId === "string" &&
-      isOptionalString(locator.suggestedName)) ||
-    (locator.kind === "grantedFile" &&
-      typeof locator.grantId === "string" &&
-      typeof locator.displayName === "string");
-  if (!validLocator || value.anchor === undefined) return validLocator;
-  if (!isRecord(value.anchor)) return false;
-  const anchor = value.anchor;
-  return (
-    (anchor.kind === "heading" && typeof anchor.slug === "string") ||
-    (anchor.kind === "block" && typeof anchor.blockId === "string") ||
-    (anchor.kind === "sourcePosition" &&
-      isJsSafeUnsignedInteger(anchor.line) &&
-      (anchor.column === undefined || isJsSafeUnsignedInteger(anchor.column)))
-  );
+  return decoded;
 }
 
-function isNativeOpenTarget(value: unknown): boolean {
-  if (!isRecord(value)) return false;
-  if (value.kind === "workspace") {
-    return typeof value.grantToken === "string" && typeof value.displayPath === "string";
+function decodeArrayKeywords(
+  value: readonly unknown[],
+  schema: JsonRecord,
+  root: JsonSchema,
+): DecodedSchemaValue {
+  if (
+    (typeof schema.minItems === "number" && value.length < schema.minItems) ||
+    (typeof schema.maxItems === "number" && value.length > schema.maxItems)
+  ) {
+    return INVALID_SCHEMA_VALUE;
   }
-  return value.kind === "document" && isMarkdownResource(value.resource);
+  const decoded = [...value];
+  const prefixItems = schema.prefixItems;
+  if (prefixItems !== undefined) {
+    if (!Array.isArray(prefixItems)) return INVALID_SCHEMA_VALUE;
+    for (let index = 0; index < Math.min(prefixItems.length, value.length); index += 1) {
+      const itemSchema = prefixItems[index];
+      if (!(typeof itemSchema === "boolean" || isRecord(itemSchema))) {
+        return INVALID_SCHEMA_VALUE;
+      }
+      const item = decodeSchemaInternal(value[index], itemSchema, root);
+      if (item === INVALID_SCHEMA_VALUE) return INVALID_SCHEMA_VALUE;
+      decoded[index] = item;
+    }
+  }
+  const items = schema.items;
+  if (items !== undefined) {
+    if (!(typeof items === "boolean" || isRecord(items))) return INVALID_SCHEMA_VALUE;
+    const start = Array.isArray(prefixItems) ? prefixItems.length : 0;
+    for (let index = start; index < value.length; index += 1) {
+      const item = decodeSchemaInternal(value[index], items, root);
+      if (item === INVALID_SCHEMA_VALUE) return INVALID_SCHEMA_VALUE;
+      decoded[index] = item;
+    }
+  }
+  return decoded;
 }
 
-function isNativeOpenResourcesRequested(
+function decodeSchemaInternal(
   value: unknown,
-): value is NativeOpenResourcesRequested {
-  return (
-    isRecord(value) &&
-    typeof value.nativeRequestId === "string" &&
-    ["launch", "finder", "dragDrop"].includes(String(value.source)) &&
-    isOptionalString(value.originPaneId) &&
-    Array.isArray(value.targets) &&
-    value.targets.every(isNativeOpenTarget)
-  );
+  schema: JsonSchema,
+  root: JsonSchema,
+): DecodedSchemaValue {
+  if (schema === true) return value;
+  if (schema === false) return INVALID_SCHEMA_VALUE;
+
+  const reference = schema.$ref;
+  let decodedFromReference: DecodedSchemaValue = value;
+  if (reference !== undefined) {
+    if (typeof reference !== "string") return INVALID_SCHEMA_VALUE;
+    const resolved = resolveJsonPointer(root, reference);
+    if (resolved === null) return INVALID_SCHEMA_VALUE;
+    if (referenceName(reference) === "AppError") {
+      const decodedError = decodeAppError(value);
+      if (decodedError === null) return INVALID_SCHEMA_VALUE;
+      decodedFromReference = decodeSchemaInternal(decodedError.error, resolved, root);
+    } else {
+      decodedFromReference = decodeSchemaInternal(value, resolved, root);
+    }
+    if (decodedFromReference === INVALID_SCHEMA_VALUE) return INVALID_SCHEMA_VALUE;
+  }
+  value = decodedFromReference;
+
+  if (hasOwn(schema, "const") && !jsonEquals(value, schema.const)) {
+    return INVALID_SCHEMA_VALUE;
+  }
+  if (
+    schema.enum !== undefined &&
+    (!Array.isArray(schema.enum) || !schema.enum.some((item) => jsonEquals(value, item)))
+  ) {
+    return INVALID_SCHEMA_VALUE;
+  }
+  if (schema.type !== undefined && !matchesDeclaredType(value, schema.type)) {
+    return INVALID_SCHEMA_VALUE;
+  }
+
+  if (typeof value === "number") {
+    if (
+      (typeof schema.minimum === "number" && value < schema.minimum) ||
+      (typeof schema.maximum === "number" && value > schema.maximum) ||
+      (typeof schema.exclusiveMinimum === "number" && value <= schema.exclusiveMinimum) ||
+      (typeof schema.exclusiveMaximum === "number" && value >= schema.exclusiveMaximum)
+    ) {
+      return INVALID_SCHEMA_VALUE;
+    }
+  }
+  if (typeof value === "string") {
+    if (
+      (typeof schema.minLength === "number" && value.length < schema.minLength) ||
+      (typeof schema.maxLength === "number" && value.length > schema.maxLength)
+    ) {
+      return INVALID_SCHEMA_VALUE;
+    }
+    if (typeof schema.pattern === "string") {
+      try {
+        if (!new RegExp(schema.pattern, "u").test(value)) return INVALID_SCHEMA_VALUE;
+      } catch {
+        return INVALID_SCHEMA_VALUE;
+      }
+    }
+  }
+
+  let decoded: DecodedSchemaValue = value;
+  if (isRecord(value)) {
+    decoded = decodeObjectKeywords(value, schema, root);
+    if (decoded === INVALID_SCHEMA_VALUE) return INVALID_SCHEMA_VALUE;
+  } else if (Array.isArray(value)) {
+    decoded = decodeArrayKeywords(value, schema, root);
+    if (decoded === INVALID_SCHEMA_VALUE) return INVALID_SCHEMA_VALUE;
+  }
+
+  const notSchema = schema.not;
+  if (notSchema !== undefined) {
+    if (!(typeof notSchema === "boolean" || isRecord(notSchema))) {
+      return INVALID_SCHEMA_VALUE;
+    }
+    if (decodeSchemaInternal(decoded, notSchema, root) !== INVALID_SCHEMA_VALUE) {
+      return INVALID_SCHEMA_VALUE;
+    }
+  }
+
+  const allOf = schema.allOf;
+  if (allOf !== undefined) {
+    if (!Array.isArray(allOf)) return INVALID_SCHEMA_VALUE;
+    for (const branch of allOf) {
+      if (!(typeof branch === "boolean" || isRecord(branch))) return INVALID_SCHEMA_VALUE;
+      decoded = decodeSchemaInternal(decoded, branch, root);
+      if (decoded === INVALID_SCHEMA_VALUE) return INVALID_SCHEMA_VALUE;
+    }
+  }
+
+  const anyOf = schema.anyOf;
+  if (anyOf !== undefined) {
+    if (!Array.isArray(anyOf) || anyOf.length === 0 || !anyOf.every(isJsonSchema)) {
+      return INVALID_SCHEMA_VALUE;
+    }
+    const candidates = anyOf
+      .map((branch) => decodeSchemaInternal(decoded, branch, root))
+      .filter((candidate) => candidate !== INVALID_SCHEMA_VALUE);
+    if (candidates.length === 0) return INVALID_SCHEMA_VALUE;
+    decoded = candidates[0];
+  }
+
+  const oneOf = schema.oneOf;
+  if (oneOf !== undefined) {
+    if (!Array.isArray(oneOf) || oneOf.length === 0 || !oneOf.every(isJsonSchema)) {
+      return INVALID_SCHEMA_VALUE;
+    }
+    const candidates = oneOf
+      .map((branch) => decodeSchemaInternal(decoded, branch, root))
+      .filter((candidate) => candidate !== INVALID_SCHEMA_VALUE);
+    if (candidates.length !== 1) return INVALID_SCHEMA_VALUE;
+    decoded = candidates[0];
+  }
+
+  return decoded;
 }
 
-const EVENT_PAYLOAD_DECODERS: {
-  [Name in IpcEventType]: (value: unknown) => value is IpcEventMap[Name];
-} = {
-  "workspace.filesChanged": isWorkspaceFilesChanged,
-  "workspace.capabilityChanged": isWorkspaceCapabilityChanged,
-  "document.externalChanged": isDocumentExternalChanged,
-  "task.progress": isTaskProgress,
-  "task.finished": isTaskFinished,
-  "recovery.snapshotFailed": isRecoverySnapshotFailed,
-  "app.closeRequested": isAppCloseRequest,
-  "app.openResourcesRequested": isNativeOpenResourcesRequested,
-};
+export function matchesJsonSchema(
+  value: unknown,
+  schema: JsonSchema,
+  root: JsonSchema = schema,
+): boolean {
+  return decodeSchemaInternal(value, schema, root) !== INVALID_SCHEMA_VALUE;
+}
 
 function scopeIdentityMatchesPayload(
-  eventType: IpcEventType,
-  scope: EventScope,
+  spec: (typeof IPC_EVENT_SPECS)[number],
+  scope: unknown,
   payload: unknown,
 ): boolean {
-  if (!isRecord(payload)) return false;
-  switch (eventType) {
-    case "workspace.capabilityChanged":
-      return scope.kind === "workspace" && scope.workspaceId === payload.workspaceId;
-    case "document.externalChanged":
-    case "recovery.snapshotFailed":
-      return scope.kind === "document" && scope.documentId === payload.documentId;
-    case "task.progress":
-    case "task.finished":
-      return scope.kind === "operation" && scope.operationId === payload.operationId;
-    default:
-      return true;
-  }
+  if (spec.identityField === null) return true;
+  if (!isRecord(scope) || !isRecord(payload) || typeof scope.kind !== "string")
+    return false;
+  const scopeIdentityField = `${scope.kind}Id`;
+  return scope[scopeIdentityField] === payload[spec.identityField];
 }
 
 export function decodeEventEnvelope(value: unknown): DecodedEventEnvelope | null {
@@ -3684,34 +4036,45 @@ export function decodeEventEnvelope(value: unknown): DecodedEventEnvelope | null
     typeof value.eventId !== "string" ||
     typeof value.eventType !== "string" ||
     typeof value.emittedAt !== "string" ||
-    !isEventScope(value.scope) ||
     !isJsSafeUnsignedInteger(value.sequence) ||
-    !("payload" in value)
+    !hasOwn(value, "payload")
   ) {
     return null;
   }
+
+  const decodedScope = decodeSchemaInternal(
+    value.scope,
+    IPC_EVENT_PAYLOAD_SCHEMAS.scope,
+    IPC_EVENT_PAYLOAD_SCHEMAS.scope,
+  );
+  if (decodedScope === INVALID_SCHEMA_VALUE) return null;
 
   const spec = IPC_EVENT_SPECS.find((candidate) => candidate.eventType === value.eventType);
   if (!spec) {
     return {
       kind: "unknown",
       eventType: value.eventType,
-      envelope: value as unknown as EventEnvelope<unknown>,
+      envelope: { ...value, scope: decodedScope } as unknown as EventEnvelope<unknown>,
     };
   }
-  if (value.scope.kind !== spec.scopeKind) return null;
+  if (!isRecord(decodedScope) || decodedScope.kind !== spec.scopeKind) return null;
 
   const eventType = value.eventType as IpcEventType;
-  const decoder = EVENT_PAYLOAD_DECODERS[eventType] as (payload: unknown) => boolean;
+  const payloadSchema = IPC_EVENT_PAYLOAD_SCHEMAS.events[eventType];
+  const decodedPayload = decodeSchemaInternal(value.payload, payloadSchema, payloadSchema);
   if (
-    !decoder(value.payload) ||
-    !scopeIdentityMatchesPayload(eventType, value.scope, value.payload)
+    decodedPayload === INVALID_SCHEMA_VALUE ||
+    !scopeIdentityMatchesPayload(spec, decodedScope, decodedPayload)
   ) {
     return null;
   }
   return {
     kind: "known",
     eventType,
-    envelope: value as unknown as KnownEventEnvelope,
+    envelope: {
+      ...value,
+      scope: decodedScope,
+      payload: decodedPayload,
+    } as unknown as KnownEventEnvelope,
   };
 }

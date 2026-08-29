@@ -4,7 +4,71 @@
 //! This module is its executable Rust mapping. It intentionally does not register
 //! Tauri commands or implement any Phase 1 behavior.
 
+macro_rules! event_registry {
+    ($callback:ident) => {
+        $callback!(
+            (
+                "IPC-EVT-010",
+                "workspace.filesChanged",
+                WorkspaceFilesChanged,
+                "workspace",
+                None
+            ),
+            (
+                "IPC-EVT-011",
+                "workspace.capabilityChanged",
+                WorkspaceCapabilityChanged,
+                "workspace",
+                Some("workspaceId")
+            ),
+            (
+                "IPC-EVT-020",
+                "document.externalChanged",
+                DocumentExternalChanged,
+                "document",
+                Some("documentId")
+            ),
+            (
+                "IPC-EVT-030",
+                "task.progress",
+                TaskProgress,
+                "operation",
+                Some("operationId")
+            ),
+            (
+                "IPC-EVT-031",
+                "task.finished",
+                TaskFinished,
+                "operation",
+                Some("operationId")
+            ),
+            (
+                "IPC-EVT-040",
+                "recovery.snapshotFailed",
+                RecoverySnapshotFailed,
+                "document",
+                Some("documentId")
+            ),
+            (
+                "IPC-EVT-050",
+                "app.closeRequested",
+                AppCloseRequest,
+                "app",
+                None
+            ),
+            (
+                "IPC-EVT-060",
+                "app.openResourcesRequested",
+                NativeOpenResourcesRequested,
+                "app",
+                None
+            ),
+        );
+    };
+}
+
 mod fixtures;
+mod json_schema;
 mod runtime;
 mod rust_typescript;
 
@@ -323,58 +387,24 @@ pub struct EventSpec {
     pub event_type: &'static str,
     pub payload_type: &'static str,
     pub scope_kind: &'static str,
+    pub identity_field: Option<&'static str>,
 }
 
-pub const EVENTS: &[EventSpec] = &[
-    EventSpec {
-        id: "IPC-EVT-010",
-        event_type: "workspace.filesChanged",
-        payload_type: "WorkspaceFilesChanged",
-        scope_kind: "workspace",
-    },
-    EventSpec {
-        id: "IPC-EVT-011",
-        event_type: "workspace.capabilityChanged",
-        payload_type: "WorkspaceCapabilityChanged",
-        scope_kind: "workspace",
-    },
-    EventSpec {
-        id: "IPC-EVT-020",
-        event_type: "document.externalChanged",
-        payload_type: "DocumentExternalChanged",
-        scope_kind: "document",
-    },
-    EventSpec {
-        id: "IPC-EVT-030",
-        event_type: "task.progress",
-        payload_type: "TaskProgress",
-        scope_kind: "operation",
-    },
-    EventSpec {
-        id: "IPC-EVT-031",
-        event_type: "task.finished",
-        payload_type: "TaskFinished",
-        scope_kind: "operation",
-    },
-    EventSpec {
-        id: "IPC-EVT-040",
-        event_type: "recovery.snapshotFailed",
-        payload_type: "RecoverySnapshotFailed",
-        scope_kind: "document",
-    },
-    EventSpec {
-        id: "IPC-EVT-050",
-        event_type: "app.closeRequested",
-        payload_type: "AppCloseRequest",
-        scope_kind: "app",
-    },
-    EventSpec {
-        id: "IPC-EVT-060",
-        event_type: "app.openResourcesRequested",
-        payload_type: "NativeOpenResourcesRequested",
-        scope_kind: "app",
-    },
-];
+macro_rules! define_events {
+    ($(($id:literal, $event_type:literal, $payload:ty, $scope:literal, $identity:expr)),+ $(,)?) => {
+        pub const EVENTS: &[EventSpec] = &[
+            $(EventSpec {
+                id: $id,
+                event_type: $event_type,
+                payload_type: stringify!($payload),
+                scope_kind: $scope,
+                identity_field: $identity,
+            }),+
+        ];
+    };
+}
+
+event_registry!(define_events);
 
 pub const KNOWN_WRITE_ACTIONS: &[&str] = &[
     "cancel",
@@ -636,7 +666,27 @@ struct UnionFixtureSet<'a> {
     schema_version: u8,
     api_version: &'a str,
     generated_by: &'a str,
+    variant_counts: BTreeMap<&'a str, usize>,
     unions: BTreeMap<&'a str, Vec<Value>>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct UnionSchemaSet<'a> {
+    schema_version: u8,
+    api_version: &'a str,
+    generated_by: &'a str,
+    unions: BTreeMap<&'a str, schemars::Schema>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct EventPayloadSchemaSet<'a> {
+    schema_version: u8,
+    api_version: &'a str,
+    generated_by: &'a str,
+    scope: schemars::Schema,
+    events: BTreeMap<&'a str, schemars::Schema>,
 }
 
 pub fn render_typescript() -> String {
@@ -647,9 +697,16 @@ pub fn render_typescript() -> String {
     let union_fixtures = render_union_fixtures();
     let command_map = render_command_map();
     let event_map = render_event_map();
+    let event_schemas = render_event_payload_schemas();
+    let event_schemas_literal =
+        serde_json::to_string(&event_schemas).expect("schema JSON string serializes");
+    let union_variant_counts =
+        union_fixture_variant_counts().expect("registered union schemas expose concrete variants");
+    let union_variant_counts =
+        serde_json::to_string_pretty(&union_variant_counts).expect("union counts serialize");
 
     format!(
-        "// @generated by src-tauri/src/bin/generate_ipc.rs from Rust serde + ts-rs types.\n// Do not edit by hand. Canonical semantics: docs/design/03-domain-model-and-contracts.md.\n\nexport const IPC_API_VERSION = \"{}\" as const;\n\n{}\n\n{}\n\n{}\n\nexport const IPC_COMMAND_SPECS = {} as const;\n\nexport const IPC_EVENT_SPECS = {} as const;\n\nexport const KNOWN_APP_ERROR_CODES = {} as const;\n\nexport const KNOWN_WRITE_ACTIONS = {} as const;\n\nexport const CONTRACT_UNION_FIXTURES = {} as const;\n\n{}",
+        "// @generated by src-tauri/src/bin/generate_ipc.rs from Rust serde + ts-rs types.\n// Do not edit by hand. Canonical semantics: docs/design/03-domain-model-and-contracts.md.\n\nexport const IPC_API_VERSION = \"{}\" as const;\n\n{}\n\n{}\n\n{}\n\nexport const IPC_COMMAND_SPECS = {} as const;\n\nexport const IPC_EVENT_SPECS = {} as const;\n\nexport const KNOWN_APP_ERROR_CODES = {} as const;\n\nexport const KNOWN_WRITE_ACTIONS = {} as const;\n\nexport const CONTRACT_UNION_VARIANT_COUNTS = {} as const;\n\nexport const CONTRACT_UNION_FIXTURES = {} as const;\n\nexport const IPC_EVENT_PAYLOAD_SCHEMAS = JSON.parse({}) as EventPayloadSchemaSet;\n\n{}",
         IPC_API_VERSION,
         rust_typescript::render_declarations().trim(),
         command_map,
@@ -658,7 +715,9 @@ pub fn render_typescript() -> String {
         events,
         errors,
         writes,
+        union_variant_counts,
         union_fixtures.trim(),
+        event_schemas_literal,
         runtime::TYPESCRIPT_RUNTIME.trim(),
     )
 }
@@ -712,11 +771,149 @@ pub fn render_union_fixtures() -> String {
         schema_version: 1,
         api_version: IPC_API_VERSION,
         generated_by: "src-tauri/src/ipc_schema/fixtures.rs",
+        variant_counts: union_fixture_variant_counts()
+            .expect("registered union schemas expose concrete variants"),
         unions: fixtures::concrete_union_fixtures(),
     };
     let mut rendered = serde_json::to_string_pretty(&fixture_set).expect("fixtures serialize");
     rendered.push('\n');
     rendered
+}
+
+pub fn render_union_schemas() -> String {
+    let schema_set = UnionSchemaSet {
+        schema_version: 1,
+        api_version: IPC_API_VERSION,
+        generated_by: "schemars 1.2.2 from the Rust wire type registry",
+        unions: rust_typescript::required_union_fixture_schemas(),
+    };
+    let mut rendered = serde_json::to_string_pretty(&schema_set).expect("union schemas serialize");
+    rendered.push('\n');
+    rendered
+}
+
+fn union_fixture_variant_counts() -> Result<BTreeMap<&'static str, usize>, String> {
+    rust_typescript::required_union_fixture_schemas()
+        .into_iter()
+        .map(|(name, schema)| {
+            union_variant_count(&schema)
+                .map(|count| (name, count))
+                .ok_or_else(|| format!("registered fixture union {name} has no wire variants"))
+        })
+        .collect()
+}
+
+fn union_variant_count(schema: &schemars::Schema) -> Option<usize> {
+    let schema = schema.as_object()?;
+    if let Some(variants) = schema
+        .get("oneOf")
+        .or_else(|| schema.get("anyOf"))
+        .and_then(Value::as_array)
+    {
+        return (!variants.is_empty()).then_some(variants.len());
+    }
+
+    let properties = schema.get("properties")?.as_object()?;
+    ["kind", "action"]
+        .iter()
+        .any(|name| {
+            properties
+                .get(*name)
+                .and_then(|property| property.get("const"))
+                .is_some()
+        })
+        .then_some(1)
+}
+
+pub fn render_event_payload_schemas() -> String {
+    let schema_set = EventPayloadSchemaSet {
+        schema_version: 1,
+        api_version: IPC_API_VERSION,
+        generated_by: "schemars 1.2.2 from Rust serde event payloads",
+        scope: json_schema::event_scope_schema(),
+        events: json_schema::event_payload_schemas(),
+    };
+    let mut rendered = serde_json::to_string_pretty(&schema_set).expect("event schemas serialize");
+    rendered.push('\n');
+    rendered
+}
+
+fn validate_runtime_schema_keywords(schema: &schemars::Schema) -> Result<(), String> {
+    const ALLOWED_SCHEMA_KEYWORDS: &[&str] = &[
+        "$schema",
+        "$ref",
+        "$defs",
+        "title",
+        "description",
+        "default",
+        "examples",
+        // Draft 2020-12 treats `format` as an annotation unless the assertion
+        // vocabulary is explicitly enabled; generated schemas use it for f64.
+        "format",
+        "type",
+        "const",
+        "enum",
+        "properties",
+        "required",
+        "additionalProperties",
+        "items",
+        "prefixItems",
+        "minItems",
+        "maxItems",
+        "minLength",
+        "maxLength",
+        "pattern",
+        "minimum",
+        "maximum",
+        "exclusiveMinimum",
+        "exclusiveMaximum",
+        "not",
+        "allOf",
+        "anyOf",
+        "oneOf",
+    ];
+
+    fn visit(value: &Value, path: &str) -> Result<(), String> {
+        let Value::Object(object) = value else {
+            return Ok(());
+        };
+        for keyword in object.keys() {
+            if !ALLOWED_SCHEMA_KEYWORDS.contains(&keyword.as_str()) {
+                return Err(format!(
+                    "runtime schema contains unsupported keyword {keyword:?} at {path}"
+                ));
+            }
+        }
+        if let Some(Value::Object(definitions)) = object.get("$defs") {
+            for (name, child) in definitions {
+                visit(child, &format!("{path}/$defs/{name}"))?;
+            }
+        }
+        if let Some(Value::Object(properties)) = object.get("properties") {
+            for (name, child) in properties {
+                visit(child, &format!("{path}/properties/{name}"))?;
+            }
+        }
+        for keyword in ["additionalProperties", "items", "not"] {
+            if let Some(child @ (Value::Object(_) | Value::Bool(_))) = object.get(keyword) {
+                if child.is_object() {
+                    visit(child, &format!("{path}/{keyword}"))?;
+                }
+            }
+        }
+        for keyword in ["prefixItems", "allOf", "anyOf", "oneOf"] {
+            if let Some(Value::Array(children)) = object.get(keyword) {
+                for (index, child) in children.iter().enumerate() {
+                    if child.is_object() {
+                        visit(child, &format!("{path}/{keyword}/{index}"))?;
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    visit(schema.as_value(), "#")
 }
 
 pub fn validate_catalog() -> Result<(), String> {
@@ -835,12 +1032,48 @@ fn validate_canonical_document() -> Result<(), String> {
         }
     }
 
+    let event_schemas = json_schema::event_payload_schemas();
+    if event_schemas.len() != EVENTS.len()
+        || EVENTS
+            .iter()
+            .any(|event| !event_schemas.contains_key(event.event_type))
+    {
+        return Err("Rust-derived event payload schemas differ from the event catalog".to_owned());
+    }
+    validate_runtime_schema_keywords(&json_schema::event_scope_schema())?;
+    for schema in event_schemas.values() {
+        validate_runtime_schema_keywords(schema)?;
+    }
+
     let fixtures = fixtures::concrete_union_fixtures();
-    if fixtures.len() != 44 || fixtures.values().any(Vec::is_empty) {
+    let required_unions = union_fixture_variant_counts()?;
+    for (name, schema) in rust_typescript::plain_wire_schemas() {
+        if let Some(variants) = union_variant_count(&schema) {
+            return Err(format!(
+                "wire type {name} exposes {variants} structural variants but is not registered for concrete fixtures"
+            ));
+        }
+    }
+    for schema in rust_typescript::required_union_fixture_schemas().values() {
+        validate_runtime_schema_keywords(schema)?;
+    }
+    let fixture_names = fixtures.keys().copied().collect::<Vec<_>>();
+    let required_names = required_unions.keys().copied().collect::<Vec<_>>();
+    if fixture_names != required_names {
         return Err(format!(
-            "expected 44 non-empty concrete union fixture groups, found {}",
-            fixtures.len()
+            "concrete union fixtures differ from the typed wire registry: fixtures={fixture_names:?}, required={required_names:?}"
         ));
+    }
+    for (name, expected_variants) in required_unions {
+        let actual_variants = fixtures
+            .get(name)
+            .expect("fixture key equality was checked")
+            .len();
+        if actual_variants != expected_variants {
+            return Err(format!(
+                "{name} requires {expected_variants} concrete serde variants, found {actual_variants}"
+            ));
+        }
     }
     Ok(())
 }
@@ -946,7 +1179,20 @@ mod tests {
         let unions = fixtures["unions"]
             .as_object()
             .expect("fixture unions exist");
-        assert_eq!(unions.len(), 44);
+        let variant_counts = fixtures["variantCounts"]
+            .as_object()
+            .expect("typed union registry counts exist");
+        assert_eq!(unions.len(), variant_counts.len());
+        for (name, expected) in variant_counts {
+            assert_eq!(
+                unions[name]
+                    .as_array()
+                    .expect("fixture group is an array")
+                    .len(),
+                expected.as_u64().expect("variant count is an integer") as usize,
+                "{name} must cover every Rust serde variant"
+            );
+        }
         assert_eq!(unions["WorkspaceState"][2]["kind"], "rescanning");
         assert_eq!(
             unions["ResourcePreviewOutcome"][0]["resource"]["locator"]["kind"],
@@ -981,6 +1227,93 @@ mod tests {
         assert!(!normalized.contains("lastKnown?: RequiredNullable<DiskRevision>"));
         assert!(normalized.contains("suggestedName?: string"));
         assert!(!normalized.contains("bigint"));
+    }
+
+    #[test]
+    fn contract_002_registry_drives_event_payload_types_and_decoder_schemas() {
+        let schemas = json_schema::event_payload_schemas();
+        for event in EVENTS {
+            assert_eq!(
+                schemas[event.event_type]
+                    .get("title")
+                    .and_then(Value::as_str),
+                Some(event.payload_type),
+                "{} must derive its schema from its registered Rust payload type",
+                event.event_type
+            );
+        }
+
+        let task_progress = serde_json::to_value(&schemas["task.progress"])
+            .expect("task progress schema serializes");
+        assert_eq!(
+            task_progress["properties"]["completedUnits"]["maximum"].as_u64(),
+            Some(crate::domain::JS_MAX_SAFE_INTEGER)
+        );
+        assert!(!task_progress["properties"]["messageKey"]["type"]
+            .as_array()
+            .expect("optional string schema uses an explicit type set")
+            .contains(&Value::String("null".to_owned())));
+
+        let app_close = serde_json::to_value(&schemas["app.closeRequested"])
+            .expect("app close schema serializes");
+        assert!(!app_close["properties"]["deadlineUnixMs"]["type"]
+            .as_array()
+            .expect("optional safe integer schema uses an explicit type set")
+            .contains(&Value::String("null".to_owned())));
+
+        let recovery = serde_json::to_value(&schemas["recovery.snapshotFailed"])
+            .expect("recovery schema serializes");
+        let app_error = &recovery["$defs"]["AppError"];
+        assert_eq!(
+            app_error["properties"]["recoveryActions"]["items"]["type"], "string",
+            "the generated schema must allow unknown actions to reach fail-closed sanitization"
+        );
+        assert!(app_error["properties"]["recoveryActions"]["items"]
+            .get("enum")
+            .is_none());
+
+        let native_open = serde_json::to_value(&schemas["app.openResourcesRequested"])
+            .expect("native-open schema serializes");
+        assert_eq!(
+            native_open["$defs"]["MarkdownResourceRef"]["properties"]["kind"]["const"],
+            "markdown"
+        );
+    }
+
+    #[test]
+    fn contract_002_required_nullable_and_explicit_no_write_constraints_are_schemas() {
+        let schemas = rust_typescript::required_union_fixture_schemas();
+        let persistence = serde_json::to_value(&schemas["PersistenceState"])
+            .expect("persistence schema serializes");
+        let missing = persistence["oneOf"]
+            .as_array()
+            .expect("persistence has wire variants")
+            .iter()
+            .find(|variant| variant["properties"]["kind"]["const"] == "missing")
+            .expect("missing persistence variant exists");
+        assert!(missing["required"]
+            .as_array()
+            .expect("missing variant has required fields")
+            .contains(&Value::String("lastKnown".to_owned())));
+        assert!(persistence["$defs"]["RequiredNullable"]["anyOf"]
+            .as_array()
+            .expect("required-nullable schema has alternatives")
+            .iter()
+            .any(|branch| branch["type"] == "null"));
+
+        let external = serde_json::to_value(&schemas["DocumentExternalChanged"])
+            .expect("external-change schema serializes");
+        let rendered = external.to_string();
+        assert!(rendered.contains("\"not\":{\"required\":[\"writeId\"]}"));
+
+        let provenance = serde_json::to_value(&schemas["DocumentChangeProvenance"])
+            .expect("standalone provenance schema serializes");
+        assert!(
+            provenance
+                .to_string()
+                .contains("\"not\":{\"required\":[\"writeId\"]}"),
+            "the standalone union schema must match its rejecting Rust deserializer"
+        );
     }
 
     #[test]

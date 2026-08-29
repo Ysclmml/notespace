@@ -160,6 +160,7 @@ pub fn concrete_union_fixtures() -> BTreeMap<&'static str, Vec<Value>> {
             },
         ]
     );
+    add!(MarkdownResourceRef, [markdown_ref()]);
     add!(
         RevealTarget,
         [
@@ -199,6 +200,21 @@ pub fn concrete_union_fixtures() -> BTreeMap<&'static str, Vec<Value>> {
                 display_target: "fixture://resource".to_owned(),
             },
             ResourceResolution::Invalid { error: app_error() },
+        ]
+    );
+    add!(
+        ResourceResolutionWithoutGrant,
+        [
+            ResourceResolutionWithoutGrant(resolved_resource()),
+            ResourceResolutionWithoutGrant(ResourceResolution::Missing {
+                candidate: Some(markdown_resource()),
+                display_target: "missing.md".to_owned(),
+            }),
+            ResourceResolutionWithoutGrant(ResourceResolution::Unsupported {
+                scheme: Some("fixture".to_owned()),
+                display_target: "fixture://resource".to_owned(),
+            }),
+            ResourceResolutionWithoutGrant(ResourceResolution::Invalid { error: app_error() }),
         ]
     );
     add!(
@@ -311,6 +327,17 @@ pub fn concrete_union_fixtures() -> BTreeMap<&'static str, Vec<Value>> {
         ]
     );
     add!(
+        NavigateTarget,
+        [
+            NavigateTarget::Resource(markdown_resource()),
+            NavigateTarget::Unresolved(UnresolvedLink {
+                source_document_id: document_id(),
+                raw_destination: "../fixture.md#fixture-heading".to_owned(),
+                link_kind_hint: Some(LinkKindHint::Markdown),
+            }),
+        ]
+    );
+    add!(
         SessionEditResult,
         [
             SessionEditResult::Applied {
@@ -411,6 +438,7 @@ pub fn concrete_union_fixtures() -> BTreeMap<&'static str, Vec<Value>> {
             },
         ]
     );
+    add!(AbsentDiskRevision, [AbsentDiskRevision::Absent]);
     add!(
         ConflictResolutionRequest,
         [
@@ -448,6 +476,17 @@ pub fn concrete_union_fixtures() -> BTreeMap<&'static str, Vec<Value>> {
         ]
     );
     add!(
+        SaveAsTarget,
+        [
+            SaveAsTarget::Prompt {
+                suggested_name: Some("fixture-copy.md".to_owned()),
+            },
+            SaveAsTarget::Grant {
+                grant_token: "fixture-save-as-grant".to_owned(),
+            },
+        ]
+    );
+    add!(
         DocumentPrepareSaveAsOutcome,
         [
             DocumentPrepareSaveAsOutcome::Cancelled {
@@ -475,6 +514,7 @@ pub fn concrete_union_fixtures() -> BTreeMap<&'static str, Vec<Value>> {
             },
         ]
     );
+    add!(DocumentSaveAsOutcome, [saved_as_document()]);
     add!(
         DocumentSaveAsAbortOutcome,
         [
@@ -655,7 +695,7 @@ pub fn concrete_union_fixtures() -> BTreeMap<&'static str, Vec<Value>> {
     add!(
         DocumentChangeProvenance,
         [
-            DocumentChangeProvenance::External,
+            external_provenance(),
             DocumentChangeProvenance::OwnWrite {
                 write_id: "fixture-write".to_owned(),
             },
@@ -667,12 +707,12 @@ pub fn concrete_union_fixtures() -> BTreeMap<&'static str, Vec<Value>> {
             DocumentExternalChanged::Modified {
                 document_id: document_id(),
                 observed_disk_revision: expected_present(),
-                provenance: DocumentChangeProvenance::External,
+                provenance: external_provenance(),
             },
             DocumentExternalChanged::Deleted {
                 document_id: document_id(),
                 observed_disk_revision: ExpectedDiskRevision::Absent,
-                provenance: DocumentChangeProvenance::External,
+                provenance: external_provenance(),
             },
             DocumentExternalChanged::Replaced {
                 document_id: document_id(),
@@ -684,13 +724,14 @@ pub fn concrete_union_fixtures() -> BTreeMap<&'static str, Vec<Value>> {
             DocumentExternalChanged::MetadataOnly {
                 document_id: document_id(),
                 observed_disk_revision: expected_present(),
-                provenance: DocumentChangeProvenance::External,
+                provenance: external_provenance(),
             },
             DocumentExternalChanged::PermissionChanged {
                 document_id: document_id(),
                 read_only: true,
                 capability_epoch: safe(4),
                 source: ExternalChangeSource::External,
+                forbidden_write_id: ForbiddenWriteId,
                 error: Some(Box::new(app_error())),
             },
         ]
@@ -828,6 +869,12 @@ fn markdown_resource() -> ResourceRef {
 
 fn markdown_ref() -> MarkdownResourceRef {
     MarkdownResourceRef(markdown_resource())
+}
+
+fn external_provenance() -> DocumentChangeProvenance {
+    DocumentChangeProvenance::External {
+        forbidden_write_id: ForbiddenWriteId,
+    }
 }
 
 fn asset_resource() -> ResourceRef {

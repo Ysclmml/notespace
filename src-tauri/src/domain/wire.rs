@@ -3,8 +3,9 @@
 //! These types are serialization-only domain data. They deliberately contain no
 //! Tauri command handlers, filesystem capabilities, or application behavior.
 
-use std::collections::BTreeMap;
+use std::{borrow::Cow, collections::BTreeMap};
 
+use schemars::{json_schema, JsonSchema, Schema, SchemaGenerator};
 use serde::{de::Error as _, Deserialize, Deserializer, Serialize, Serializer};
 use ts_rs::TS;
 
@@ -68,6 +69,24 @@ impl<'de> Deserialize<'de> for JsSafeU64 {
     }
 }
 
+impl JsonSchema for JsSafeU64 {
+    fn inline_schema() -> bool {
+        true
+    }
+
+    fn schema_name() -> Cow<'static, str> {
+        "JsSafeU64".into()
+    }
+
+    fn json_schema(_: &mut SchemaGenerator) -> Schema {
+        json_schema!({
+            "type": "integer",
+            "minimum": 0,
+            "maximum": JS_MAX_SAFE_INTEGER,
+        })
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, TS)]
 #[ts(type = "number")]
 pub struct JsSafeI64(pub i64);
@@ -101,14 +120,32 @@ impl<'de> Deserialize<'de> for JsSafeI64 {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+impl JsonSchema for JsSafeI64 {
+    fn inline_schema() -> bool {
+        true
+    }
+
+    fn schema_name() -> Cow<'static, str> {
+        "JsSafeI64".into()
+    }
+
+    fn json_schema(_: &mut SchemaGenerator) -> Schema {
+        json_schema!({
+            "type": "integer",
+            "minimum": -(JS_MAX_SAFE_INTEGER as i64),
+            "maximum": JS_MAX_SAFE_INTEGER,
+        })
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
 #[ts(as = "Option<T>")]
 pub struct RequiredNullable<T>(pub Option<T>);
 
 macro_rules! opaque_string_id {
     ($(($name:ident, $typescript:literal)),+ $(,)?) => {
         $(
-            #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, TS)]
+            #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, TS, JsonSchema)]
             #[ts(type = $typescript)]
             pub struct $name(pub String);
         )+
@@ -136,11 +173,13 @@ opaque_string_id!(
     (ContentHash, "Brand<string, \"ContentHash\">"),
 );
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, TS)]
+#[derive(
+    Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, TS, JsonSchema,
+)]
 #[ts(type = "Brand<number, \"SessionRevision\">")]
 pub struct SessionRevision(pub JsSafeU64);
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
 pub enum ApiVersion {
     #[serde(rename = "1.0")]
     V1,
@@ -172,6 +211,20 @@ impl<'de> Deserialize<'de> for True {
     }
 }
 
+impl JsonSchema for True {
+    fn inline_schema() -> bool {
+        true
+    }
+
+    fn schema_name() -> Cow<'static, str> {
+        "True".into()
+    }
+
+    fn json_schema(_: &mut SchemaGenerator) -> Schema {
+        json_schema!({ "type": "boolean", "const": true })
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, TS)]
 #[ts(type = "false")]
 pub struct False;
@@ -195,6 +248,20 @@ impl<'de> Deserialize<'de> for False {
         } else {
             Ok(Self)
         }
+    }
+}
+
+impl JsonSchema for False {
+    fn inline_schema() -> bool {
+        true
+    }
+
+    fn schema_name() -> Cow<'static, str> {
+        "False".into()
+    }
+
+    fn json_schema(_: &mut SchemaGenerator) -> Schema {
+        json_schema!({ "type": "boolean", "const": false })
     }
 }
 
@@ -224,11 +291,25 @@ impl<'de> Deserialize<'de> for One {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, TS)]
+impl JsonSchema for One {
+    fn inline_schema() -> bool {
+        true
+    }
+
+    fn schema_name() -> Cow<'static, str> {
+        "One".into()
+    }
+
+    fn json_schema(_: &mut SchemaGenerator) -> Schema {
+        json_schema!({ "type": "integer", "const": 1 })
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, TS, JsonSchema)]
 #[ts(type = "unknown")]
 pub struct UnknownValue(pub serde_json::Value);
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct CommandRequest<T> {
     pub api_version: ApiVersion,
@@ -239,7 +320,7 @@ pub struct CommandRequest<T> {
     pub payload: T,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct CommandSuccess<T> {
     pub api_version: ApiVersion,
@@ -248,7 +329,7 @@ pub struct CommandSuccess<T> {
     pub payload: T,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct CommandFailure {
     pub api_version: ApiVersion,
@@ -257,14 +338,14 @@ pub struct CommandFailure {
     pub error: AppError,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
 #[serde(untagged)]
 pub enum CommandResponse<T> {
     Success(CommandSuccess<T>),
     Failure(Box<CommandFailure>),
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct Workspace {
     pub id: WorkspaceId,
@@ -277,7 +358,7 @@ pub struct Workspace {
     pub opened_at: String,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
 #[serde(
     tag = "kind",
     rename_all = "camelCase",
@@ -292,7 +373,7 @@ pub enum WorkspaceState {
     Closed,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum CaseSensitivity {
     Sensitive,
@@ -300,7 +381,7 @@ pub enum CaseSensitivity {
     Unknown,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
 #[serde(
     tag = "kind",
     rename_all = "camelCase",
@@ -323,7 +404,7 @@ pub enum DocumentLocator {
     },
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
 #[serde(
     tag = "kind",
     rename_all = "camelCase",
@@ -344,7 +425,7 @@ pub enum DocumentAnchor {
     },
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
 #[serde(
     tag = "kind",
     rename_all = "camelCase",
@@ -356,7 +437,7 @@ pub enum ResourceScope {
     Draft { draft_id: DraftId },
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
 #[serde(
     tag = "kind",
     rename_all = "camelCase",
@@ -367,7 +448,7 @@ pub enum AssetOwner {
     Draft { draft_id: DraftId },
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
 #[serde(
     tag = "kind",
     rename_all = "camelCase",
@@ -429,7 +510,30 @@ impl<'de> Deserialize<'de> for MarkdownResourceRef {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+impl JsonSchema for MarkdownResourceRef {
+    fn schema_name() -> Cow<'static, str> {
+        "MarkdownResourceRef".into()
+    }
+
+    fn json_schema(generator: &mut SchemaGenerator) -> Schema {
+        let resource_schema = ResourceRef::json_schema(generator);
+        let markdown_variant = resource_schema
+            .as_object()
+            .and_then(|schema| schema.get("oneOf"))
+            .and_then(serde_json::Value::as_array)
+            .and_then(|variants| {
+                variants.iter().find(|variant| {
+                    variant.pointer("/properties/kind/const")
+                        == Some(&serde_json::Value::String("markdown".to_owned()))
+                })
+            })
+            .cloned()
+            .expect("ResourceRef must retain its markdown serde variant");
+        Schema::try_from(markdown_variant).expect("markdown ResourceRef variant is a schema")
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
 #[serde(
     tag = "kind",
     rename_all = "camelCase",
@@ -452,7 +556,7 @@ pub enum RevealTarget {
     },
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct UnresolvedLink {
     pub source_document_id: DocumentId,
@@ -462,7 +566,7 @@ pub struct UnresolvedLink {
     pub link_kind_hint: Option<LinkKindHint>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum LinkKindHint {
     Markdown,
@@ -471,7 +575,7 @@ pub enum LinkKindHint {
     Unknown,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
 #[serde(
     tag = "kind",
     rename_all = "camelCase",
@@ -506,7 +610,7 @@ pub enum ResourceResolution {
     },
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum GrantReason {
     OutsideWorkspace,
@@ -514,7 +618,7 @@ pub enum GrantReason {
     AssetDirectory,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ResourcePreviewRequest {
     pub resource: ResourceRef,
@@ -522,7 +626,7 @@ pub struct ResourcePreviewRequest {
     pub max_lines: JsSafeU64,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
 #[serde(
     tag = "kind",
     rename_all = "camelCase",
@@ -551,7 +655,7 @@ pub enum ResourcePreviewOutcome {
     },
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct DiskRevision {
     pub token: RevisionToken,
@@ -563,7 +667,7 @@ pub struct DiskRevision {
     pub file_identity_hint: Option<String>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
 #[serde(
     tag = "kind",
     rename_all = "camelCase",
@@ -574,13 +678,13 @@ pub enum ExpectedDiskRevision {
     Absent,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum TextEncoding {
     Utf8,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum LineEnding {
     Lf,
@@ -589,14 +693,14 @@ pub enum LineEnding {
     None,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum PreferredLineEnding {
     Lf,
     Crlf,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct DocumentFormat {
     pub encoding: TextEncoding,
@@ -605,7 +709,7 @@ pub struct DocumentFormat {
     pub preferred_line_ending: PreferredLineEnding,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct DocumentDescriptor {
     pub document_id: DocumentId,
@@ -620,14 +724,14 @@ pub struct DocumentDescriptor {
     pub read_only: bool,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum OpenMode {
     Normal,
     LargeText,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct PreflightReport {
     pub size_bytes: JsSafeU64,
@@ -642,14 +746,14 @@ pub struct PreflightReport {
     pub largest_data_image_estimate_bytes: Option<JsSafeU64>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum SafetyBlockedReason {
     LineTooLong,
     LargeDataImage,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum SafetyBlockedAction {
     ExtractDataImages,
@@ -658,7 +762,7 @@ pub enum SafetyBlockedAction {
     Cancel,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct SafetyBlockedReport {
     pub kind: SafetyBlockedReportKind,
@@ -676,13 +780,13 @@ pub struct SafetyBlockedReport {
     pub allowed_actions: Vec<SafetyBlockedAction>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
 pub enum SafetyBlockedReportKind {
     #[serde(rename = "safetyBlocked")]
     SafetyBlocked,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum UnsupportedReason {
     Binary,
@@ -691,14 +795,14 @@ pub enum UnsupportedReason {
     UnsupportedEncoding,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum UnsupportedAction {
     OpenExternal,
     Cancel,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct UnsupportedReport {
     pub kind: UnsupportedReportKind,
@@ -716,20 +820,20 @@ pub struct UnsupportedReport {
     pub allowed_actions: Vec<UnsupportedAction>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
 pub enum UnsupportedReportKind {
     #[serde(rename = "unsupported")]
     Unsupported,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
 #[serde(untagged)]
 pub enum SafetyReport {
     SafetyBlocked(SafetyBlockedReport),
     Unsupported(UnsupportedReport),
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct EditableDocument {
     pub descriptor: DocumentDescriptor,
@@ -740,7 +844,7 @@ pub struct EditableDocument {
     pub preflight: PreflightReport,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
 #[serde(
     tag = "kind",
     rename_all = "camelCase",
@@ -764,7 +868,7 @@ pub enum DocumentOpenOutcome {
     },
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
 #[serde(
     tag = "kind",
     rename_all = "camelCase",
@@ -795,7 +899,7 @@ pub enum DocumentLoadState {
     },
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
 #[serde(
     tag = "kind",
     rename_all = "camelCase",
@@ -822,7 +926,7 @@ pub enum DiscardReturnState {
     },
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum ConflictReason {
     Modified,
@@ -831,7 +935,7 @@ pub enum ConflictReason {
     Created,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
 #[serde(
     tag = "kind",
     rename_all = "camelCase",
@@ -875,7 +979,7 @@ pub enum PersistenceState {
     },
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct DocumentSession {
     pub id: DocumentSessionId,
@@ -891,14 +995,14 @@ pub struct DocumentSession {
     pub last_accessed_at: JsSafeU64,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum SessionLifecycle {
     Active,
     Closing,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, TS)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, TS, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct Tab {
     pub id: TabId,
@@ -909,7 +1013,7 @@ pub struct Tab {
     pub navigation_epoch: JsSafeU64,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum TabLifecycle {
     Open,
@@ -917,14 +1021,14 @@ pub enum TabLifecycle {
     Closed,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, TS)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, TS, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct NavigationHistory {
     pub entries: Vec<NavEntry>,
     pub index: JsSafeI64,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, TS)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, TS, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct NavEntry {
     pub id: NavEntryId,
@@ -938,7 +1042,7 @@ pub struct NavEntry {
     pub visited_at: JsSafeU64,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, TS)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, TS, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct DocumentView {
     pub id: DocumentViewId,
@@ -951,7 +1055,7 @@ pub struct DocumentView {
     pub mount_state: MountState,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum MountState {
     Mounted,
@@ -959,7 +1063,7 @@ pub enum MountState {
     Disposed,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, TS)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, TS, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ViewState {
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -974,13 +1078,13 @@ pub struct ViewState {
     pub editor_mode: Option<EditorMode>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
 pub struct SelectionRange {
     pub anchor: JsSafeU64,
     pub head: JsSafeU64,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, TS)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, TS, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ScrollAnchor {
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -990,7 +1094,7 @@ pub struct ScrollAnchor {
     pub fallback_scroll_top: f64,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
 pub struct FoldedRange {
     pub from: JsSafeU64,
     pub to: JsSafeU64,
@@ -999,7 +1103,7 @@ pub struct FoldedRange {
     pub fingerprint: Option<String>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct BlockLocator {
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1015,14 +1119,14 @@ pub struct BlockLocator {
     pub fingerprint: Option<String>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum EditorMode {
     Source,
     LivePreview,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum OpenDisposition {
     Current,
@@ -1031,7 +1135,7 @@ pub enum OpenDisposition {
     SplitRight,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum NavigationSource {
     Link,
@@ -1045,7 +1149,7 @@ pub enum NavigationSource {
     Restore,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, TS)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, TS, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct NavigateIntent {
     pub target: NavigateTarget,
@@ -1059,14 +1163,14 @@ pub struct NavigateIntent {
     pub origin_view_id: Option<DocumentViewId>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
 #[serde(untagged)]
 pub enum NavigateTarget {
     Resource(ResourceRef),
     Unresolved(UnresolvedLink),
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct AssetRef {
     pub id: AssetId,
@@ -1087,7 +1191,7 @@ pub struct AssetRef {
     pub markdown_uri: String,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
 #[serde(
     tag = "kind",
     rename_all = "camelCase",
@@ -1157,7 +1261,7 @@ impl Serialize for AppError {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
 #[ts(type = "KnownAppErrorCode | UnknownAppErrorCode")]
 pub struct AppErrorCode(pub String);
 
@@ -1167,7 +1271,7 @@ impl AppErrorCode {
     }
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 struct RawAppError {
     code: AppErrorCode,
@@ -1180,6 +1284,16 @@ struct RawAppError {
     recovery_actions: Option<Vec<String>>,
     #[serde(default)]
     details: Option<AppErrorDetails>,
+}
+
+impl JsonSchema for AppError {
+    fn schema_name() -> Cow<'static, str> {
+        "AppError".into()
+    }
+
+    fn json_schema(generator: &mut SchemaGenerator) -> Schema {
+        RawAppError::json_schema(generator)
+    }
 }
 
 impl<'de> Deserialize<'de> for AppError {
@@ -1207,7 +1321,7 @@ impl<'de> Deserialize<'de> for AppError {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum RecoveryAction {
     Retry,
@@ -1243,7 +1357,7 @@ impl RecoveryAction {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
 #[serde(
     tag = "kind",
     rename_all = "camelCase",
@@ -1295,14 +1409,14 @@ pub enum AppErrorDetails {
     },
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum GrantPurpose {
     ResourceResolution,
     AssetDirectory,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum IoOperation {
     Read,
@@ -1313,7 +1427,7 @@ pub enum IoOperation {
     Stat,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum IoFailureCause {
     ReadOnly,
@@ -1327,7 +1441,7 @@ pub enum IoFailureCause {
     Unknown,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
 #[serde(
     tag = "kind",
     rename_all = "camelCase",
@@ -1340,7 +1454,7 @@ pub enum EventScope {
     Operation { operation_id: OperationId },
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct EventEnvelope<T> {
     pub api_version: ApiVersion,
@@ -1352,7 +1466,7 @@ pub struct EventEnvelope<T> {
     pub payload: T,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct WorkspaceFilesChanged {
     pub generation_hint: JsSafeU64,
@@ -1360,7 +1474,7 @@ pub struct WorkspaceFilesChanged {
     pub changes: Vec<WorkspaceFileChange>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
 #[serde(
     tag = "kind",
     rename_all = "camelCase",
@@ -1383,14 +1497,14 @@ pub enum WorkspaceFileChange {
     },
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum RenameConfidence {
     Certain,
     Likely,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct WorkspaceCapabilityChanged {
     pub workspace_id: WorkspaceId,
@@ -1402,14 +1516,28 @@ pub struct WorkspaceCapabilityChanged {
     pub error: Option<AppError>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum CapabilityState {
     Ready,
     Revoked,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[doc(hidden)]
+pub struct ForbiddenWriteId;
+
+impl<'de> Deserialize<'de> for ForbiddenWriteId {
+    fn deserialize<D>(_: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        Err(D::Error::custom("writeId is forbidden for this provenance"))
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
+#[schemars(transform = forbid_external_write_id)]
 #[serde(
     tag = "change",
     rename_all = "camelCase",
@@ -1445,30 +1573,89 @@ pub enum DocumentExternalChanged {
         read_only: bool,
         capability_epoch: JsSafeU64,
         source: ExternalChangeSource,
+        #[serde(default, rename = "writeId", skip_serializing)]
+        #[schemars(skip)]
+        #[ts(skip)]
+        forbidden_write_id: ForbiddenWriteId,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         #[ts(optional)]
         error: Option<Box<AppError>>,
     },
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
+#[schemars(transform = forbid_external_write_id)]
 #[serde(
     tag = "source",
     rename_all = "camelCase",
     rename_all_fields = "camelCase"
 )]
 pub enum DocumentChangeProvenance {
-    External,
-    OwnWrite { write_id: String },
+    External {
+        #[serde(default, rename = "writeId", skip_serializing)]
+        #[schemars(skip)]
+        #[ts(skip)]
+        forbidden_write_id: ForbiddenWriteId,
+    },
+    OwnWrite {
+        write_id: String,
+    },
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+fn forbid_external_write_id(schema: &mut Schema) {
+    fn has_const_property(
+        object: &serde_json::Map<String, serde_json::Value>,
+        property: &str,
+        expected: &str,
+    ) -> bool {
+        object
+            .get("properties")
+            .and_then(serde_json::Value::as_object)
+            .and_then(|properties| properties.get(property))
+            .and_then(|schema| schema.get("const"))
+            .and_then(serde_json::Value::as_str)
+            == Some(expected)
+    }
+
+    fn visit(value: &mut serde_json::Value) {
+        match value {
+            serde_json::Value::Object(object) => {
+                if has_const_property(object, "source", "external")
+                    || has_const_property(object, "change", "permissionChanged")
+                {
+                    object.insert(
+                        "not".to_owned(),
+                        serde_json::json!({ "required": ["writeId"] }),
+                    );
+                }
+                for child in object.values_mut() {
+                    visit(child);
+                }
+            }
+            serde_json::Value::Array(values) => {
+                for child in values {
+                    visit(child);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    let Some(object) = schema.as_object_mut() else {
+        return;
+    };
+    for value in object.values_mut() {
+        visit(value);
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum ExternalChangeSource {
     External,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
 #[serde(
     tag = "kind",
     rename_all = "camelCase",
@@ -1484,7 +1671,7 @@ pub enum NativeOpenTarget {
     },
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct NativeOpenResourcesRequested {
     pub native_request_id: String,
@@ -1495,7 +1682,7 @@ pub struct NativeOpenResourcesRequested {
     pub targets: Vec<NativeOpenTarget>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum NativeOpenSource {
     Launch,
@@ -1503,7 +1690,7 @@ pub enum NativeOpenSource {
     DragDrop,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct TaskProgress {
     pub operation_id: OperationId,
@@ -1519,7 +1706,7 @@ pub struct TaskProgress {
     pub message_key: Option<String>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct TaskFinished {
     pub operation_id: OperationId,
@@ -1529,7 +1716,7 @@ pub struct TaskFinished {
     pub error: Option<AppError>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum TaskOutcome {
     Succeeded,
@@ -1537,7 +1724,7 @@ pub enum TaskOutcome {
     Cancelled,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct DerivedResultKey {
     pub document_id: DocumentId,
@@ -1739,6 +1926,44 @@ mod tests {
         });
         assert!(
             serde_json::from_value::<DocumentExternalChanged>(permission_from_own_write).is_err()
+        );
+
+        for change in ["modified", "deleted", "replaced", "metadataOnly"] {
+            let external_with_write_id = serde_json::json!({
+                "documentId": "fixture-document",
+                "change": change,
+                "observedDiskRevision": { "kind": "absent" },
+                "source": "external",
+                "writeId": "fixture-write"
+            });
+            assert!(
+                serde_json::from_value::<DocumentExternalChanged>(external_with_write_id).is_err(),
+                "{change}/external must reject a present writeId"
+            );
+        }
+
+        let permission_external_with_write_id = serde_json::json!({
+            "documentId": "fixture-document",
+            "change": "permissionChanged",
+            "readOnly": true,
+            "capabilityEpoch": 4,
+            "source": "external",
+            "writeId": "fixture-write"
+        });
+        assert!(serde_json::from_value::<DocumentExternalChanged>(
+            permission_external_with_write_id
+        )
+        .is_err());
+
+        let external_with_null_write_id = serde_json::json!({
+            "documentId": "fixture-document",
+            "change": "modified",
+            "observedDiskRevision": { "kind": "absent" },
+            "source": "external",
+            "writeId": null
+        });
+        assert!(
+            serde_json::from_value::<DocumentExternalChanged>(external_with_null_write_id).is_err()
         );
     }
 

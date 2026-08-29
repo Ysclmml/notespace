@@ -6,7 +6,8 @@ use std::{
 };
 
 use markdown_workspace_lib::ipc_schema::{
-    render_contract_manifest, render_typescript, render_union_fixtures, validate_catalog,
+    render_contract_manifest, render_event_payload_schemas, render_typescript,
+    render_union_fixtures, render_union_schemas, validate_catalog,
 };
 
 struct Artifact {
@@ -46,6 +47,14 @@ fn run() -> Result<(), String> {
         Artifact {
             path: repository_root.join("contracts/generated/ipc-v1-union-fixtures.json"),
             contents: render_union_fixtures(),
+        },
+        Artifact {
+            path: repository_root.join("contracts/generated/ipc-v1-union-schemas.json"),
+            contents: render_union_schemas(),
+        },
+        Artifact {
+            path: repository_root.join("contracts/generated/ipc-v1-event-schemas.json"),
+            contents: render_event_payload_schemas(),
         },
     ];
 

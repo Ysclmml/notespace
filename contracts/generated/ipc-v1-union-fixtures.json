@@ -2,7 +2,64 @@
   "schemaVersion": 1,
   "apiVersion": "1.0",
   "generatedBy": "src-tauri/src/ipc_schema/fixtures.rs",
+  "variantCounts": {
+    "AbsentDiskRevision": 1,
+    "AppCloseRespondOutcome": 4,
+    "AppErrorDetails": 8,
+    "AppOpenResourcesAckOutcome": 3,
+    "AssetImportClipboardOutcome": 2,
+    "AssetOwner": 2,
+    "AssetState": 6,
+    "CommandResponse": 2,
+    "ConflictResolutionOutcome": 2,
+    "ConflictResolutionRequest": 3,
+    "DiscardReturnState": 5,
+    "DocumentAnchor": 3,
+    "DocumentChangeProvenance": 2,
+    "DocumentCompareOutcome": 3,
+    "DocumentExternalChanged": 5,
+    "DocumentLoadState": 4,
+    "DocumentLocator": 3,
+    "DocumentOpenOutcome": 3,
+    "DocumentPickOutcome": 2,
+    "DocumentPrepareSaveAsOutcome": 4,
+    "DocumentRepairAction": 2,
+    "DocumentSaveAsAbortOutcome": 3,
+    "DocumentSaveAsAckOutcome": 3,
+    "DocumentSaveAsOutcome": 1,
+    "DocumentSaveAsStatusOutcome": 6,
+    "DocumentSaveOutcome": 2,
+    "EventScope": 4,
+    "ExpectedDiskRevision": 2,
+    "MarkdownResourceRef": 1,
+    "NativeOpenTarget": 2,
+    "NavigateTarget": 2,
+    "PersistenceState": 9,
+    "RecoveryInitialPersistence": 3,
+    "RecoveryOpenOutcome": 2,
+    "ResourceGrantOutcome": 3,
+    "ResourcePreviewOutcome": 3,
+    "ResourceRef": 4,
+    "ResourceResolution": 5,
+    "ResourceResolutionWithoutGrant": 4,
+    "ResourceScope": 3,
+    "RevealTarget": 4,
+    "SafetyReport": 2,
+    "SaveAsTarget": 2,
+    "SessionEditResult": 3,
+    "TaskCancelOutcome": 3,
+    "WindowLayout": 2,
+    "WorkspaceFileChange": 4,
+    "WorkspacePickOutcome": 2,
+    "WorkspaceRescanRequest": 2,
+    "WorkspaceState": 6
+  },
   "unions": {
+    "AbsentDiskRevision": [
+      {
+        "kind": "absent"
+      }
+    ],
     "AppCloseRespondOutcome": [
       {
         "kind": "cancelled"
@@ -938,6 +995,38 @@
         "kind": "unknown"
       }
     ],
+    "DocumentSaveAsOutcome": [
+      {
+        "kind": "saved",
+        "newDescriptor": {
+          "displayName": "fixture.md",
+          "documentId": "fixture-document",
+          "locator": {
+            "kind": "workspacePath",
+            "relativePath": "docs/fixture.md",
+            "workspaceId": "fixture-workspace"
+          },
+          "readOnly": false,
+          "relativePath": "docs/fixture.md",
+          "workspaceId": "fixture-workspace"
+        },
+        "result": {
+          "bytesWritten": 128,
+          "documentId": "fixture-document",
+          "kind": "saved",
+          "newDiskRevision": {
+            "contentHash": "fixture-content-hash",
+            "fileIdentityHint": "fixture-file-identity",
+            "modifiedAtUnixMs": 2000000000000,
+            "sizeBytes": 128,
+            "token": "fixture-revision-token"
+          },
+          "savedSessionRevision": 14,
+          "writeId": "fixture-write"
+        },
+        "saveAsIntentId": "fixture-save-as"
+      }
+    ],
     "DocumentSaveAsStatusOutcome": [
       {
         "kind": "unknown",
@@ -1071,6 +1160,20 @@
         "kind": "absent"
       }
     ],
+    "MarkdownResourceRef": [
+      {
+        "anchor": {
+          "kind": "heading",
+          "slug": "fixture-heading"
+        },
+        "kind": "markdown",
+        "locator": {
+          "kind": "workspacePath",
+          "relativePath": "docs/fixture.md",
+          "workspaceId": "fixture-workspace"
+        }
+      }
+    ],
     "NativeOpenTarget": [
       {
         "displayPath": "/fixture/workspace",
@@ -1091,6 +1194,25 @@
             "workspaceId": "fixture-workspace"
           }
         }
+      }
+    ],
+    "NavigateTarget": [
+      {
+        "anchor": {
+          "kind": "heading",
+          "slug": "fixture-heading"
+        },
+        "kind": "markdown",
+        "locator": {
+          "kind": "workspacePath",
+          "relativePath": "docs/fixture.md",
+          "workspaceId": "fixture-workspace"
+        }
+      },
+      {
+        "linkKindHint": "markdown",
+        "rawDestination": "../fixture.md#fixture-heading",
+        "sourceDocumentId": "fixture-document"
       }
     ],
     "PersistenceState": [
@@ -1598,6 +1720,59 @@
         "kind": "invalid"
       }
     ],
+    "ResourceResolutionWithoutGrant": [
+      {
+        "documentId": "fixture-document",
+        "kind": "resolved",
+        "resource": {
+          "anchor": {
+            "kind": "heading",
+            "slug": "fixture-heading"
+          },
+          "kind": "markdown",
+          "locator": {
+            "kind": "workspacePath",
+            "relativePath": "docs/fixture.md",
+            "workspaceId": "fixture-workspace"
+          }
+        }
+      },
+      {
+        "candidate": {
+          "anchor": {
+            "kind": "heading",
+            "slug": "fixture-heading"
+          },
+          "kind": "markdown",
+          "locator": {
+            "kind": "workspacePath",
+            "relativePath": "docs/fixture.md",
+            "workspaceId": "fixture-workspace"
+          }
+        },
+        "displayTarget": "missing.md",
+        "kind": "missing"
+      },
+      {
+        "displayTarget": "fixture://resource",
+        "kind": "unsupported",
+        "scheme": "fixture"
+      },
+      {
+        "error": {
+          "code": "ERR_IO",
+          "correlationId": "fixture-correlation",
+          "message": "Fixture I/O failure",
+          "messageKey": "fixture.io",
+          "recoveryActions": [
+            "retry",
+            "compare"
+          ],
+          "retryable": true
+        },
+        "kind": "invalid"
+      }
+    ],
     "ResourceScope": [
       {
         "kind": "workspace",
@@ -1664,6 +1839,16 @@
           "invalidUtf8"
         ],
         "sizeBytes": 128
+      }
+    ],
+    "SaveAsTarget": [
+      {
+        "kind": "prompt",
+        "suggestedName": "fixture-copy.md"
+      },
+      {
+        "grantToken": "fixture-save-as-grant",
+        "kind": "grant"
       }
     ],
     "SessionEditResult": [

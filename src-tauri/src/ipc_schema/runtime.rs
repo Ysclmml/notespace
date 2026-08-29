@@ -1,13 +1,24 @@
-//! Runtime TypeScript guards. Wire declarations themselves come only from
-//! `ts-rs`; this module contains security policy that static types cannot express.
+//! Generic TypeScript JSON-Schema evaluator and fail-closed envelope policy.
+//! Event payload fields live only in the schemas derived from Rust serde types.
 
-pub const TYPESCRIPT_RUNTIME: &str = r#"
+pub const TYPESCRIPT_RUNTIME: &str = r##"
 type JsonRecord = Record<string, unknown>;
+
+export type JsonSchema = boolean | JsonRecord;
+
+export interface EventPayloadSchemaSet {
+  schemaVersion: 1;
+  apiVersion: ApiVersion;
+  generatedBy: string;
+  scope: JsonSchema;
+  events: Record<IpcEventType, JsonSchema>;
+}
 
 export interface ContractUnionFixtureSet {
   schemaVersion: 1;
   apiVersion: ApiVersion;
   generatedBy: string;
+  variantCounts: Record<string, number>;
   unions: Record<string, readonly unknown[]>;
 }
 
@@ -30,8 +41,19 @@ const READ_ONLY_UNKNOWN_ERROR_ACTIONS = [
   "openExternal",
 ] as const satisfies readonly RecoveryAction[];
 
+const INVALID_SCHEMA_VALUE = Symbol("invalid JSON Schema value");
+type DecodedSchemaValue = unknown | typeof INVALID_SCHEMA_VALUE;
+
 function isRecord(value: unknown): value is JsonRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isJsonSchema(value: unknown): value is JsonSchema {
+  return typeof value === "boolean" || isRecord(value);
+}
+
+function hasOwn(value: JsonRecord, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(value, key);
 }
 
 function isOptionalString(value: unknown): boolean {
@@ -97,209 +119,301 @@ export function decodeAppError(value: unknown): DecodedAppError | null {
   return { error, knownCode };
 }
 
-function isEventScope(value: unknown): value is EventScope {
-  if (!isRecord(value) || typeof value.kind !== "string") return false;
-  switch (value.kind) {
-    case "app":
-      return true;
-    case "workspace":
-      return typeof value.workspaceId === "string";
-    case "document":
-      return typeof value.documentId === "string";
-    case "operation":
-      return typeof value.operationId === "string";
+function jsonEquals(left: unknown, right: unknown): boolean {
+  if (Object.is(left, right)) return true;
+  if (Array.isArray(left) && Array.isArray(right)) {
+    return (
+      left.length === right.length &&
+      left.every((value, index) => jsonEquals(value, right[index]))
+    );
+  }
+  if (isRecord(left) && isRecord(right)) {
+    const leftKeys = Object.keys(left);
+    const rightKeys = Object.keys(right);
+    return (
+      leftKeys.length === rightKeys.length &&
+      leftKeys.every((key) => hasOwn(right, key) && jsonEquals(left[key], right[key]))
+    );
+  }
+  return false;
+}
+
+function resolveJsonPointer(root: JsonSchema, reference: string): JsonSchema | null {
+  if (!reference.startsWith("#/")) return null;
+  let current: unknown = root;
+  for (const encodedToken of reference.slice(2).split("/")) {
+    if (!isRecord(current)) return null;
+    const token = encodedToken.replaceAll("~1", "/").replaceAll("~0", "~");
+    current = current[token];
+  }
+  return typeof current === "boolean" || isRecord(current) ? current : null;
+}
+
+function referenceName(reference: string): string | null {
+  const token = reference.split("/").at(-1);
+  return token === undefined
+    ? null
+    : token.replaceAll("~1", "/").replaceAll("~0", "~");
+}
+
+function matchesType(value: unknown, type: string): boolean {
+  switch (type) {
+    case "null":
+      return value === null;
+    case "boolean":
+      return typeof value === "boolean";
+    case "string":
+      return typeof value === "string";
+    case "number":
+      return typeof value === "number" && Number.isFinite(value);
+    case "integer":
+      return typeof value === "number" && Number.isSafeInteger(value);
+    case "array":
+      return Array.isArray(value);
+    case "object":
+      return isRecord(value);
     default:
       return false;
   }
 }
 
-function isExpectedDiskRevision(value: unknown): value is ExpectedDiskRevision {
-  if (!isRecord(value) || typeof value.kind !== "string") return false;
-  if (value.kind === "absent") return true;
-  if (value.kind !== "present" || !isRecord(value.revision)) return false;
-  const revision = value.revision;
+function matchesDeclaredType(value: unknown, declaredType: unknown): boolean {
+  if (typeof declaredType === "string") return matchesType(value, declaredType);
   return (
-    typeof revision.token === "string" &&
-    isJsSafeUnsignedInteger(revision.sizeBytes) &&
-    isJsSafeUnsignedInteger(revision.modifiedAtUnixMs) &&
-    typeof revision.contentHash === "string" &&
-    isOptionalString(revision.fileIdentityHint)
+    Array.isArray(declaredType) &&
+    declaredType.every((type) => typeof type === "string") &&
+    declaredType.some((type) => matchesType(value, type))
   );
 }
 
-function isWorkspaceFileChange(value: unknown): boolean {
-  if (!isRecord(value) || typeof value.kind !== "string") return false;
-  if (["created", "modified", "removed"].includes(value.kind)) {
-    return typeof value.relativePath === "string";
+function decodeObjectKeywords(
+  value: JsonRecord,
+  schema: JsonRecord,
+  root: JsonSchema,
+): DecodedSchemaValue {
+  const required = schema.required;
+  if (
+    required !== undefined &&
+    (!Array.isArray(required) ||
+      !required.every((key) => typeof key === "string" && hasOwn(value, key)))
+  ) {
+    return INVALID_SCHEMA_VALUE;
   }
-  return (
-    value.kind === "renamed" &&
-    typeof value.from === "string" &&
-    typeof value.to === "string" &&
-    (value.confidence === "certain" || value.confidence === "likely")
-  );
-}
 
-function isWorkspaceFilesChanged(value: unknown): value is WorkspaceFilesChanged {
-  return (
-    isRecord(value) &&
-    isJsSafeUnsignedInteger(value.generationHint) &&
-    typeof value.overflow === "boolean" &&
-    Array.isArray(value.changes) &&
-    value.changes.every(isWorkspaceFileChange)
-  );
-}
-
-function isOptionalAppError(value: unknown): boolean {
-  return value === undefined || decodeAppError(value) !== null;
-}
-
-function isWorkspaceCapabilityChanged(value: unknown): value is WorkspaceCapabilityChanged {
-  return (
-    isRecord(value) &&
-    typeof value.workspaceId === "string" &&
-    isJsSafeUnsignedInteger(value.previousEpoch) &&
-    isJsSafeUnsignedInteger(value.capabilityEpoch) &&
-    (value.state === "ready" || value.state === "revoked") &&
-    isOptionalAppError(value.error)
-  );
-}
-
-function hasValidProvenance(value: JsonRecord): boolean {
-  if (value.source === "external") return !("writeId" in value);
-  return value.source === "ownWrite" && typeof value.writeId === "string";
-}
-
-function isDocumentExternalChanged(value: unknown): value is DocumentExternalChanged {
-  if (!isRecord(value) || typeof value.documentId !== "string") return false;
-  if (["modified", "deleted", "replaced", "metadataOnly"].includes(String(value.change))) {
-    return isExpectedDiskRevision(value.observedDiskRevision) && hasValidProvenance(value);
+  const properties = schema.properties;
+  if (properties !== undefined && !isRecord(properties)) return INVALID_SCHEMA_VALUE;
+  const decoded: JsonRecord = { ...value };
+  if (isRecord(properties)) {
+    for (const [name, propertySchema] of Object.entries(properties)) {
+      if (!hasOwn(value, name)) continue;
+      if (!(typeof propertySchema === "boolean" || isRecord(propertySchema))) {
+        return INVALID_SCHEMA_VALUE;
+      }
+      const property = decodeSchemaInternal(value[name], propertySchema, root);
+      if (property === INVALID_SCHEMA_VALUE) return INVALID_SCHEMA_VALUE;
+      decoded[name] = property;
+    }
   }
-  return (
-    value.change === "permissionChanged" &&
-    typeof value.readOnly === "boolean" &&
-    isJsSafeUnsignedInteger(value.capabilityEpoch) &&
-    value.source === "external" &&
-    !("writeId" in value) &&
-    isOptionalAppError(value.error)
-  );
-}
 
-function isTaskProgress(value: unknown): value is TaskProgress {
-  return (
-    isRecord(value) &&
-    typeof value.operationId === "string" &&
-    typeof value.phase === "string" &&
-    (value.completedUnits === undefined || isJsSafeUnsignedInteger(value.completedUnits)) &&
-    (value.totalUnits === undefined || isJsSafeUnsignedInteger(value.totalUnits)) &&
-    isOptionalString(value.messageKey)
-  );
-}
-
-function isTaskFinished(value: unknown): value is TaskFinished {
-  return (
-    isRecord(value) &&
-    typeof value.operationId === "string" &&
-    ["succeeded", "failed", "cancelled"].includes(String(value.outcome)) &&
-    isOptionalAppError(value.error)
-  );
-}
-
-function isRecoverySnapshotFailed(value: unknown): value is RecoverySnapshotFailed {
-  return (
-    isRecord(value) &&
-    typeof value.documentId === "string" &&
-    decodeAppError(value.error) !== null
-  );
-}
-
-function isAppCloseRequest(value: unknown): value is AppCloseRequest {
-  return (
-    isRecord(value) &&
-    typeof value.closeRequestId === "string" &&
-    (value.deadlineUnixMs === undefined || isJsSafeUnsignedInteger(value.deadlineUnixMs))
-  );
-}
-
-function isMarkdownResource(value: unknown): value is MarkdownResourceRef {
-  if (!isRecord(value) || value.kind !== "markdown" || !isRecord(value.locator)) {
-    return false;
+  const additional = schema.additionalProperties;
+  if (additional !== undefined) {
+    const knownProperties = new Set(isRecord(properties) ? Object.keys(properties) : []);
+    for (const [name, additionalValue] of Object.entries(value)) {
+      if (knownProperties.has(name)) continue;
+      if (additional === false) return INVALID_SCHEMA_VALUE;
+      if (additional === true) continue;
+      if (!isRecord(additional)) return INVALID_SCHEMA_VALUE;
+      const property = decodeSchemaInternal(additionalValue, additional, root);
+      if (property === INVALID_SCHEMA_VALUE) return INVALID_SCHEMA_VALUE;
+      decoded[name] = property;
+    }
   }
-  const locator = value.locator;
-  const validLocator =
-    (locator.kind === "workspacePath" &&
-      typeof locator.workspaceId === "string" &&
-      typeof locator.relativePath === "string") ||
-    (locator.kind === "draft" &&
-      typeof locator.draftId === "string" &&
-      isOptionalString(locator.suggestedName)) ||
-    (locator.kind === "grantedFile" &&
-      typeof locator.grantId === "string" &&
-      typeof locator.displayName === "string");
-  if (!validLocator || value.anchor === undefined) return validLocator;
-  if (!isRecord(value.anchor)) return false;
-  const anchor = value.anchor;
-  return (
-    (anchor.kind === "heading" && typeof anchor.slug === "string") ||
-    (anchor.kind === "block" && typeof anchor.blockId === "string") ||
-    (anchor.kind === "sourcePosition" &&
-      isJsSafeUnsignedInteger(anchor.line) &&
-      (anchor.column === undefined || isJsSafeUnsignedInteger(anchor.column)))
-  );
+  return decoded;
 }
 
-function isNativeOpenTarget(value: unknown): boolean {
-  if (!isRecord(value)) return false;
-  if (value.kind === "workspace") {
-    return typeof value.grantToken === "string" && typeof value.displayPath === "string";
+function decodeArrayKeywords(
+  value: readonly unknown[],
+  schema: JsonRecord,
+  root: JsonSchema,
+): DecodedSchemaValue {
+  if (
+    (typeof schema.minItems === "number" && value.length < schema.minItems) ||
+    (typeof schema.maxItems === "number" && value.length > schema.maxItems)
+  ) {
+    return INVALID_SCHEMA_VALUE;
   }
-  return value.kind === "document" && isMarkdownResource(value.resource);
+  const decoded = [...value];
+  const prefixItems = schema.prefixItems;
+  if (prefixItems !== undefined) {
+    if (!Array.isArray(prefixItems)) return INVALID_SCHEMA_VALUE;
+    for (let index = 0; index < Math.min(prefixItems.length, value.length); index += 1) {
+      const itemSchema = prefixItems[index];
+      if (!(typeof itemSchema === "boolean" || isRecord(itemSchema))) {
+        return INVALID_SCHEMA_VALUE;
+      }
+      const item = decodeSchemaInternal(value[index], itemSchema, root);
+      if (item === INVALID_SCHEMA_VALUE) return INVALID_SCHEMA_VALUE;
+      decoded[index] = item;
+    }
+  }
+  const items = schema.items;
+  if (items !== undefined) {
+    if (!(typeof items === "boolean" || isRecord(items))) return INVALID_SCHEMA_VALUE;
+    const start = Array.isArray(prefixItems) ? prefixItems.length : 0;
+    for (let index = start; index < value.length; index += 1) {
+      const item = decodeSchemaInternal(value[index], items, root);
+      if (item === INVALID_SCHEMA_VALUE) return INVALID_SCHEMA_VALUE;
+      decoded[index] = item;
+    }
+  }
+  return decoded;
 }
 
-function isNativeOpenResourcesRequested(
+function decodeSchemaInternal(
   value: unknown,
-): value is NativeOpenResourcesRequested {
-  return (
-    isRecord(value) &&
-    typeof value.nativeRequestId === "string" &&
-    ["launch", "finder", "dragDrop"].includes(String(value.source)) &&
-    isOptionalString(value.originPaneId) &&
-    Array.isArray(value.targets) &&
-    value.targets.every(isNativeOpenTarget)
-  );
+  schema: JsonSchema,
+  root: JsonSchema,
+): DecodedSchemaValue {
+  if (schema === true) return value;
+  if (schema === false) return INVALID_SCHEMA_VALUE;
+
+  const reference = schema.$ref;
+  let decodedFromReference: DecodedSchemaValue = value;
+  if (reference !== undefined) {
+    if (typeof reference !== "string") return INVALID_SCHEMA_VALUE;
+    const resolved = resolveJsonPointer(root, reference);
+    if (resolved === null) return INVALID_SCHEMA_VALUE;
+    if (referenceName(reference) === "AppError") {
+      const decodedError = decodeAppError(value);
+      if (decodedError === null) return INVALID_SCHEMA_VALUE;
+      decodedFromReference = decodeSchemaInternal(decodedError.error, resolved, root);
+    } else {
+      decodedFromReference = decodeSchemaInternal(value, resolved, root);
+    }
+    if (decodedFromReference === INVALID_SCHEMA_VALUE) return INVALID_SCHEMA_VALUE;
+  }
+  value = decodedFromReference;
+
+  if (hasOwn(schema, "const") && !jsonEquals(value, schema.const)) {
+    return INVALID_SCHEMA_VALUE;
+  }
+  if (
+    schema.enum !== undefined &&
+    (!Array.isArray(schema.enum) || !schema.enum.some((item) => jsonEquals(value, item)))
+  ) {
+    return INVALID_SCHEMA_VALUE;
+  }
+  if (schema.type !== undefined && !matchesDeclaredType(value, schema.type)) {
+    return INVALID_SCHEMA_VALUE;
+  }
+
+  if (typeof value === "number") {
+    if (
+      (typeof schema.minimum === "number" && value < schema.minimum) ||
+      (typeof schema.maximum === "number" && value > schema.maximum) ||
+      (typeof schema.exclusiveMinimum === "number" && value <= schema.exclusiveMinimum) ||
+      (typeof schema.exclusiveMaximum === "number" && value >= schema.exclusiveMaximum)
+    ) {
+      return INVALID_SCHEMA_VALUE;
+    }
+  }
+  if (typeof value === "string") {
+    if (
+      (typeof schema.minLength === "number" && value.length < schema.minLength) ||
+      (typeof schema.maxLength === "number" && value.length > schema.maxLength)
+    ) {
+      return INVALID_SCHEMA_VALUE;
+    }
+    if (typeof schema.pattern === "string") {
+      try {
+        if (!new RegExp(schema.pattern, "u").test(value)) return INVALID_SCHEMA_VALUE;
+      } catch {
+        return INVALID_SCHEMA_VALUE;
+      }
+    }
+  }
+
+  let decoded: DecodedSchemaValue = value;
+  if (isRecord(value)) {
+    decoded = decodeObjectKeywords(value, schema, root);
+    if (decoded === INVALID_SCHEMA_VALUE) return INVALID_SCHEMA_VALUE;
+  } else if (Array.isArray(value)) {
+    decoded = decodeArrayKeywords(value, schema, root);
+    if (decoded === INVALID_SCHEMA_VALUE) return INVALID_SCHEMA_VALUE;
+  }
+
+  const notSchema = schema.not;
+  if (notSchema !== undefined) {
+    if (!(typeof notSchema === "boolean" || isRecord(notSchema))) {
+      return INVALID_SCHEMA_VALUE;
+    }
+    if (decodeSchemaInternal(decoded, notSchema, root) !== INVALID_SCHEMA_VALUE) {
+      return INVALID_SCHEMA_VALUE;
+    }
+  }
+
+  const allOf = schema.allOf;
+  if (allOf !== undefined) {
+    if (!Array.isArray(allOf)) return INVALID_SCHEMA_VALUE;
+    for (const branch of allOf) {
+      if (!(typeof branch === "boolean" || isRecord(branch))) return INVALID_SCHEMA_VALUE;
+      decoded = decodeSchemaInternal(decoded, branch, root);
+      if (decoded === INVALID_SCHEMA_VALUE) return INVALID_SCHEMA_VALUE;
+    }
+  }
+
+  const anyOf = schema.anyOf;
+  if (anyOf !== undefined) {
+    if (
+      !Array.isArray(anyOf) ||
+      anyOf.length === 0 ||
+      !anyOf.every(isJsonSchema)
+    ) {
+      return INVALID_SCHEMA_VALUE;
+    }
+    const candidates = anyOf
+      .map((branch) => decodeSchemaInternal(decoded, branch, root))
+      .filter((candidate) => candidate !== INVALID_SCHEMA_VALUE);
+    if (candidates.length === 0) return INVALID_SCHEMA_VALUE;
+    decoded = candidates[0];
+  }
+
+  const oneOf = schema.oneOf;
+  if (oneOf !== undefined) {
+    if (
+      !Array.isArray(oneOf) ||
+      oneOf.length === 0 ||
+      !oneOf.every(isJsonSchema)
+    ) {
+      return INVALID_SCHEMA_VALUE;
+    }
+    const candidates = oneOf
+      .map((branch) => decodeSchemaInternal(decoded, branch, root))
+      .filter((candidate) => candidate !== INVALID_SCHEMA_VALUE);
+    if (candidates.length !== 1) return INVALID_SCHEMA_VALUE;
+    decoded = candidates[0];
+  }
+
+  return decoded;
 }
 
-const EVENT_PAYLOAD_DECODERS: {
-  [Name in IpcEventType]: (value: unknown) => value is IpcEventMap[Name];
-} = {
-  "workspace.filesChanged": isWorkspaceFilesChanged,
-  "workspace.capabilityChanged": isWorkspaceCapabilityChanged,
-  "document.externalChanged": isDocumentExternalChanged,
-  "task.progress": isTaskProgress,
-  "task.finished": isTaskFinished,
-  "recovery.snapshotFailed": isRecoverySnapshotFailed,
-  "app.closeRequested": isAppCloseRequest,
-  "app.openResourcesRequested": isNativeOpenResourcesRequested,
-};
+export function matchesJsonSchema(
+  value: unknown,
+  schema: JsonSchema,
+  root: JsonSchema = schema,
+): boolean {
+  return decodeSchemaInternal(value, schema, root) !== INVALID_SCHEMA_VALUE;
+}
 
 function scopeIdentityMatchesPayload(
-  eventType: IpcEventType,
-  scope: EventScope,
+  spec: (typeof IPC_EVENT_SPECS)[number],
+  scope: unknown,
   payload: unknown,
 ): boolean {
-  if (!isRecord(payload)) return false;
-  switch (eventType) {
-    case "workspace.capabilityChanged":
-      return scope.kind === "workspace" && scope.workspaceId === payload.workspaceId;
-    case "document.externalChanged":
-    case "recovery.snapshotFailed":
-      return scope.kind === "document" && scope.documentId === payload.documentId;
-    case "task.progress":
-    case "task.finished":
-      return scope.kind === "operation" && scope.operationId === payload.operationId;
-    default:
-      return true;
-  }
+  if (spec.identityField === null) return true;
+  if (!isRecord(scope) || !isRecord(payload) || typeof scope.kind !== "string") return false;
+  const scopeIdentityField = `${scope.kind}Id`;
+  return scope[scopeIdentityField] === payload[spec.identityField];
 }
 
 export function decodeEventEnvelope(value: unknown): DecodedEventEnvelope | null {
@@ -309,32 +423,46 @@ export function decodeEventEnvelope(value: unknown): DecodedEventEnvelope | null
     typeof value.eventId !== "string" ||
     typeof value.eventType !== "string" ||
     typeof value.emittedAt !== "string" ||
-    !isEventScope(value.scope) ||
     !isJsSafeUnsignedInteger(value.sequence) ||
-    !("payload" in value)
+    !hasOwn(value, "payload")
   ) {
     return null;
   }
+
+  const decodedScope = decodeSchemaInternal(
+    value.scope,
+    IPC_EVENT_PAYLOAD_SCHEMAS.scope,
+    IPC_EVENT_PAYLOAD_SCHEMAS.scope,
+  );
+  if (decodedScope === INVALID_SCHEMA_VALUE) return null;
 
   const spec = IPC_EVENT_SPECS.find((candidate) => candidate.eventType === value.eventType);
   if (!spec) {
     return {
       kind: "unknown",
       eventType: value.eventType,
-      envelope: value as unknown as EventEnvelope<unknown>,
+      envelope: { ...value, scope: decodedScope } as unknown as EventEnvelope<unknown>,
     };
   }
-  if (value.scope.kind !== spec.scopeKind) return null;
+  if (!isRecord(decodedScope) || decodedScope.kind !== spec.scopeKind) return null;
 
   const eventType = value.eventType as IpcEventType;
-  const decoder = EVENT_PAYLOAD_DECODERS[eventType] as (payload: unknown) => boolean;
-  if (!decoder(value.payload) || !scopeIdentityMatchesPayload(eventType, value.scope, value.payload)) {
+  const payloadSchema = IPC_EVENT_PAYLOAD_SCHEMAS.events[eventType];
+  const decodedPayload = decodeSchemaInternal(value.payload, payloadSchema, payloadSchema);
+  if (
+    decodedPayload === INVALID_SCHEMA_VALUE ||
+    !scopeIdentityMatchesPayload(spec, decodedScope, decodedPayload)
+  ) {
     return null;
   }
   return {
     kind: "known",
     eventType,
-    envelope: value as unknown as KnownEventEnvelope,
+    envelope: {
+      ...value,
+      scope: decodedScope,
+      payload: decodedPayload,
+    } as unknown as KnownEventEnvelope,
   };
 }
-"#;
+"##;

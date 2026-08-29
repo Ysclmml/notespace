@@ -1,0 +1,3128 @@
+{
+  "schemaVersion": 1,
+  "apiVersion": "1.0",
+  "generatedBy": "schemars 1.2.2 from Rust serde event payloads",
+  "scope": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "EventScope",
+    "oneOf": [
+      {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "app"
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "workspace"
+          },
+          "workspaceId": {
+            "$ref": "#/$defs/WorkspaceId"
+          }
+        },
+        "required": [
+          "kind",
+          "workspaceId"
+        ]
+      },
+      {
+        "type": "object",
+        "properties": {
+          "documentId": {
+            "$ref": "#/$defs/DocumentId"
+          },
+          "kind": {
+            "type": "string",
+            "const": "document"
+          }
+        },
+        "required": [
+          "kind",
+          "documentId"
+        ]
+      },
+      {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "operation"
+          },
+          "operationId": {
+            "$ref": "#/$defs/OperationId"
+          }
+        },
+        "required": [
+          "kind",
+          "operationId"
+        ]
+      }
+    ],
+    "$defs": {
+      "DocumentId": {
+        "type": "string"
+      },
+      "OperationId": {
+        "type": "string"
+      },
+      "WorkspaceId": {
+        "type": "string"
+      }
+    }
+  },
+  "events": {
+    "app.closeRequested": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "AppCloseRequest",
+      "type": "object",
+      "properties": {
+        "closeRequestId": {
+          "type": "string"
+        },
+        "deadlineUnixMs": {
+          "type": [
+            "integer"
+          ],
+          "maximum": 9007199254740991,
+          "minimum": 0
+        }
+      },
+      "required": [
+        "closeRequestId"
+      ]
+    },
+    "app.openResourcesRequested": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "NativeOpenResourcesRequested",
+      "type": "object",
+      "properties": {
+        "nativeRequestId": {
+          "type": "string"
+        },
+        "originPaneId": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PaneId"
+            }
+          ]
+        },
+        "source": {
+          "$ref": "#/$defs/NativeOpenSource"
+        },
+        "targets": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/NativeOpenTarget"
+          }
+        }
+      },
+      "required": [
+        "nativeRequestId",
+        "source",
+        "targets"
+      ],
+      "$defs": {
+        "DocumentAnchor": {
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "heading"
+                },
+                "slug": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind",
+                "slug"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "blockId": {
+                  "type": "string"
+                },
+                "kind": {
+                  "type": "string",
+                  "const": "block"
+                }
+              },
+              "required": [
+                "kind",
+                "blockId"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "column": {
+                  "type": [
+                    "integer"
+                  ],
+                  "maximum": 9007199254740991,
+                  "minimum": 0
+                },
+                "kind": {
+                  "type": "string",
+                  "const": "sourcePosition"
+                },
+                "line": {
+                  "type": "integer",
+                  "maximum": 9007199254740991,
+                  "minimum": 0
+                }
+              },
+              "required": [
+                "kind",
+                "line"
+              ]
+            }
+          ]
+        },
+        "DocumentId": {
+          "type": "string"
+        },
+        "DocumentLocator": {
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "workspacePath"
+                },
+                "relativePath": {
+                  "$ref": "#/$defs/RelativePath"
+                },
+                "workspaceId": {
+                  "$ref": "#/$defs/WorkspaceId"
+                }
+              },
+              "required": [
+                "kind",
+                "workspaceId",
+                "relativePath"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "draftId": {
+                  "$ref": "#/$defs/DraftId"
+                },
+                "kind": {
+                  "type": "string",
+                  "const": "draft"
+                },
+                "suggestedName": {
+                  "type": [
+                    "string"
+                  ]
+                }
+              },
+              "required": [
+                "kind",
+                "draftId"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "displayName": {
+                  "type": "string"
+                },
+                "grantId": {
+                  "$ref": "#/$defs/GrantId"
+                },
+                "kind": {
+                  "type": "string",
+                  "const": "grantedFile"
+                }
+              },
+              "required": [
+                "kind",
+                "grantId",
+                "displayName"
+              ]
+            }
+          ]
+        },
+        "DraftId": {
+          "type": "string"
+        },
+        "GrantId": {
+          "type": "string"
+        },
+        "MarkdownResourceRef": {
+          "type": "object",
+          "properties": {
+            "anchor": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/DocumentAnchor"
+                }
+              ]
+            },
+            "kind": {
+              "type": "string",
+              "const": "markdown"
+            },
+            "locator": {
+              "$ref": "#/$defs/DocumentLocator"
+            }
+          },
+          "required": [
+            "kind",
+            "locator"
+          ]
+        },
+        "NativeOpenSource": {
+          "type": "string",
+          "enum": [
+            "launch",
+            "finder",
+            "dragDrop"
+          ]
+        },
+        "NativeOpenTarget": {
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "displayPath": {
+                  "type": "string"
+                },
+                "grantToken": {
+                  "type": "string"
+                },
+                "kind": {
+                  "type": "string",
+                  "const": "workspace"
+                }
+              },
+              "required": [
+                "kind",
+                "grantToken",
+                "displayPath"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "document"
+                },
+                "resource": {
+                  "$ref": "#/$defs/MarkdownResourceRef"
+                }
+              },
+              "required": [
+                "kind",
+                "resource"
+              ]
+            }
+          ]
+        },
+        "PaneId": {
+          "type": "string"
+        },
+        "RelativePath": {
+          "type": "string"
+        },
+        "ResourceScope": {
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "workspace"
+                },
+                "workspaceId": {
+                  "$ref": "#/$defs/WorkspaceId"
+                }
+              },
+              "required": [
+                "kind",
+                "workspaceId"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "documentId": {
+                  "$ref": "#/$defs/DocumentId"
+                },
+                "kind": {
+                  "type": "string",
+                  "const": "document"
+                }
+              },
+              "required": [
+                "kind",
+                "documentId"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "draftId": {
+                  "$ref": "#/$defs/DraftId"
+                },
+                "kind": {
+                  "type": "string",
+                  "const": "draft"
+                }
+              },
+              "required": [
+                "kind",
+                "draftId"
+              ]
+            }
+          ]
+        },
+        "WorkspaceId": {
+          "type": "string"
+        }
+      }
+    },
+    "document.externalChanged": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "DocumentExternalChanged",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "change": {
+              "type": "string",
+              "const": "modified"
+            },
+            "documentId": {
+              "$ref": "#/$defs/DocumentId"
+            },
+            "observedDiskRevision": {
+              "$ref": "#/$defs/ExpectedDiskRevision"
+            }
+          },
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "type": "string",
+                  "const": "external"
+                }
+              },
+              "not": {
+                "required": [
+                  "writeId"
+                ]
+              },
+              "required": [
+                "source"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "type": "string",
+                  "const": "ownWrite"
+                },
+                "writeId": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "source",
+                "writeId"
+              ]
+            }
+          ],
+          "required": [
+            "change",
+            "documentId",
+            "observedDiskRevision"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "change": {
+              "type": "string",
+              "const": "deleted"
+            },
+            "documentId": {
+              "$ref": "#/$defs/DocumentId"
+            },
+            "observedDiskRevision": {
+              "$ref": "#/$defs/ExpectedDiskRevision"
+            }
+          },
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "type": "string",
+                  "const": "external"
+                }
+              },
+              "not": {
+                "required": [
+                  "writeId"
+                ]
+              },
+              "required": [
+                "source"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "type": "string",
+                  "const": "ownWrite"
+                },
+                "writeId": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "source",
+                "writeId"
+              ]
+            }
+          ],
+          "required": [
+            "change",
+            "documentId",
+            "observedDiskRevision"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "change": {
+              "type": "string",
+              "const": "replaced"
+            },
+            "documentId": {
+              "$ref": "#/$defs/DocumentId"
+            },
+            "observedDiskRevision": {
+              "$ref": "#/$defs/ExpectedDiskRevision"
+            }
+          },
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "type": "string",
+                  "const": "external"
+                }
+              },
+              "not": {
+                "required": [
+                  "writeId"
+                ]
+              },
+              "required": [
+                "source"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "type": "string",
+                  "const": "ownWrite"
+                },
+                "writeId": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "source",
+                "writeId"
+              ]
+            }
+          ],
+          "required": [
+            "change",
+            "documentId",
+            "observedDiskRevision"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "change": {
+              "type": "string",
+              "const": "metadataOnly"
+            },
+            "documentId": {
+              "$ref": "#/$defs/DocumentId"
+            },
+            "observedDiskRevision": {
+              "$ref": "#/$defs/ExpectedDiskRevision"
+            }
+          },
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "type": "string",
+                  "const": "external"
+                }
+              },
+              "not": {
+                "required": [
+                  "writeId"
+                ]
+              },
+              "required": [
+                "source"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "type": "string",
+                  "const": "ownWrite"
+                },
+                "writeId": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "source",
+                "writeId"
+              ]
+            }
+          ],
+          "required": [
+            "change",
+            "documentId",
+            "observedDiskRevision"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "capabilityEpoch": {
+              "type": "integer",
+              "maximum": 9007199254740991,
+              "minimum": 0
+            },
+            "change": {
+              "type": "string",
+              "const": "permissionChanged"
+            },
+            "documentId": {
+              "$ref": "#/$defs/DocumentId"
+            },
+            "error": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/AppError"
+                }
+              ]
+            },
+            "readOnly": {
+              "type": "boolean"
+            },
+            "source": {
+              "$ref": "#/$defs/ExternalChangeSource"
+            }
+          },
+          "not": {
+            "required": [
+              "writeId"
+            ]
+          },
+          "required": [
+            "change",
+            "documentId",
+            "readOnly",
+            "capabilityEpoch",
+            "source"
+          ]
+        }
+      ],
+      "$defs": {
+        "AppError": {
+          "type": "object",
+          "properties": {
+            "code": {
+              "$ref": "#/$defs/AppErrorCode"
+            },
+            "correlationId": {
+              "type": "string"
+            },
+            "details": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/AppErrorDetails"
+                }
+              ],
+              "default": null
+            },
+            "message": {
+              "type": "string"
+            },
+            "messageKey": {
+              "type": [
+                "string"
+              ],
+              "default": null
+            },
+            "recoveryActions": {
+              "type": [
+                "array"
+              ],
+              "default": null,
+              "items": {
+                "type": "string"
+              }
+            },
+            "retryable": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "code",
+            "message",
+            "retryable",
+            "correlationId"
+          ]
+        },
+        "AppErrorCode": {
+          "type": "string"
+        },
+        "AppErrorDetails": {
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "displayPath": {
+                  "type": [
+                    "string"
+                  ]
+                },
+                "kind": {
+                  "type": "string",
+                  "const": "path"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "actual": {
+                  "$ref": "#/$defs/ExpectedDiskRevision"
+                },
+                "expected": {
+                  "$ref": "#/$defs/ExpectedDiskRevision"
+                },
+                "kind": {
+                  "type": "string",
+                  "const": "conflict"
+                }
+              },
+              "required": [
+                "kind",
+                "expected",
+                "actual"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "safety"
+                },
+                "report": {
+                  "$ref": "#/$defs/SafetyReport"
+                }
+              },
+              "required": [
+                "kind",
+                "report"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "field": {
+                  "type": [
+                    "string"
+                  ]
+                },
+                "kind": {
+                  "type": "string",
+                  "const": "validation"
+                },
+                "reason": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind",
+                "reason"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "operation"
+                },
+                "operationId": {
+                  "$ref": "#/$defs/OperationId"
+                },
+                "phase": {
+                  "type": [
+                    "string"
+                  ]
+                }
+              },
+              "required": [
+                "kind",
+                "operationId"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "displayTarget": {
+                  "type": "string"
+                },
+                "grantRequestId": {
+                  "$ref": "#/$defs/GrantRequestId"
+                },
+                "kind": {
+                  "type": "string",
+                  "const": "grant"
+                },
+                "purpose": {
+                  "$ref": "#/$defs/GrantPurpose"
+                }
+              },
+              "required": [
+                "kind",
+                "grantRequestId",
+                "purpose",
+                "displayTarget"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "cause": {
+                  "$ref": "#/$defs/IoFailureCause"
+                },
+                "displayTarget": {
+                  "type": [
+                    "string"
+                  ]
+                },
+                "kind": {
+                  "type": "string",
+                  "const": "assetWrite"
+                },
+                "owner": {
+                  "$ref": "#/$defs/AssetOwner"
+                }
+              },
+              "required": [
+                "kind",
+                "cause",
+                "owner"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "cause": {
+                  "$ref": "#/$defs/IoFailureCause"
+                },
+                "displayPath": {
+                  "type": [
+                    "string"
+                  ]
+                },
+                "kind": {
+                  "type": "string",
+                  "const": "io"
+                },
+                "operation": {
+                  "$ref": "#/$defs/IoOperation"
+                }
+              },
+              "required": [
+                "kind",
+                "operation",
+                "cause"
+              ]
+            }
+          ]
+        },
+        "AssetOwner": {
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "documentId": {
+                  "$ref": "#/$defs/DocumentId"
+                },
+                "kind": {
+                  "type": "string",
+                  "const": "document"
+                }
+              },
+              "required": [
+                "kind",
+                "documentId"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "draftId": {
+                  "$ref": "#/$defs/DraftId"
+                },
+                "kind": {
+                  "type": "string",
+                  "const": "draft"
+                }
+              },
+              "required": [
+                "kind",
+                "draftId"
+              ]
+            }
+          ]
+        },
+        "ContentHash": {
+          "type": "string"
+        },
+        "DiskRevision": {
+          "type": "object",
+          "properties": {
+            "contentHash": {
+              "$ref": "#/$defs/ContentHash"
+            },
+            "fileIdentityHint": {
+              "type": [
+                "string"
+              ]
+            },
+            "modifiedAtUnixMs": {
+              "type": "integer",
+              "maximum": 9007199254740991,
+              "minimum": 0
+            },
+            "sizeBytes": {
+              "type": "integer",
+              "maximum": 9007199254740991,
+              "minimum": 0
+            },
+            "token": {
+              "$ref": "#/$defs/RevisionToken"
+            }
+          },
+          "required": [
+            "token",
+            "sizeBytes",
+            "modifiedAtUnixMs",
+            "contentHash"
+          ]
+        },
+        "DocumentId": {
+          "type": "string"
+        },
+        "DraftId": {
+          "type": "string"
+        },
+        "ExpectedDiskRevision": {
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "present"
+                },
+                "revision": {
+                  "$ref": "#/$defs/DiskRevision"
+                }
+              },
+              "required": [
+                "kind",
+                "revision"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "absent"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            }
+          ]
+        },
+        "ExternalChangeSource": {
+          "type": "string",
+          "enum": [
+            "external"
+          ]
+        },
+        "GrantPurpose": {
+          "type": "string",
+          "enum": [
+            "resourceResolution",
+            "assetDirectory"
+          ]
+        },
+        "GrantRequestId": {
+          "type": "string"
+        },
+        "IoFailureCause": {
+          "type": "string",
+          "enum": [
+            "readOnly",
+            "permissionRevoked",
+            "diskFull",
+            "quotaExceeded",
+            "nameConflict",
+            "pathConflict",
+            "notFound",
+            "deviceUnavailable",
+            "unknown"
+          ]
+        },
+        "IoOperation": {
+          "type": "string",
+          "enum": [
+            "read",
+            "write",
+            "flush",
+            "rename",
+            "remove",
+            "stat"
+          ]
+        },
+        "OperationId": {
+          "type": "string"
+        },
+        "RevisionToken": {
+          "type": "string"
+        },
+        "SafetyBlockedAction": {
+          "type": "string",
+          "enum": [
+            "extractDataImages",
+            "deleteDataImages",
+            "openExternal",
+            "cancel"
+          ]
+        },
+        "SafetyBlockedReason": {
+          "type": "string",
+          "enum": [
+            "lineTooLong",
+            "largeDataImage"
+          ]
+        },
+        "SafetyBlockedReport": {
+          "type": "object",
+          "properties": {
+            "allowedActions": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/SafetyBlockedAction"
+              }
+            },
+            "detectedDataImageCount": {
+              "type": "integer",
+              "maximum": 9007199254740991,
+              "minimum": 0
+            },
+            "hasUtf8Bom": {
+              "type": "boolean"
+            },
+            "kind": {
+              "$ref": "#/$defs/SafetyBlockedReportKind"
+            },
+            "largestDataImageEstimateBytes": {
+              "type": [
+                "integer"
+              ],
+              "maximum": 9007199254740991,
+              "minimum": 0
+            },
+            "lineCountEstimate": {
+              "type": [
+                "integer"
+              ],
+              "maximum": 9007199254740991,
+              "minimum": 0
+            },
+            "maxLineBytes": {
+              "type": "integer",
+              "maximum": 9007199254740991,
+              "minimum": 0
+            },
+            "reasons": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/SafetyBlockedReason"
+              }
+            },
+            "sizeBytes": {
+              "type": "integer",
+              "maximum": 9007199254740991,
+              "minimum": 0
+            }
+          },
+          "required": [
+            "kind",
+            "sizeBytes",
+            "maxLineBytes",
+            "hasUtf8Bom",
+            "detectedDataImageCount",
+            "reasons",
+            "allowedActions"
+          ]
+        },
+        "SafetyBlockedReportKind": {
+          "type": "string",
+          "enum": [
+            "safetyBlocked"
+          ]
+        },
+        "SafetyReport": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SafetyBlockedReport"
+            },
+            {
+              "$ref": "#/$defs/UnsupportedReport"
+            }
+          ]
+        },
+        "UnsupportedAction": {
+          "type": "string",
+          "enum": [
+            "openExternal",
+            "cancel"
+          ]
+        },
+        "UnsupportedReason": {
+          "type": "string",
+          "enum": [
+            "binary",
+            "fileTooLarge",
+            "invalidUtf8",
+            "unsupportedEncoding"
+          ]
+        },
+        "UnsupportedReport": {
+          "type": "object",
+          "properties": {
+            "allowedActions": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/UnsupportedAction"
+              }
+            },
+            "detectedDataImageCount": {
+              "type": "integer",
+              "maximum": 9007199254740991,
+              "minimum": 0
+            },
+            "hasUtf8Bom": {
+              "type": "boolean"
+            },
+            "kind": {
+              "$ref": "#/$defs/UnsupportedReportKind"
+            },
+            "largestDataImageEstimateBytes": {
+              "type": [
+                "integer"
+              ],
+              "maximum": 9007199254740991,
+              "minimum": 0
+            },
+            "lineCountEstimate": {
+              "type": [
+                "integer"
+              ],
+              "maximum": 9007199254740991,
+              "minimum": 0
+            },
+            "maxLineBytes": {
+              "type": "integer",
+              "maximum": 9007199254740991,
+              "minimum": 0
+            },
+            "reasons": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/UnsupportedReason"
+              }
+            },
+            "sizeBytes": {
+              "type": "integer",
+              "maximum": 9007199254740991,
+              "minimum": 0
+            }
+          },
+          "required": [
+            "kind",
+            "sizeBytes",
+            "maxLineBytes",
+            "hasUtf8Bom",
+            "detectedDataImageCount",
+            "reasons",
+            "allowedActions"
+          ]
+        },
+        "UnsupportedReportKind": {
+          "type": "string",
+          "enum": [
+            "unsupported"
+          ]
+        }
+      }
+    },
+    "recovery.snapshotFailed": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "RecoverySnapshotFailed",
+      "type": "object",
+      "properties": {
+        "documentId": {
+          "$ref": "#/$defs/DocumentId"
+        },
+        "error": {
+          "$ref": "#/$defs/AppError"
+        }
+      },
+      "required": [
+        "documentId",
+        "error"
+      ],
+      "$defs": {
+        "AppError": {
+          "type": "object",
+          "properties": {
+            "code": {
+              "$ref": "#/$defs/AppErrorCode"
+            },
+            "correlationId": {
+              "type": "string"
+            },
+            "details": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/AppErrorDetails"
+                }
+              ],
+              "default": null
+            },
+            "message": {
+              "type": "string"
+            },
+            "messageKey": {
+              "type": [
+                "string"
+              ],
+              "default": null
+            },
+            "recoveryActions": {
+              "type": [
+                "array"
+              ],
+              "default": null,
+              "items": {
+                "type": "string"
+              }
+            },
+            "retryable": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "code",
+            "message",
+            "retryable",
+            "correlationId"
+          ]
+        },
+        "AppErrorCode": {
+          "type": "string"
+        },
+        "AppErrorDetails": {
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "displayPath": {
+                  "type": [
+                    "string"
+                  ]
+                },
+                "kind": {
+                  "type": "string",
+                  "const": "path"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "actual": {
+                  "$ref": "#/$defs/ExpectedDiskRevision"
+                },
+                "expected": {
+                  "$ref": "#/$defs/ExpectedDiskRevision"
+                },
+                "kind": {
+                  "type": "string",
+                  "const": "conflict"
+                }
+              },
+              "required": [
+                "kind",
+                "expected",
+                "actual"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "safety"
+                },
+                "report": {
+                  "$ref": "#/$defs/SafetyReport"
+                }
+              },
+              "required": [
+                "kind",
+                "report"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "field": {
+                  "type": [
+                    "string"
+                  ]
+                },
+                "kind": {
+                  "type": "string",
+                  "const": "validation"
+                },
+                "reason": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind",
+                "reason"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "operation"
+                },
+                "operationId": {
+                  "$ref": "#/$defs/OperationId"
+                },
+                "phase": {
+                  "type": [
+                    "string"
+                  ]
+                }
+              },
+              "required": [
+                "kind",
+                "operationId"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "displayTarget": {
+                  "type": "string"
+                },
+                "grantRequestId": {
+                  "$ref": "#/$defs/GrantRequestId"
+                },
+                "kind": {
+                  "type": "string",
+                  "const": "grant"
+                },
+                "purpose": {
+                  "$ref": "#/$defs/GrantPurpose"
+                }
+              },
+              "required": [
+                "kind",
+                "grantRequestId",
+                "purpose",
+                "displayTarget"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "cause": {
+                  "$ref": "#/$defs/IoFailureCause"
+                },
+                "displayTarget": {
+                  "type": [
+                    "string"
+                  ]
+                },
+                "kind": {
+                  "type": "string",
+                  "const": "assetWrite"
+                },
+                "owner": {
+                  "$ref": "#/$defs/AssetOwner"
+                }
+              },
+              "required": [
+                "kind",
+                "cause",
+                "owner"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "cause": {
+                  "$ref": "#/$defs/IoFailureCause"
+                },
+                "displayPath": {
+                  "type": [
+                    "string"
+                  ]
+                },
+                "kind": {
+                  "type": "string",
+                  "const": "io"
+                },
+                "operation": {
+                  "$ref": "#/$defs/IoOperation"
+                }
+              },
+              "required": [
+                "kind",
+                "operation",
+                "cause"
+              ]
+            }
+          ]
+        },
+        "AssetOwner": {
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "documentId": {
+                  "$ref": "#/$defs/DocumentId"
+                },
+                "kind": {
+                  "type": "string",
+                  "const": "document"
+                }
+              },
+              "required": [
+                "kind",
+                "documentId"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "draftId": {
+                  "$ref": "#/$defs/DraftId"
+                },
+                "kind": {
+                  "type": "string",
+                  "const": "draft"
+                }
+              },
+              "required": [
+                "kind",
+                "draftId"
+              ]
+            }
+          ]
+        },
+        "ContentHash": {
+          "type": "string"
+        },
+        "DiskRevision": {
+          "type": "object",
+          "properties": {
+            "contentHash": {
+              "$ref": "#/$defs/ContentHash"
+            },
+            "fileIdentityHint": {
+              "type": [
+                "string"
+              ]
+            },
+            "modifiedAtUnixMs": {
+              "type": "integer",
+              "maximum": 9007199254740991,
+              "minimum": 0
+            },
+            "sizeBytes": {
+              "type": "integer",
+              "maximum": 9007199254740991,
+              "minimum": 0
+            },
+            "token": {
+              "$ref": "#/$defs/RevisionToken"
+            }
+          },
+          "required": [
+            "token",
+            "sizeBytes",
+            "modifiedAtUnixMs",
+            "contentHash"
+          ]
+        },
+        "DocumentId": {
+          "type": "string"
+        },
+        "DraftId": {
+          "type": "string"
+        },
+        "ExpectedDiskRevision": {
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "present"
+                },
+                "revision": {
+                  "$ref": "#/$defs/DiskRevision"
+                }
+              },
+              "required": [
+                "kind",
+                "revision"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "absent"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            }
+          ]
+        },
+        "GrantPurpose": {
+          "type": "string",
+          "enum": [
+            "resourceResolution",
+            "assetDirectory"
+          ]
+        },
+        "GrantRequestId": {
+          "type": "string"
+        },
+        "IoFailureCause": {
+          "type": "string",
+          "enum": [
+            "readOnly",
+            "permissionRevoked",
+            "diskFull",
+            "quotaExceeded",
+            "nameConflict",
+            "pathConflict",
+            "notFound",
+            "deviceUnavailable",
+            "unknown"
+          ]
+        },
+        "IoOperation": {
+          "type": "string",
+          "enum": [
+            "read",
+            "write",
+            "flush",
+            "rename",
+            "remove",
+            "stat"
+          ]
+        },
+        "OperationId": {
+          "type": "string"
+        },
+        "RevisionToken": {
+          "type": "string"
+        },
+        "SafetyBlockedAction": {
+          "type": "string",
+          "enum": [
+            "extractDataImages",
+            "deleteDataImages",
+            "openExternal",
+            "cancel"
+          ]
+        },
+        "SafetyBlockedReason": {
+          "type": "string",
+          "enum": [
+            "lineTooLong",
+            "largeDataImage"
+          ]
+        },
+        "SafetyBlockedReport": {
+          "type": "object",
+          "properties": {
+            "allowedActions": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/SafetyBlockedAction"
+              }
+            },
+            "detectedDataImageCount": {
+              "type": "integer",
+              "maximum": 9007199254740991,
+              "minimum": 0
+            },
+            "hasUtf8Bom": {
+              "type": "boolean"
+            },
+            "kind": {
+              "$ref": "#/$defs/SafetyBlockedReportKind"
+            },
+            "largestDataImageEstimateBytes": {
+              "type": [
+                "integer"
+              ],
+              "maximum": 9007199254740991,
+              "minimum": 0
+            },
+            "lineCountEstimate": {
+              "type": [
+                "integer"
+              ],
+              "maximum": 9007199254740991,
+              "minimum": 0
+            },
+            "maxLineBytes": {
+              "type": "integer",
+              "maximum": 9007199254740991,
+              "minimum": 0
+            },
+            "reasons": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/SafetyBlockedReason"
+              }
+            },
+            "sizeBytes": {
+              "type": "integer",
+              "maximum": 9007199254740991,
+              "minimum": 0
+            }
+          },
+          "required": [
+            "kind",
+            "sizeBytes",
+            "maxLineBytes",
+            "hasUtf8Bom",
+            "detectedDataImageCount",
+            "reasons",
+            "allowedActions"
+          ]
+        },
+        "SafetyBlockedReportKind": {
+          "type": "string",
+          "enum": [
+            "safetyBlocked"
+          ]
+        },
+        "SafetyReport": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SafetyBlockedReport"
+            },
+            {
+              "$ref": "#/$defs/UnsupportedReport"
+            }
+          ]
+        },
+        "UnsupportedAction": {
+          "type": "string",
+          "enum": [
+            "openExternal",
+            "cancel"
+          ]
+        },
+        "UnsupportedReason": {
+          "type": "string",
+          "enum": [
+            "binary",
+            "fileTooLarge",
+            "invalidUtf8",
+            "unsupportedEncoding"
+          ]
+        },
+        "UnsupportedReport": {
+          "type": "object",
+          "properties": {
+            "allowedActions": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/UnsupportedAction"
+              }
+            },
+            "detectedDataImageCount": {
+              "type": "integer",
+              "maximum": 9007199254740991,
+              "minimum": 0
+            },
+            "hasUtf8Bom": {
+              "type": "boolean"
+            },
+            "kind": {
+              "$ref": "#/$defs/UnsupportedReportKind"
+            },
+            "largestDataImageEstimateBytes": {
+              "type": [
+                "integer"
+              ],
+              "maximum": 9007199254740991,
+              "minimum": 0
+            },
+            "lineCountEstimate": {
+              "type": [
+                "integer"
+              ],
+              "maximum": 9007199254740991,
+              "minimum": 0
+            },
+            "maxLineBytes": {
+              "type": "integer",
+              "maximum": 9007199254740991,
+              "minimum": 0
+            },
+            "reasons": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/UnsupportedReason"
+              }
+            },
+            "sizeBytes": {
+              "type": "integer",
+              "maximum": 9007199254740991,
+              "minimum": 0
+            }
+          },
+          "required": [
+            "kind",
+            "sizeBytes",
+            "maxLineBytes",
+            "hasUtf8Bom",
+            "detectedDataImageCount",
+            "reasons",
+            "allowedActions"
+          ]
+        },
+        "UnsupportedReportKind": {
+          "type": "string",
+          "enum": [
+            "unsupported"
+          ]
+        }
+      }
+    },
+    "task.finished": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "TaskFinished",
+      "type": "object",
+      "properties": {
+        "error": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AppError"
+            }
+          ]
+        },
+        "operationId": {
+          "$ref": "#/$defs/OperationId"
+        },
+        "outcome": {
+          "$ref": "#/$defs/TaskOutcome"
+        }
+      },
+      "required": [
+        "operationId",
+        "outcome"
+      ],
+      "$defs": {
+        "AppError": {
+          "type": "object",
+          "properties": {
+            "code": {
+              "$ref": "#/$defs/AppErrorCode"
+            },
+            "correlationId": {
+              "type": "string"
+            },
+            "details": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/AppErrorDetails"
+                }
+              ],
+              "default": null
+            },
+            "message": {
+              "type": "string"
+            },
+            "messageKey": {
+              "type": [
+                "string"
+              ],
+              "default": null
+            },
+            "recoveryActions": {
+              "type": [
+                "array"
+              ],
+              "default": null,
+              "items": {
+                "type": "string"
+              }
+            },
+            "retryable": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "code",
+            "message",
+            "retryable",
+            "correlationId"
+          ]
+        },
+        "AppErrorCode": {
+          "type": "string"
+        },
+        "AppErrorDetails": {
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "displayPath": {
+                  "type": [
+                    "string"
+                  ]
+                },
+                "kind": {
+                  "type": "string",
+                  "const": "path"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "actual": {
+                  "$ref": "#/$defs/ExpectedDiskRevision"
+                },
+                "expected": {
+                  "$ref": "#/$defs/ExpectedDiskRevision"
+                },
+                "kind": {
+                  "type": "string",
+                  "const": "conflict"
+                }
+              },
+              "required": [
+                "kind",
+                "expected",
+                "actual"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "safety"
+                },
+                "report": {
+                  "$ref": "#/$defs/SafetyReport"
+                }
+              },
+              "required": [
+                "kind",
+                "report"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "field": {
+                  "type": [
+                    "string"
+                  ]
+                },
+                "kind": {
+                  "type": "string",
+                  "const": "validation"
+                },
+                "reason": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind",
+                "reason"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "operation"
+                },
+                "operationId": {
+                  "$ref": "#/$defs/OperationId"
+                },
+                "phase": {
+                  "type": [
+                    "string"
+                  ]
+                }
+              },
+              "required": [
+                "kind",
+                "operationId"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "displayTarget": {
+                  "type": "string"
+                },
+                "grantRequestId": {
+                  "$ref": "#/$defs/GrantRequestId"
+                },
+                "kind": {
+                  "type": "string",
+                  "const": "grant"
+                },
+                "purpose": {
+                  "$ref": "#/$defs/GrantPurpose"
+                }
+              },
+              "required": [
+                "kind",
+                "grantRequestId",
+                "purpose",
+                "displayTarget"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "cause": {
+                  "$ref": "#/$defs/IoFailureCause"
+                },
+                "displayTarget": {
+                  "type": [
+                    "string"
+                  ]
+                },
+                "kind": {
+                  "type": "string",
+                  "const": "assetWrite"
+                },
+                "owner": {
+                  "$ref": "#/$defs/AssetOwner"
+                }
+              },
+              "required": [
+                "kind",
+                "cause",
+                "owner"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "cause": {
+                  "$ref": "#/$defs/IoFailureCause"
+                },
+                "displayPath": {
+                  "type": [
+                    "string"
+                  ]
+                },
+                "kind": {
+                  "type": "string",
+                  "const": "io"
+                },
+                "operation": {
+                  "$ref": "#/$defs/IoOperation"
+                }
+              },
+              "required": [
+                "kind",
+                "operation",
+                "cause"
+              ]
+            }
+          ]
+        },
+        "AssetOwner": {
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "documentId": {
+                  "$ref": "#/$defs/DocumentId"
+                },
+                "kind": {
+                  "type": "string",
+                  "const": "document"
+                }
+              },
+              "required": [
+                "kind",
+                "documentId"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "draftId": {
+                  "$ref": "#/$defs/DraftId"
+                },
+                "kind": {
+                  "type": "string",
+                  "const": "draft"
+                }
+              },
+              "required": [
+                "kind",
+                "draftId"
+              ]
+            }
+          ]
+        },
+        "ContentHash": {
+          "type": "string"
+        },
+        "DiskRevision": {
+          "type": "object",
+          "properties": {
+            "contentHash": {
+              "$ref": "#/$defs/ContentHash"
+            },
+            "fileIdentityHint": {
+              "type": [
+                "string"
+              ]
+            },
+            "modifiedAtUnixMs": {
+              "type": "integer",
+              "maximum": 9007199254740991,
+              "minimum": 0
+            },
+            "sizeBytes": {
+              "type": "integer",
+              "maximum": 9007199254740991,
+              "minimum": 0
+            },
+            "token": {
+              "$ref": "#/$defs/RevisionToken"
+            }
+          },
+          "required": [
+            "token",
+            "sizeBytes",
+            "modifiedAtUnixMs",
+            "contentHash"
+          ]
+        },
+        "DocumentId": {
+          "type": "string"
+        },
+        "DraftId": {
+          "type": "string"
+        },
+        "ExpectedDiskRevision": {
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "present"
+                },
+                "revision": {
+                  "$ref": "#/$defs/DiskRevision"
+                }
+              },
+              "required": [
+                "kind",
+                "revision"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "absent"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            }
+          ]
+        },
+        "GrantPurpose": {
+          "type": "string",
+          "enum": [
+            "resourceResolution",
+            "assetDirectory"
+          ]
+        },
+        "GrantRequestId": {
+          "type": "string"
+        },
+        "IoFailureCause": {
+          "type": "string",
+          "enum": [
+            "readOnly",
+            "permissionRevoked",
+            "diskFull",
+            "quotaExceeded",
+            "nameConflict",
+            "pathConflict",
+            "notFound",
+            "deviceUnavailable",
+            "unknown"
+          ]
+        },
+        "IoOperation": {
+          "type": "string",
+          "enum": [
+            "read",
+            "write",
+            "flush",
+            "rename",
+            "remove",
+            "stat"
+          ]
+        },
+        "OperationId": {
+          "type": "string"
+        },
+        "RevisionToken": {
+          "type": "string"
+        },
+        "SafetyBlockedAction": {
+          "type": "string",
+          "enum": [
+            "extractDataImages",
+            "deleteDataImages",
+            "openExternal",
+            "cancel"
+          ]
+        },
+        "SafetyBlockedReason": {
+          "type": "string",
+          "enum": [
+            "lineTooLong",
+            "largeDataImage"
+          ]
+        },
+        "SafetyBlockedReport": {
+          "type": "object",
+          "properties": {
+            "allowedActions": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/SafetyBlockedAction"
+              }
+            },
+            "detectedDataImageCount": {
+              "type": "integer",
+              "maximum": 9007199254740991,
+              "minimum": 0
+            },
+            "hasUtf8Bom": {
+              "type": "boolean"
+            },
+            "kind": {
+              "$ref": "#/$defs/SafetyBlockedReportKind"
+            },
+            "largestDataImageEstimateBytes": {
+              "type": [
+                "integer"
+              ],
+              "maximum": 9007199254740991,
+              "minimum": 0
+            },
+            "lineCountEstimate": {
+              "type": [
+                "integer"
+              ],
+              "maximum": 9007199254740991,
+              "minimum": 0
+            },
+            "maxLineBytes": {
+              "type": "integer",
+              "maximum": 9007199254740991,
+              "minimum": 0
+            },
+            "reasons": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/SafetyBlockedReason"
+              }
+            },
+            "sizeBytes": {
+              "type": "integer",
+              "maximum": 9007199254740991,
+              "minimum": 0
+            }
+          },
+          "required": [
+            "kind",
+            "sizeBytes",
+            "maxLineBytes",
+            "hasUtf8Bom",
+            "detectedDataImageCount",
+            "reasons",
+            "allowedActions"
+          ]
+        },
+        "SafetyBlockedReportKind": {
+          "type": "string",
+          "enum": [
+            "safetyBlocked"
+          ]
+        },
+        "SafetyReport": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SafetyBlockedReport"
+            },
+            {
+              "$ref": "#/$defs/UnsupportedReport"
+            }
+          ]
+        },
+        "TaskOutcome": {
+          "type": "string",
+          "enum": [
+            "succeeded",
+            "failed",
+            "cancelled"
+          ]
+        },
+        "UnsupportedAction": {
+          "type": "string",
+          "enum": [
+            "openExternal",
+            "cancel"
+          ]
+        },
+        "UnsupportedReason": {
+          "type": "string",
+          "enum": [
+            "binary",
+            "fileTooLarge",
+            "invalidUtf8",
+            "unsupportedEncoding"
+          ]
+        },
+        "UnsupportedReport": {
+          "type": "object",
+          "properties": {
+            "allowedActions": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/UnsupportedAction"
+              }
+            },
+            "detectedDataImageCount": {
+              "type": "integer",
+              "maximum": 9007199254740991,
+              "minimum": 0
+            },
+            "hasUtf8Bom": {
+              "type": "boolean"
+            },
+            "kind": {
+              "$ref": "#/$defs/UnsupportedReportKind"
+            },
+            "largestDataImageEstimateBytes": {
+              "type": [
+                "integer"
+              ],
+              "maximum": 9007199254740991,
+              "minimum": 0
+            },
+            "lineCountEstimate": {
+              "type": [
+                "integer"
+              ],
+              "maximum": 9007199254740991,
+              "minimum": 0
+            },
+            "maxLineBytes": {
+              "type": "integer",
+              "maximum": 9007199254740991,
+              "minimum": 0
+            },
+            "reasons": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/UnsupportedReason"
+              }
+            },
+            "sizeBytes": {
+              "type": "integer",
+              "maximum": 9007199254740991,
+              "minimum": 0
+            }
+          },
+          "required": [
+            "kind",
+            "sizeBytes",
+            "maxLineBytes",
+            "hasUtf8Bom",
+            "detectedDataImageCount",
+            "reasons",
+            "allowedActions"
+          ]
+        },
+        "UnsupportedReportKind": {
+          "type": "string",
+          "enum": [
+            "unsupported"
+          ]
+        }
+      }
+    },
+    "task.progress": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "TaskProgress",
+      "type": "object",
+      "properties": {
+        "completedUnits": {
+          "type": [
+            "integer"
+          ],
+          "maximum": 9007199254740991,
+          "minimum": 0
+        },
+        "messageKey": {
+          "type": [
+            "string"
+          ]
+        },
+        "operationId": {
+          "$ref": "#/$defs/OperationId"
+        },
+        "phase": {
+          "type": "string"
+        },
+        "totalUnits": {
+          "type": [
+            "integer"
+          ],
+          "maximum": 9007199254740991,
+          "minimum": 0
+        }
+      },
+      "required": [
+        "operationId",
+        "phase"
+      ],
+      "$defs": {
+        "OperationId": {
+          "type": "string"
+        }
+      }
+    },
+    "workspace.capabilityChanged": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "WorkspaceCapabilityChanged",
+      "type": "object",
+      "properties": {
+        "capabilityEpoch": {
+          "type": "integer",
+          "maximum": 9007199254740991,
+          "minimum": 0
+        },
+        "error": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AppError"
+            }
+          ]
+        },
+        "previousEpoch": {
+          "type": "integer",
+          "maximum": 9007199254740991,
+          "minimum": 0
+        },
+        "state": {
+          "$ref": "#/$defs/CapabilityState"
+        },
+        "workspaceId": {
+          "$ref": "#/$defs/WorkspaceId"
+        }
+      },
+      "required": [
+        "workspaceId",
+        "previousEpoch",
+        "capabilityEpoch",
+        "state"
+      ],
+      "$defs": {
+        "AppError": {
+          "type": "object",
+          "properties": {
+            "code": {
+              "$ref": "#/$defs/AppErrorCode"
+            },
+            "correlationId": {
+              "type": "string"
+            },
+            "details": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/AppErrorDetails"
+                }
+              ],
+              "default": null
+            },
+            "message": {
+              "type": "string"
+            },
+            "messageKey": {
+              "type": [
+                "string"
+              ],
+              "default": null
+            },
+            "recoveryActions": {
+              "type": [
+                "array"
+              ],
+              "default": null,
+              "items": {
+                "type": "string"
+              }
+            },
+            "retryable": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "code",
+            "message",
+            "retryable",
+            "correlationId"
+          ]
+        },
+        "AppErrorCode": {
+          "type": "string"
+        },
+        "AppErrorDetails": {
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "displayPath": {
+                  "type": [
+                    "string"
+                  ]
+                },
+                "kind": {
+                  "type": "string",
+                  "const": "path"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "actual": {
+                  "$ref": "#/$defs/ExpectedDiskRevision"
+                },
+                "expected": {
+                  "$ref": "#/$defs/ExpectedDiskRevision"
+                },
+                "kind": {
+                  "type": "string",
+                  "const": "conflict"
+                }
+              },
+              "required": [
+                "kind",
+                "expected",
+                "actual"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "safety"
+                },
+                "report": {
+                  "$ref": "#/$defs/SafetyReport"
+                }
+              },
+              "required": [
+                "kind",
+                "report"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "field": {
+                  "type": [
+                    "string"
+                  ]
+                },
+                "kind": {
+                  "type": "string",
+                  "const": "validation"
+                },
+                "reason": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind",
+                "reason"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "operation"
+                },
+                "operationId": {
+                  "$ref": "#/$defs/OperationId"
+                },
+                "phase": {
+                  "type": [
+                    "string"
+                  ]
+                }
+              },
+              "required": [
+                "kind",
+                "operationId"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "displayTarget": {
+                  "type": "string"
+                },
+                "grantRequestId": {
+                  "$ref": "#/$defs/GrantRequestId"
+                },
+                "kind": {
+                  "type": "string",
+                  "const": "grant"
+                },
+                "purpose": {
+                  "$ref": "#/$defs/GrantPurpose"
+                }
+              },
+              "required": [
+                "kind",
+                "grantRequestId",
+                "purpose",
+                "displayTarget"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "cause": {
+                  "$ref": "#/$defs/IoFailureCause"
+                },
+                "displayTarget": {
+                  "type": [
+                    "string"
+                  ]
+                },
+                "kind": {
+                  "type": "string",
+                  "const": "assetWrite"
+                },
+                "owner": {
+                  "$ref": "#/$defs/AssetOwner"
+                }
+              },
+              "required": [
+                "kind",
+                "cause",
+                "owner"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "cause": {
+                  "$ref": "#/$defs/IoFailureCause"
+                },
+                "displayPath": {
+                  "type": [
+                    "string"
+                  ]
+                },
+                "kind": {
+                  "type": "string",
+                  "const": "io"
+                },
+                "operation": {
+                  "$ref": "#/$defs/IoOperation"
+                }
+              },
+              "required": [
+                "kind",
+                "operation",
+                "cause"
+              ]
+            }
+          ]
+        },
+        "AssetOwner": {
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "documentId": {
+                  "$ref": "#/$defs/DocumentId"
+                },
+                "kind": {
+                  "type": "string",
+                  "const": "document"
+                }
+              },
+              "required": [
+                "kind",
+                "documentId"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "draftId": {
+                  "$ref": "#/$defs/DraftId"
+                },
+                "kind": {
+                  "type": "string",
+                  "const": "draft"
+                }
+              },
+              "required": [
+                "kind",
+                "draftId"
+              ]
+            }
+          ]
+        },
+        "CapabilityState": {
+          "type": "string",
+          "enum": [
+            "ready",
+            "revoked"
+          ]
+        },
+        "ContentHash": {
+          "type": "string"
+        },
+        "DiskRevision": {
+          "type": "object",
+          "properties": {
+            "contentHash": {
+              "$ref": "#/$defs/ContentHash"
+            },
+            "fileIdentityHint": {
+              "type": [
+                "string"
+              ]
+            },
+            "modifiedAtUnixMs": {
+              "type": "integer",
+              "maximum": 9007199254740991,
+              "minimum": 0
+            },
+            "sizeBytes": {
+              "type": "integer",
+              "maximum": 9007199254740991,
+              "minimum": 0
+            },
+            "token": {
+              "$ref": "#/$defs/RevisionToken"
+            }
+          },
+          "required": [
+            "token",
+            "sizeBytes",
+            "modifiedAtUnixMs",
+            "contentHash"
+          ]
+        },
+        "DocumentId": {
+          "type": "string"
+        },
+        "DraftId": {
+          "type": "string"
+        },
+        "ExpectedDiskRevision": {
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "present"
+                },
+                "revision": {
+                  "$ref": "#/$defs/DiskRevision"
+                }
+              },
+              "required": [
+                "kind",
+                "revision"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "absent"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            }
+          ]
+        },
+        "GrantPurpose": {
+          "type": "string",
+          "enum": [
+            "resourceResolution",
+            "assetDirectory"
+          ]
+        },
+        "GrantRequestId": {
+          "type": "string"
+        },
+        "IoFailureCause": {
+          "type": "string",
+          "enum": [
+            "readOnly",
+            "permissionRevoked",
+            "diskFull",
+            "quotaExceeded",
+            "nameConflict",
+            "pathConflict",
+            "notFound",
+            "deviceUnavailable",
+            "unknown"
+          ]
+        },
+        "IoOperation": {
+          "type": "string",
+          "enum": [
+            "read",
+            "write",
+            "flush",
+            "rename",
+            "remove",
+            "stat"
+          ]
+        },
+        "OperationId": {
+          "type": "string"
+        },
+        "RevisionToken": {
+          "type": "string"
+        },
+        "SafetyBlockedAction": {
+          "type": "string",
+          "enum": [
+            "extractDataImages",
+            "deleteDataImages",
+            "openExternal",
+            "cancel"
+          ]
+        },
+        "SafetyBlockedReason": {
+          "type": "string",
+          "enum": [
+            "lineTooLong",
+            "largeDataImage"
+          ]
+        },
+        "SafetyBlockedReport": {
+          "type": "object",
+          "properties": {
+            "allowedActions": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/SafetyBlockedAction"
+              }
+            },
+            "detectedDataImageCount": {
+              "type": "integer",
+              "maximum": 9007199254740991,
+              "minimum": 0
+            },
+            "hasUtf8Bom": {
+              "type": "boolean"
+            },
+            "kind": {
+              "$ref": "#/$defs/SafetyBlockedReportKind"
+            },
+            "largestDataImageEstimateBytes": {
+              "type": [
+                "integer"
+              ],
+              "maximum": 9007199254740991,
+              "minimum": 0
+            },
+            "lineCountEstimate": {
+              "type": [
+                "integer"
+              ],
+              "maximum": 9007199254740991,
+              "minimum": 0
+            },
+            "maxLineBytes": {
+              "type": "integer",
+              "maximum": 9007199254740991,
+              "minimum": 0
+            },
+            "reasons": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/SafetyBlockedReason"
+              }
+            },
+            "sizeBytes": {
+              "type": "integer",
+              "maximum": 9007199254740991,
+              "minimum": 0
+            }
+          },
+          "required": [
+            "kind",
+            "sizeBytes",
+            "maxLineBytes",
+            "hasUtf8Bom",
+            "detectedDataImageCount",
+            "reasons",
+            "allowedActions"
+          ]
+        },
+        "SafetyBlockedReportKind": {
+          "type": "string",
+          "enum": [
+            "safetyBlocked"
+          ]
+        },
+        "SafetyReport": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SafetyBlockedReport"
+            },
+            {
+              "$ref": "#/$defs/UnsupportedReport"
+            }
+          ]
+        },
+        "UnsupportedAction": {
+          "type": "string",
+          "enum": [
+            "openExternal",
+            "cancel"
+          ]
+        },
+        "UnsupportedReason": {
+          "type": "string",
+          "enum": [
+            "binary",
+            "fileTooLarge",
+            "invalidUtf8",
+            "unsupportedEncoding"
+          ]
+        },
+        "UnsupportedReport": {
+          "type": "object",
+          "properties": {
+            "allowedActions": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/UnsupportedAction"
+              }
+            },
+            "detectedDataImageCount": {
+              "type": "integer",
+              "maximum": 9007199254740991,
+              "minimum": 0
+            },
+            "hasUtf8Bom": {
+              "type": "boolean"
+            },
+            "kind": {
+              "$ref": "#/$defs/UnsupportedReportKind"
+            },
+            "largestDataImageEstimateBytes": {
+              "type": [
+                "integer"
+              ],
+              "maximum": 9007199254740991,
+              "minimum": 0
+            },
+            "lineCountEstimate": {
+              "type": [
+                "integer"
+              ],
+              "maximum": 9007199254740991,
+              "minimum": 0
+            },
+            "maxLineBytes": {
+              "type": "integer",
+              "maximum": 9007199254740991,
+              "minimum": 0
+            },
+            "reasons": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/UnsupportedReason"
+              }
+            },
+            "sizeBytes": {
+              "type": "integer",
+              "maximum": 9007199254740991,
+              "minimum": 0
+            }
+          },
+          "required": [
+            "kind",
+            "sizeBytes",
+            "maxLineBytes",
+            "hasUtf8Bom",
+            "detectedDataImageCount",
+            "reasons",
+            "allowedActions"
+          ]
+        },
+        "UnsupportedReportKind": {
+          "type": "string",
+          "enum": [
+            "unsupported"
+          ]
+        },
+        "WorkspaceId": {
+          "type": "string"
+        }
+      }
+    },
+    "workspace.filesChanged": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "WorkspaceFilesChanged",
+      "type": "object",
+      "properties": {
+        "changes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/WorkspaceFileChange"
+          }
+        },
+        "generationHint": {
+          "type": "integer",
+          "maximum": 9007199254740991,
+          "minimum": 0
+        },
+        "overflow": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "generationHint",
+        "overflow",
+        "changes"
+      ],
+      "$defs": {
+        "RelativePath": {
+          "type": "string"
+        },
+        "RenameConfidence": {
+          "type": "string",
+          "enum": [
+            "certain",
+            "likely"
+          ]
+        },
+        "WorkspaceFileChange": {
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "created"
+                },
+                "relativePath": {
+                  "$ref": "#/$defs/RelativePath"
+                }
+              },
+              "required": [
+                "kind",
+                "relativePath"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "modified"
+                },
+                "relativePath": {
+                  "$ref": "#/$defs/RelativePath"
+                }
+              },
+              "required": [
+                "kind",
+                "relativePath"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "removed"
+                },
+                "relativePath": {
+                  "$ref": "#/$defs/RelativePath"
+                }
+              },
+              "required": [
+                "kind",
+                "relativePath"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "confidence": {
+                  "$ref": "#/$defs/RenameConfidence"
+                },
+                "from": {
+                  "$ref": "#/$defs/RelativePath"
+                },
+                "kind": {
+                  "type": "string",
+                  "const": "renamed"
+                },
+                "to": {
+                  "$ref": "#/$defs/RelativePath"
+                }
+              },
+              "required": [
+                "kind",
+                "from",
+                "to",
+                "confidence"
+              ]
+            }
+          ]
+        }
+      }
+    }
+  }
+}
