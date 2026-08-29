@@ -1,5 +1,7 @@
 # 02. 系统架构
 
+> **历史参考（baseline 0.1）**：当前架构以 [DESIGN.md](../DESIGN.md) 和 [ADR-0005](../decisions/0005-lean-local-editor-boundary.md) 为准。预冻结 IPC、可信宿主、复杂恢复和 Ruby 门禁已退役，不得从本文件恢复。
+
 > 状态：`Approved design baseline 0.1`；IPC 字段级 schema 在 Phase 0 / F0 冻结  
 > 适用范围：桌面端 MVP 及其后续兼容扩展  
 > 技术基线：Tauri 2 + React + TypeScript + Vite + CodeMirror 6 + Rust  
@@ -39,7 +41,7 @@
 
 本章规定模块和进程边界；具体字段、状态机、错误码和时序见第 03 章。
 
-设计文档或契约变更后必须运行 `ruby scripts/validate_design_docs.rb`；该脚本只读仓库 Markdown，不访问用户真实语料。
+当前仓库只运行 `pnpm repo:check` 做断链、合并残留、个人路径和内嵌 Base64 的轻量检查。
 
 ## 2. 已冻结的架构决策
 
@@ -383,7 +385,7 @@ paste event 检测到 image/*
 │   ├── design/                    # 已批准设计基线与待 F0 字段契约
 │   └── tasks/                     # 每个实施 Task 的持久化交接
 ├── scripts/
-│   └── validate_design_docs.rb    # 只读的设计完整性门禁
+│   └── check_repository.mjs       # 轻量仓库检查
 ├── src/
 │   ├── app/
 │   │   ├── bootstrap/

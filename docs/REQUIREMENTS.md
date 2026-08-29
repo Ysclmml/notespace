@@ -1,172 +1,125 @@
-# 规范化需求与追踪矩阵
+# Markdown Workspace 需求基线
 
-状态：Approved design baseline 0.1  
-日期：2026-08-29
+状态：Approved baseline 0.2
 
-## 1. 使用方式
+日期：2026-08-30
 
-本文件为持久化需求索引，服务于人类评审、自动化测试和上下文压缩后的代理执行。
+本文件保存稳定需求 ID，供实现、测试和上下文压缩后继续执行。优先级：MVP、P1、Later。状态：Active、Deferred、Done。
 
-- 每条需求拥有稳定 ID；修改描述不得复用 ID 表达不同含义。
-- 删除需求时保留 ID 并标记 Superseded 或 Rejected。
-- 实施任务、测试名称、PR/提交说明和 ADR 必须引用相关 ID。
-- P0 是首个可用版本门禁；P1 是高价值增强；P2 是扩展方向。
-- 验收证据记录到 PROJECT_STATE.md 或对应任务交接。
+## 1. MVP 产品需求
 
-### 1.1 两层需求与唯一命名空间
+| ID | 需求 | 验收摘要 |
+|---|---|---|
+| `DATA-SOURCE-001` | Markdown 原文是正文唯一真相 | 渲染/Outline 不参与保存；未知语法保留 |
+| `DATA-ROUNDTRIP-001` | 未编辑文档保存零差异 | fixture 字节一致；不强制格式化 |
+| `WORKSPACE-OPEN-001` | 用户可选择本地目录作为工作区 | 原生 chooser；侧栏展示目录名和 Markdown 文件 |
+| `WORKSPACE-TREE-001` | 文件树支持展开目录和打开文档 | Unicode/空格路径可用；忽略常见隐藏/构建目录 |
+| `DOC-OPEN-001` | 文件树和内部链接可打开 Markdown | 进入已有 session 或创建新 session |
+| `DOC-SAVE-001` | `⌘S` 保存当前文档 | 成功清 dirty；失败保留 dirty 和原文件 |
+| `EDIT-LIVE-001` | 源码与渲染位于同一画布 | 光标附近显示源码，非活动块可读 |
+| `EDIT-IME-001` | 中文 IME composition 稳定 | composition 中不重建相关装饰，不重复提交 |
+| `EDIT-UNDO-001` | Undo/Redo 只撤销正文编辑 | 与浏览 back/forward 相互独立 |
+| `EDIT-TABLE-001` | GFM 表格可读且随时回到精确源码 | 第一版不要求网格化编辑 |
+| `NAV-TAB-001` | 支持多个浏览器式 Tab | 激活、关闭、dirty 标记、同文件 session 复用 |
+| `NAV-HISTORY-001` | 每 Tab 独立后退/前进 | 恢复文档、anchor、滚动和选择；无全文副本 |
+| `NAV-LINK-001` | 内部 Markdown 链接默认原地跳转 | `⌘`/中键新后台 Tab，`⌘⇧` 新前台 Tab |
+| `NAV-ANCHOR-001` | 支持 heading anchor | 重复标题 slug 行为固定并有测试 |
+| `OUTLINE-001` | 当前文档可显示标题大纲 | 点击滚动并聚焦标题；source-only 可关闭 |
+| `ASSET-PASTE-001` | 粘贴截图自动落盘并插入链接 | 写入成功后才修改正文；失败正文不变 |
+| `ASSET-BASE64-001` | 产品不主动生成内嵌 Base64 图片 | 保存结果使用相对文件 URI |
+| `DIAGRAM-MERMAID-001` | Mermaid 可文内预览 | 失败显示源码；渲染不修改正文 |
+| `DIAGRAM-VIEWER-001` | Mermaid/大图可放大、平移、Fit | Esc 返回原块，SVG 保持矢量 |
+| `FILE-PREFLIGHT-001` | Rust 在正文进入 WebView 前轻量预检 | 固定缓冲统计 size/UTF-8/最长行/data-image |
+| `FILE-LARGE-001` | 约 10 MiB 普通多行 Markdown 可编辑 | source-only 模式，不运行昂贵投影 |
+| `SAFE-DATAURI-001` | 大型 data-image/病态长行不得卡死编辑器 | 文件正文不返回 JS；大粘贴不创建 transaction |
+| `FILE-SAVE-001` | 保存采用同目录临时文件原子替换 | 故障时旧文件完整；成功时新文件完整 |
+| `FILE-EXTERNAL-001` | 简单提示磁盘外部修改 | mtime 不符时可重新加载、覆盖或取消 |
+| `OPS-OFFLINE-001` | 默认无网络、无账户、无遥测 | 没有文档上传路径 |
+| `OPS-BUILD-001` | macOS 可运行 Tauri debug app | `pnpm verify` 和手动主链路通过 |
+| `OPS-CONTEXT-001` | 新代理不依赖聊天恢复项目 | 先读 AGENTS、PROJECT_STATE、DESIGN、REQUIREMENTS |
 
-- [01-product-ux.md](design/01-product-ux.md) 的 UX-* 是用户可观察行为的规范需求；UX-* 永远不是测试 ID。
-- 本文件的 DATA/EDIT/NAV/FILE 等 ID 是跨模块工程约束与追踪入口。
-- 端到端产品验收使用 AC-*；领域测试使用 RT/EDT/IME/TABLE/HISTORY 等第 8 节命名空间；跨语言/跨模块契约证据使用 CONTRACT-*。
-- 用户可见任务必须同时引用相关 UX-* 与工程需求；若本节 crosswalk 明确写“产品直接验收”，则该项以 UX-* + 对应 AC-* 作为唯一例外。纯基础设施任务可以引用 ARCH/DOM/PROC 不变量及 phase gate。
-- 01 的用户行为与 03 的数据/安全不变量都属于领域事实来源；若二者冲突，不得用文档排序猜测，必须阻断相关实现并由 Integration 同步修订需求/ADR。
+## 2. 实用护栏的精确行为
 
-### 1.2 产品需求交叉映射
+### `SAFE-DATAURI-001`
 
-“产品直接验收”表示该要求无需复制成第二条工程需求，仍由对应 UX-* 和 AC-* 直接作为门禁。
+- 前端只在粘贴文本大于 1 MiB 且含 `data:image/...;base64,` 时拒绝。
+- 拒绝发生在 CodeMirror dispatch 之前；正文、选择和 Undo 栈不变。
+- Rust 使用 64 KiB 级固定缓冲扫描文件，不把 blocked 正文放进返回对象。
+- 不要求 Base64 解码、自动提取、修复 token、隔离、备份或恶意混淆检测。
 
-| 产品需求 | 工程需求或直接门禁 |
+### `ASSET-PASTE-001`
+
+- 支持系统截图常见 PNG；JPEG/WebP 可在获取到明确 MIME 时保留。
+- 已保存文档写入相邻 `assets/`；未保存文档先 Save As。
+- 文件名避免覆盖已有资源，返回 URI 使用 `/` 并对空格等做 Markdown/URL 兼容编码。
+- Undo 仅移除 Markdown 链接，图片保留。
+
+### `FILE-SAVE-001`
+
+- 临时文件必须和目标位于同一目录，以便 rename 保持原子语义。
+- 写入/flush 失败不触碰目标；rename 成功后返回新 size/mtime。
+- 实现只清理当前调用创建的精确临时文件，不递归清理目录。
+- 第一版不要求持久化 save journal、prepare/ack 协议或崩溃恢复中心。
+
+## 3. 导航状态不变量
+
+| ID | 不变量 |
 |---|---|
-| UX-FILE-001 | DATA-SOURCE-001、DATA-UNKNOWN-001、FILE-OPEN-001 |
-| UX-FILE-002 | DATA-ROUNDTRIP-001、DATA-UNKNOWN-001 |
-| UX-EDIT-001 | EDIT-LIVE-001、DATA-UNKNOWN-001 |
-| UX-EDIT-002 | EDIT-LIVE-001 |
-| UX-EDIT-003 | EDIT-IME-001、EDIT-UNDO-001 |
-| UX-DOC-001 | NAV-MODEL-001、DATA-REVISION-001 |
-| UX-DRAFT-001 | FILE-DRAFT-001、RECOVERY-DIRTY-001 |
-| UX-WORKSPACE-001 | NAV-WORKSPACE-001、FILE-WATCH-001、EXT-ROUTER-001 |
-| UX-FIND-001 | EDIT-FIND-001 |
-| UX-NAV-001 | EXT-ROUTER-001、NAV-DISPOSITION-001、NAV-ANCHOR-001 |
-| UX-NAV-002 | NAV-HISTORY-001 |
-| UX-NAV-003 | NAV-RESTORE-001、NAV-ASYNC-001 |
-| UX-NAV-004 | NAV-DISPOSITION-001、EDIT-LINK-001 |
-| UX-TAB-001 | NAV-MODEL-001、NAV-HISTORY-001 |
-| UX-TAB-002 | NAV-MODEL-001、RECOVERY-DIRTY-001 |
-| UX-TAB-003 | NAV-REOPEN-001 |
-| UX-TAB-004 | NAV-REORDER-001 |
-| UX-SESSION-001 | RECOVERY-DIRTY-001、RECOVERY-LOOP-001 |
-| UX-SESSION-002 | RECOVERY-WINDOW-001 |
-| UX-IMAGE-001 | ASSET-PASTE-001、ASSET-BASE64-001 |
-| UX-IMAGE-002 | ASSET-STAGING-001 |
-| UX-IMAGE-003 | SAFE-DATAURI-001、ASSET-BASE64-001 |
-| UX-MATH-001 | EDIT-MATH-001 |
-| UX-DIAGRAM-001 | EDIT-MERMAID-001、EDIT-MERMAID-002 |
-| UX-DIAGRAM-002 | EDIT-MERMAID-001、SAFE-RENDER-001 |
-| UX-TABLE-001 | EDIT-TABLE-001 |
-| UX-TABLE-002 | EDIT-TABLE-001、DATA-ROUNDTRIP-001 |
-| UX-TABLE-003 | EDIT-TABLE-002 |
-| UX-SAFE-001 | FILE-PREFLIGHT-001、PERF-LARGE-001、SAFE-DATAURI-001 |
-| UX-SAFE-002 | FILE-SAVE-001、SAFE-DATAURI-001 |
-| UX-ERROR-001 | FILE-SAVE-001、ASSET-PASTE-001、RECOVERY-DIRTY-001 |
-| UX-ERROR-002 | DATA-CONFLICT-001、FILE-WATCH-001 |
-| UX-KEY-001 | 产品直接验收 AC-KEY-001 |
-| UX-PERF-001 | PERF-OPEN-001、PERF-TAB-001 |
-| UX-PERF-002 | PERF-VIEWPORT-001、NAV-ASYNC-001 |
-| UX-PEEK-001 | NAV-PEEK-001 |
-| UX-SPLIT-001 | NAV-SPLIT-001 |
-| UX-A11Y-001 | 产品直接验收 AC-A11Y-001/002/003 |
-| UX-A11Y-002 | 产品直接验收 AC-A11Y-002/004 |
-| UX-PLATFORM-001 | 产品直接验收 AC-PLATFORM-001 |
-| UX-EXT-001 | EXT-ROUTER-001、EXT-COMMAND-001（P0 内建资源/命令）和 P0 typed feature flags；EXT-CAP-001 仅约束 P1 第三方插件能力 |
+| `NAV-MODEL-001` | `DocumentSession != Tab != HistoryEntry` |
+| `NAV-SESSION-001` | 同一路径一个可编辑 session；多个 Tab 共享正文/dirty |
+| `NAV-VIEW-001` | 每 Tab 的滚动、选择、back 和 forward 独立 |
+| `NAV-DISPOSITION-001` | 点击修饰键只决定 same-tab/new-tab，不改变资源解析 |
+| `NAV-NO-COPY-001` | history 不保存完整 Markdown |
 
-## 2. 数据与兼容
+## 4. 当前 Tauri 接口要求
 
-| ID | 优先级 | 规范要求 | 验收 |
+| ID | 接口要求 |
+|---|---|
+| `IPC-WORKSPACE-001` | chooser/list 返回当前功能需要的简洁 serde 结构 |
+| `IPC-DOCUMENT-001` | open 返回 normal/sourceOnly/blocked/unsupported union；blocked 无正文 |
+| `IPC-SAVE-001` | save 返回 size/mtime 或可读错误 |
+| `IPC-ASSET-001` | 图片以 bytes 传递，Rust 返回相对 URI；禁止 Base64 字符串 |
+| `IPC-LEAN-001` | 不预生成未来命令、错误码全集或巨型 schema；新增功能时再加类型 |
+
+## 5. 性能与体验验收
+
+| ID | 目标 |
+|---|---|
+| `PERF-TYPE-001` | 普通输入和 IME 无明显掉帧或光标跳动 |
+| `PERF-OPEN-001` | 典型 250 KiB 文档在开发机 300 ms 级进入可编辑状态 |
+| `PERF-LARGE-001` | 10 MiB 普通多行 fixture 打开、编辑、保存不冻结窗口 |
+| `PERF-TREE-001` | 大目录首屏可分批出现，不等待完整深度扫描才显示 |
+| `PERF-DIAGRAM-001` | Mermaid 离屏不主动批量渲染；单块失败不拖垮页面 |
+
+性能数字是初始工程目标，不是发布 SLA；改变实现前先记录测量。
+
+## 6. P1 / Later
+
+| ID | 优先级 | 状态 | 内容 |
 |---|---|---|---|
-| DATA-SOURCE-001 | P0 | Markdown 文件必须是内容唯一真相，派生树或缓存不得替代它 | RT-001 |
-| DATA-ROUNDTRIP-001 | P0 | 未编辑文档打开后直接保存必须字节一致 | RT-001 |
-| DATA-UNKNOWN-001 | P0 | 未识别语法必须作为原文保留 | RT-002 |
-| DATA-REVISION-001 | P0 | 同一 DocumentSession 的变更必须按单调 revision 应用 | CORE-001 |
-| DATA-CONFLICT-001 | P0 | 磁盘外部变化与 dirty 缓冲冲突时禁止静默覆盖 | FILE-004 |
+| `SEARCH-WORKSPACE-001` | P1 | Deferred | 工作区全文搜索与 Quick Open 排序 |
+| `NAV-SPLIT-001` | P1 | Deferred | 最多两个左右 Pane |
+| `NAV-RECENT-001` | P1 | Deferred | 最近关闭 Tab 与轻量会话恢复 |
+| `LINK-BACKREF-001` | P1 | Deferred | 反向链接、断链和重命名修复 |
+| `EDIT-TABLE-GRID-001` | P1 | Deferred | 结构化表格编辑浮层 |
+| `EDIT-MATH-001` | P1 | Deferred | 数学渲染 |
+| `EXPORT-001` | P1 | Deferred | PDF/HTML/SVG/PNG 导出 |
+| `GIT-001` | Later | Deferred | diff、历史与冲突工具 |
+| `GRAPH-001` | Later | Deferred | 文档图谱 |
+| `AI-001` | Later | Deferred | 工作区检索、引用与问答；需单独隐私决策 |
+| `PLUGIN-001` | Later | Deferred | 真实扩展需求出现后再定义插件 API |
 
-## 3. 编辑器
+以下旧需求在 baseline 0.2 不作为 MVP 门禁：资产 staging/journal/GC、完整崩溃恢复、窗口布局恢复、复杂 save-as 状态机、HMAC/nonce host evidence、193 MiB IPC transport、14 项 typed flags、Hosted CI 证据。
 
-| ID | 优先级 | 规范要求 | 验收 |
-|---|---|---|---|
-| EDIT-LIVE-001 | P0 | 非活动 Markdown 元素必须可渲染，活动安全范围必须显示源码 | EDT-LIVE-001 |
-| EDIT-UNDO-001 | P0 | 所有正文编辑必须进入统一 Undo/Redo，导航不得进入编辑历史 | EDT-UNDO-001 |
-| EDIT-IME-001 | P0 | composition 期间禁止装饰切换和自动格式化 | IME-001 |
-| EDIT-LINK-001 | P0 | 渲染态链接可导航，编辑态单击只移动光标 | LINK-EDIT-001 |
-| EDIT-FIND-001 | P0 | 当前文档 Unicode literal 查找/替换必须可撤销且在 largeText 可用 | FIND-001 |
-| EDIT-TABLE-001 | P0 | GFM 表格必须可预览并无损返回源码编辑 | TABLE-001 |
-| EDIT-TABLE-002 | P1 | 网格编辑只可替换用户明确提交的表格块 | TABLE-010 |
-| EDIT-MERMAID-001 | P0 | Mermaid 必须懒渲染且单块失败不影响编辑器 | VIS-001 |
-| EDIT-MERMAID-002 | P0 | Mermaid 必须支持全屏缩放、平移、Fit 和返回源码 | VIS-002 |
-| EDIT-MATH-001 | P1 | 行内和块级数学必须安全渲染、保留源码并局部降级 | AC-MATH-001 |
+## 7. MVP 验收场景
 
-## 4. 导航与 Tab
-
-| ID | 优先级 | 规范要求 | 验收 |
-|---|---|---|---|
-| NAV-MODEL-001 | P0 | DocumentSession、DocumentView、Tab 和 NavEntry 必须分离 | NAV-CORE-001 |
-| NAV-HISTORY-001 | P0 | 每个 Tab 必须拥有独立 back/forward 历史 | HISTORY-001 |
-| NAV-RESTORE-001 | P0 | Back 必须恢复来源阅读位置、光标和折叠状态 | HISTORY-RESTORE-001 |
-| NAV-DISPOSITION-001 | P0 | 当前、新前台、新后台打开行为必须跨入口一致 | NAV-DISP-001 |
-| NAV-ANCHOR-001 | P0 | 必须支持本地相对链接和跨文件 heading anchor | LINK-001 |
-| NAV-WORKSPACE-001 | P0 | 文件树、当前文档大纲与 Quick Open 必须消费权威索引并通过统一路由 | WORKSPACE-001 |
-| NAV-ASYNC-001 | P0 | 迟到加载结果禁止覆盖更新导航目标 | NAV-CORE-002 |
-| NAV-PEEK-001 | P1 | Peek 不得进入历史或创建可编辑会话 | PEEK-001 |
-| NAV-SPLIT-001 | P1 | 分栏必须创建独立 View 并共享 DocumentSession | SPLIT-001 |
-| NAV-REOPEN-001 | P1 | 恢复关闭的 Tab 必须恢复完整历史和 ViewState | AC-NAV-005 |
-| NAV-REORDER-001 | P1 | 重排 Tab 不得改变其资源、历史或 ViewState | AC-NAV-006 |
-
-## 5. 文件、资产与恢复
-
-| ID | 优先级 | 规范要求 | 验收 |
-|---|---|---|---|
-| FILE-PREFLIGHT-001 | P0 | 文件正文进入 WebView 前必须经过 Rust 预检策略 | SAFE-001 |
-| FILE-OPEN-001 | P0 | 工作区和工作区外单文件必须通过原生 scoped grant 打开，禁止 raw path capability | FILE-SCOPE-001 |
-| FILE-DRAFT-001 | P0 | 未命名文档的 DraftId/DocumentId 必须由 Rust 幂等创建，初始 dirty 且首次持久化只走 Save As | CONTRACT-022 |
-| FILE-SAVE-001 | P0 | 保存必须采用同目录临时文件和平台适配的原子替换 | FILE-001 |
-| FILE-WATCH-001 | P0 | 外部修改必须集中进入 DocumentSession 冲突流程 | FILE-002 |
-| ASSET-PASTE-001 | P0 | 图片粘贴必须先落盘成功再插入相对链接 | ASSET-001 |
-| ASSET-BASE64-001 | P0 | 图片粘贴禁止将 Base64 写入 Markdown | SAFE-002 |
-| ASSET-STAGING-001 | P0 | 未保存文档的图片必须使用可恢复 staging | ASSET-002 |
-| ASSET-UNDO-001 | P0 | Undo 只撤销链接，资产使用延迟回收 | ASSET-003 |
-| RECOVERY-DIRTY-001 | P0 | dirty 文档必须有独立快照或 journal，不依赖 Tab 历史 | REC-001 |
-| RECOVERY-LOOP-001 | P0 | 上次打开失败的文件禁止下次启动直接进入主编辑器 | REC-002 |
-| RECOVERY-WINDOW-001 | P1 | 完整会话恢复必须恢复 Tab、历史、ViewState 和布局摘要 | AC-SESSION-001 |
-
-## 6. 性能与安全
-
-| ID | 优先级 | 规范要求 | 验收 |
-|---|---|---|---|
-| PERF-VIEWPORT-001 | P0 | 昂贵装饰和图表必须只处理可视区 | PERF-001 |
-| PERF-OPEN-001 | P0 | 真实最大约 243 KiB 文档冷开目标小于 500 ms | PERF-002 |
-| PERF-TAB-001 | P0 | 已缓存 Tab 切换目标小于 100 ms | PERF-003 |
-| PERF-LARGE-001 | P0 | 10 MiB 普通多行文本必须进入可用大文本模式 | PERF-010 |
-| SAFE-DATAURI-001 | P0 | 大 data URI 或病态长行不得进入主 EditorView | SAFE-003 |
-| SAFE-IPC-001 | P0 | WebView 只能调用版本化、限权、限载荷的 IPC | SEC-001 |
-| SAFE-URL-001 | P0 | 危险 scheme 必须拒绝，外部网页默认系统打开 | SEC-002 |
-| SAFE-RENDER-001 | P0 | raw HTML 和 SVG 必须禁用或净化后渲染 | SEC-003 |
-
-## 7. 扩展性与操作性
-
-| ID | 优先级 | 规范要求 | 验收 |
-|---|---|---|---|
-| EXT-ROUTER-001 | P0 | 新资源页面必须通过 ResourceRouter 接入 | EXT-001 |
-| EXT-COMMAND-001 | P0 | 跨 UI 操作必须注册为类型化 Command | EXT-002 |
-| EXT-BLOCK-001 | P0 | 内建及新增块渲染器必须使用受限 BlockRenderer 接口 | EXT-010 |
-| EXT-CAP-001 | P1 | 插件能力必须显式声明并默认拒绝 | SEC-010 |
-| OPS-LOG-001 | P0 | 诊断日志不得记录正文、剪贴板和完整敏感路径 | OBS-001 |
-| OPS-CONTEXT-001 | P0 | 代理不得依赖聊天历史，必须通过仓库文档恢复上下文 | PROC-001 |
-| OPS-HANDOFF-001 | P0 | 每个任务结束必须记录变更、验证、决定和剩余工作 | PROC-002 |
-| OPS-BUILD-001 | P0 | 干净环境必须可用固定命令构建并启动桌面壳 | BUILD-001 |
-| OPS-CI-001 | P0 | CI 必须执行格式、类型、Rust、契约、核心测试和产物构建门禁 | CI-001 |
-| OPS-RELEASE-001 | P0 | 首发包必须可签名/公证、干净安装、文件关联启动、安全升级/回滚，并带隐私与依赖许可证清单 | RELEASE-001 |
-
-## 8. 测试 ID 约定
-
-- RT：round-trip 和语料兼容。
-- AC：产品级端到端验收，定义于 01-product-ux。
-- EDT / IME / TABLE / FIND：编辑器、输入法、表格和当前文档查找替换。
-- HISTORY / NAV / LINK / PEEK / SPLIT / WORKSPACE：导航、链接与工作区浏览。
-- CORE：领域状态和 revision。
-- FILE / ASSET / REC：本地核心。
-- PERF / SAFE / SEC：性能安全。
-- EXT：扩展契约。
-- CONTRACT：Rust schema、生成 TypeScript、IPC/realm 边界及跨模块不变量的契约证据；canonical 索引定义于 09，规范断言来源为 03 §17。CONTRACT-* 不取代 CORE/FILE/ASSET 等行为测试；共享 harness 时仍必须以各自稳定 ID 独立报告证据。
-- OBS / PROC：可观测性与执行流程。
-- BUILD / CI / RELEASE：可复现构建、流水线与发布产物。
-
-具体用例定义见 [09-testing-observability.md](design/09-testing-observability.md)。
+| ID | 场景 |
+|---|---|
+| `AC-EDIT-001` | 打开中文 Markdown，编辑标题/表格并保存；重开内容一致 |
+| `AC-NAV-001` | A 点击 B，再后退/前进；两侧滚动位置正确 |
+| `AC-TAB-001` | 同文档两个 Tab 共享编辑结果但历史独立 |
+| `AC-ASSET-001` | 粘贴截图后文件存在且链接相对；模拟失败时正文不变 |
+| `AC-BASE64-001` | 10 MiB data-image 粘贴/文件均不进入 editor transaction |
+| `AC-LARGE-001` | 10 MiB 普通多行文档以 source-only 编辑并保存 |
+| `AC-DIAGRAM-001` | Mermaid 进入查看器，缩放/平移/Fit/Esc 正常 |
+| `AC-OFFLINE-001` | 断网状态下核心工作流完整可用 |

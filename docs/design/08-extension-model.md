@@ -1,5 +1,7 @@
 # 08. 扩展模型
 
+> **历史参考（baseline 0.1）**：未来方向仍可参考，但 MVP 不建设插件平台、通用 registry 或 feature flags；两个真实消费者出现后再抽象。当前规范见 [DESIGN.md](../DESIGN.md)。
+
 > 状态：Approved design baseline 0.1  
 > 所有者：Extensions / Architecture  
 > 主要需求：EXT-ROUTER-001、EXT-COMMAND-001、EXT-BLOCK-001、EXT-CAP-001  

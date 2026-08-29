@@ -1,5 +1,7 @@
 # 06. 文件、资产与恢复
 
+> **历史参考（baseline 0.1）**：当前只保留轻量预检、截图落盘和原子保存；staging journal、repair、quarantine、资产 GC 与完整 crash recovery 均已延期。见 [ADR-0005](../decisions/0005-lean-local-editor-boundary.md)。
+
 > 状态：Approved design baseline 0.1  
 > 所有者：Native Core  
 > 主要需求：FILE-PREFLIGHT-001、FILE-SAVE-001、FILE-WATCH-001、ASSET-PASTE-001、ASSET-BASE64-001、ASSET-STAGING-001、ASSET-UNDO-001、RECOVERY-DIRTY-001、RECOVERY-LOOP-001  

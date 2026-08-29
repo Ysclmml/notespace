@@ -47,26 +47,9 @@ jobs:
           pnpm --version
           rustc --version
           cargo --version
-          ruby --version
 
       - name: Install JavaScript dependencies from the lockfile
         run: pnpm install --frozen-lockfile
-
-      - name: Validate repository privacy and workflow policy
-        run: |
-          ruby scripts/check_repository_hygiene.rb --self-test
-          ruby scripts/check_repository_hygiene.rb
-
-      - name: Validate the durable design baseline
-        run: ruby scripts/validate_design_docs.rb
-
-      - name: Audit JavaScript dependencies
-        run: pnpm audit --registry=https://registry.npmjs.org --audit-level high
-
-      - name: Install and run the pinned RustSec audit
-        run: |
-          cargo install cargo-audit --locked --version 0.22.2
-          cargo audit --file src-tauri/Cargo.lock
 
       - name: Run the authoritative local gate
         run: pnpm verify

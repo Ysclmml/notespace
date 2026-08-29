@@ -1,5 +1,7 @@
 # 导航、Tab 与链接设计
 
+> **历史参考（baseline 0.1）**：Session/Tab/history 分离仍有效；复杂异步协议和旧门禁不再规范。当前范围以 [DESIGN.md](../DESIGN.md) 与 [REQUIREMENTS.md](../REQUIREMENTS.md) 为准。
+
 > 状态：Approved design baseline 0.1  
 > 所有者：Workspace / Navigation  
 > 主要需求：NAV-MODEL-001、NAV-HISTORY-001、NAV-RESTORE-001、NAV-DISPOSITION-001、NAV-ANCHOR-001、NAV-ASYNC-001  

@@ -1,5 +1,7 @@
 # 07. 性能与安全
 
+> **历史参考（baseline 0.1）**：产品按普通本地编辑器设计，只保留三项实用护栏；可信宿主、HMAC/nonce、巨型 IPC 和攻击矩阵已退役。当前规范见 [ADR-0005](../decisions/0005-lean-local-editor-boundary.md)。
+
 > 状态：Approved design baseline 0.1  
 > 所有者：Platform  
 > 主要需求：PERF-VIEWPORT-001、PERF-OPEN-001、PERF-TAB-001、PERF-LARGE-001、SAFE-DATAURI-001、SAFE-IPC-001、SAFE-URL-001、SAFE-RENDER-001、EXT-CAP-001、OPS-LOG-001  

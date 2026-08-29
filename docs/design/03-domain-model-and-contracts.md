@@ -1,5 +1,7 @@
 # 03. 领域模型与接口契约
 
+> **历史参考（baseline 0.1）**：当前只为已经实现的命令定义小型 serde/TypeScript 类型，详见 [DESIGN.md](../DESIGN.md) 和 [ADR-0005](../decisions/0005-lean-local-editor-boundary.md)。本文件中的未来命令全集、事件 reconcile、巨型 transport 和持久化 Save-As 协议不是当前契约。
+
 > 状态：`Approved design baseline 0.1`；字段级 schema 待 Phase 0 / F0 冻结  
 > 契约版本：`1.0-draft`  
 > 配套架构：[02-system-architecture.md](./02-system-architecture.md)  

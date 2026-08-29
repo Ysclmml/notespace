@@ -1,5 +1,7 @@
 # 09. 测试、可观测性与质量门禁
 
+> **历史参考（baseline 0.1）**：当前采用风险相称测试和 `pnpm verify` 本地门禁；Ruby、可信宿主人工证据、Hosted CI 前置和全量攻击矩阵已退役。见 [AGENTS.md](../../AGENTS.md) 与 [IMPLEMENTATION_PLAN.md](../IMPLEMENTATION_PLAN.md)。
+
 > 状态：Approved design baseline 0.1  
 > 所有者：Quality / Platform  
 > 适用范围：全部 P0、P1 和未来扩展  

@@ -1,5 +1,7 @@
 # 产品与 UX 规格：本地 Markdown 文档浏览器
 
+> **历史参考（baseline 0.1）**：当前 MVP 规范已收敛到 [DESIGN.md](../DESIGN.md)、[REQUIREMENTS.md](../REQUIREMENTS.md) 与 [ADR-0005](../decisions/0005-lean-local-editor-boundary.md)。本文件仅保留更细的交互探索；其中复杂恢复、安全门禁、flags、staging 或 Phase 0 前置条件均已退役。
+
 > 状态：Approved design baseline 0.1（实现与验收基线）  
 > 目标版本：P0 / v0.1  
 > 平台策略：macOS first，Windows 与 Linux 可移植  

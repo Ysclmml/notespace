@@ -1,5 +1,7 @@
 # 编辑器与渲染设计
 
+> **历史参考（baseline 0.1）**：source-first、IME 和 round-trip 部分仍可参考；当前范围与验收以 [DESIGN.md](../DESIGN.md) 和 [REQUIREMENTS.md](../REQUIREMENTS.md) 为准。
+
 > 状态：Approved design baseline 0.1  
 > 所有者：Editor / Rich Render  
 > 主要需求：EDIT-LIVE-001、EDIT-UNDO-001、EDIT-IME-001、EDIT-LINK-001、EDIT-TABLE-001、EDIT-MERMAID-001、EDIT-MERMAID-002  
