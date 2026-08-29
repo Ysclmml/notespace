@@ -94,7 +94,7 @@
 | `P0-FIXTURE-01` | READY | unowned | `52dc387` / — | `DATA-ROUNDTRIP-001`、`DATA-UNKNOWN-001`、`EDIT-IME-001`、`EDIT-TABLE-001` / privacy-safe fixtures | 领取后创建 task note；危险大夹具只允许运行时生成 |
 | `P0-SPIKE-01` | REVIEW | Editor review fixes (`/root/p0_spike_01_fix`) / Integration | `576a435` / `2e0beb2` | `EDIT-IME-001`、`EDIT-TABLE-001`、`PERF-VIEWPORT-001` / isolated spike + two review correction rounds | [`P0-SPIKE-01.md`](tasks/P0-SPIKE-01.md)；18/18 focused、21/21 全量前端、30-sample measurement、`pnpm verify`、文档门禁 PASS；list/quote marker 始终保留源码，Integration 合并后跑当前 schema drift |
 | `P0-SPIKE-02` | READY | unowned | `52dc387` / — | `FILE-PREFLIGHT-001`、`PERF-LARGE-001`、`SAFE-DATAURI-001`、`SAFE-IPC-001` / native safety feasibility | 领取后创建 task note；仅 spike/测量，不实现 Phase 1 file open |
-| `P0-HOST-SMOKE-01` | CLAIMED | `/root/p0_host_smoke` / Integration | `4fcc284` / — | `EDIT-IME-001`、`FILE-SAVE-001`、`UX-KEY-001`、`UX-PLATFORM-001` / macOS release-host evidence only | [`P0-HOST-SMOKE-01.md`](tasks/P0-HOST-SMOKE-01.md)；先跑 base gates，再实现默认产物隔离的 host-only harness |
+| `P0-HOST-SMOKE-01` | REVIEW | `/root/p0_host_smoke` / Integration | `4fcc284` / `9d33b40` | `EDIT-IME-001`、`FILE-SAVE-001`、`UX-KEY-001`、`UX-PLATFORM-001` / macOS release-host evidence only | [`P0-HOST-SMOKE-01.md`](tasks/P0-HOST-SMOKE-01.md)；full gates、默认 debug/release 隔离、自动 host report、audit 与 clean-clone replay PASS；Integration 下一步跑 `--manual` 真实拼音/菜单/chooser，只接受 `manualPass` |
 
 只列出了依赖已满足的第一批任务；`P0-FLAG-01` 必须等待 `P0-CONTRACT-01` 生成初始契约后才能进入 READY。
 
