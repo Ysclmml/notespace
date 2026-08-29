@@ -1,20 +1,20 @@
 # P0-SPIKE-02 — Native/Safety feasibility
 
-- Status: REVIEW
-- Owner / next owner: Native/Safety remediation agent / independent reviewer, then Integration
-- Base revision / head revision: `576a435` / `dcd1b6e` (review-blocker remediation implementation; handoff metadata follows)
+- Status: CLAIMED
+- Owner / next owner: Native/Safety second-review remediation agent / Integration
+- Base revision / head revision: `f07e3e5` / `f07e3e5` (second-review remediation starts here)
 - Requirement IDs: `FILE-PREFLIGHT-001`, `FILE-SAVE-001`, `PERF-LARGE-001`, `SAFE-DATAURI-001`, `SAFE-IPC-001`, `OPS-CONTEXT-001`, `OPS-HANDOFF-001`
 - Product UX IDs: `UX-SAFE-001`
 - Test / acceptance IDs: `SAFE-001`, `SAFE-003`, `PERF-010`, `FILE-001`, `AC-SAFE-002`, `AC-SAFE-005`, `CONTRACT-010`, `CONTRACT-011`, `CONTRACT-024`, `PROC-001`, `PROC-002`
 - ADRs / contract and schema versions: `ADR-0001`, `ADR-0004`; IPC `1.0-draft` is read-only for this spike
 - Feature flags: no flag implementation; future production path remains gated by fail-closed `safety.largeInputGuard`
-- Owned and touched paths: `src-tauri/tests/p0_spike_02_native_safety.rs`, `docs/tasks/P0-SPIKE-02.md`, and only the `P0-SPIKE-02` ledger row in `docs/PROJECT_STATE.md`
+- Owned and touched paths: `src-tauri/tests/p0_spike_02_native_safety.rs`, explicitly delegated test-only dependency edits in `src-tauri/Cargo.toml` / `src-tauri/Cargo.lock`, `docs/tasks/P0-SPIKE-02.md`, and only the `P0-SPIKE-02` ledger row in `docs/PROJECT_STATE.md`
 
 ## Goal and non-goals
 
 Validate, using an isolated Rust-only spike and runtime-generated synthetic inputs, that the accepted Native/Safety design is feasible with bounded memory: fixed-buffer preflight, cancellation, Base64 data-image detection across read boundaries, same-directory atomic replacement, and scoped crash/stale-temporary cleanup.
 
-This task does not implement `document_open_v1`, product IPC, a safety-page UI, repair/extraction, production save/recovery services, or any Phase 1 behavior. It does not change accepted thresholds, schema, feature flags, manifests, lockfiles, or global CI.
+This task does not implement `document_open_v1`, product IPC, a safety-page UI, repair/extraction, production save/recovery services, or any Phase 1 behavior. It does not change accepted thresholds, schema, feature flags, runtime dependencies, or global CI. The only dependency change allowed by Integration is an exact-pinned, test-only UUID v4 dev dependency for random operation identities in the disposable spike.
 
 ## Dependencies and baseline
 
@@ -27,6 +27,7 @@ This task does not implement `document_open_v1`, product IPC, a safety-page UI, 
   - design validator `RESULT=PASS`, snapshot `e0905a48147eee7c3264b382aeab2a8c2c2e40dab2ef6b7f5b9963a96cca8509`;
   - the first `pnpm verify` correctly failed before installation because the independent worktree had no `node_modules` (`prettier: command not found`); after frozen-lockfile installation, the complete verify command passed;
   - environment: macOS `26.6.2` arm64, rustc `1.98.0`, pnpm `10.32.1`, and project-managed Node (`pnpm exec node`) `24.14.0`.
+  - second-review takeover at `f07e3e5`: design validator PASS (snapshot `9a21a8b57883ec90b3e16a667fbe8da96be8325e27efb63339264db6fa982eef`), focused Rust 16/16 PASS, and complete `pnpm verify` PASS before new edits.
 
 ## Acceptance criteria status
 
