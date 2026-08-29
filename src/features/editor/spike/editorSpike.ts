@@ -82,13 +82,7 @@ const SOURCE_REVEAL_PRIORITY = new Map<string, number>([
   ["Link", 100],
 ]);
 
-const REPLACEABLE_MARKER_NAMES = new Set([
-  "HeaderMark",
-  "EmphasisMark",
-  "LinkMark",
-  "ListMark",
-  "QuoteMark",
-]);
+const REPLACEABLE_MARKER_NAMES = new Set(["HeaderMark", "EmphasisMark", "LinkMark"]);
 
 const requestDecorationRefresh = StateEffect.define<null>();
 

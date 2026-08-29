@@ -1,8 +1,8 @@
 # P0-SPIKE-01 — CodeMirror editor feasibility spike
 
-- Status: REVIEW
+- Status: CLAIMED
 - Owner / next owner: Editor review fixes (`/root/p0_spike_01_fix`) / Integration
-- Base revision / head revision: `576a435` / `86e109f` (review-fix implementation)
+- Base revision / head revision: `576a435` / `caed664` (second-review takeover)
 - Requirement IDs: `DATA-SOURCE-001`, `DATA-ROUNDTRIP-001`, `DATA-UNKNOWN-001`, `EDIT-LIVE-001`, `EDIT-UNDO-001`, `EDIT-IME-001`, `EDIT-TABLE-001`, `PERF-VIEWPORT-001`, `PERF-LARGE-001`
 - Product UX IDs: none; this is a disposable Phase 0 feasibility spike and cannot complete product acceptance
 - Test / acceptance IDs: `RT-001`, `RT-002`, `EDT-LIVE-001`, `EDT-UNDO-001`, `IME-001`, `TABLE-001`, `PERF-001`, `PERF-010`, `PROC-002`

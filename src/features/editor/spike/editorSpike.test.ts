@@ -167,6 +167,34 @@ describe("P0-SPIKE-01 cursor-local source reveal", () => {
     expect(rangesAt("cell", 2)).toEqual([{ from: tableFrom, to: tableTo }]);
     expect(rangesAt("c|d", 1)).toEqual([{ from: tableFrom, to: tableTo }]);
   });
+
+  it("EDT-LIVE-001 keeps list and quote markers visible in current and non-current blocks", () => {
+    const source = "- item\n\n> quote\n\n# heading\n";
+    const metrics = createEditorSpikeMetrics();
+    const listMarker = { from: source.indexOf("-"), to: source.indexOf("-") + 1 };
+    const quoteMarker = { from: source.indexOf(">"), to: source.indexOf(">") + 1 };
+    const headingMarker = {
+      from: source.indexOf("#"),
+      to: source.indexOf("#") + 1,
+    };
+    const view = mount(
+      createEditorSpikeState(source, { metrics }, source.indexOf("item") + 2),
+    );
+
+    expect(decorationPositions(view)).toEqual([headingMarker]);
+    expect(decorationPositions(view)).not.toContainEqual(listMarker);
+    expect(decorationPositions(view)).not.toContainEqual(quoteMarker);
+
+    view.dispatch({ selection: EditorSelection.cursor(source.indexOf("quote") + 2) });
+    expect(decorationPositions(view)).toEqual([headingMarker]);
+    expect(decorationPositions(view)).not.toContainEqual(listMarker);
+    expect(decorationPositions(view)).not.toContainEqual(quoteMarker);
+
+    view.dispatch({ selection: EditorSelection.cursor(source.indexOf("heading") + 2) });
+    expect(decorationPositions(view)).toEqual([]);
+    expect(decorationPositions(view)).not.toContainEqual(listMarker);
+    expect(decorationPositions(view)).not.toContainEqual(quoteMarker);
+  });
 });
 
 describe("P0-SPIKE-01 composition and history", () => {
@@ -284,6 +312,53 @@ describe("P0-SPIKE-01 composition and history", () => {
     expect(metrics.cancelledCompositionRefreshes).toBe(1);
     expect(() => scheduler.flush()).not.toThrow();
   });
+
+  it.each([
+    { block: "list", source: "- item\n", marker: "-", word: "item" },
+    { block: "quote", source: "> quote\n", marker: ">", word: "quote" },
+  ])(
+    "IME-001 never replaces the $block marker before, during, or after composition",
+    ({ source, marker, word }) => {
+      const metrics = createEditorSpikeMetrics();
+      const scheduler = new ManualFrameScheduler();
+      const cursor = source.indexOf(word) + 2;
+      const markerRange = {
+        from: source.indexOf(marker),
+        to: source.indexOf(marker) + marker.length,
+      };
+      const view = mount(createEditorSpikeState(source, { metrics, scheduler }, cursor));
+      const expectMarkerVisible = () => {
+        expect(decorationPositions(view)).not.toContainEqual(markerRange);
+      };
+
+      expectMarkerVisible();
+      dispatchCompositionEvent(view, "compositionstart");
+      dispatchDomInputStep(view, {
+        data: "中",
+        inputType: "insertCompositionText",
+        isComposing: true,
+        applyObservedMutation: () => {
+          view.dispatch({
+            changes: { from: cursor, insert: "中" },
+            selection: EditorSelection.cursor(cursor + 1),
+            userEvent: "input.type.compose",
+          });
+        },
+      });
+      expectMarkerVisible();
+
+      dispatchCompositionEvent(view, "compositionend", "中");
+      expect(getEditorSpikeRuntime(view).compositionPhase).toBe("refreshPending");
+      expectMarkerVisible();
+
+      scheduler.flush();
+      expect(getEditorSpikeRuntime(view).compositionPhase).toBe("idle");
+      expectMarkerVisible();
+      expect(view.state.doc.toString()).toBe(
+        `${source.slice(0, cursor)}中${source.slice(cursor)}`,
+      );
+    },
+  );
 
   it("EDT-UNDO-001 keeps selection/decorations out of unified text undo and supports redo", () => {
     const source = "# Heading\n";
