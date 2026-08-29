@@ -92,7 +92,7 @@
 | `P0-CI-01` | READY | unowned | `52dc387` / — | `OPS-CI-001` / pinned CI quality gates and artifact build | 领取后创建 task note；只由 Integration 修改 global CI |
 | `P0-CONTRACT-01` | READY | unowned | `52dc387` / — | `DATA-REVISION-001`、`SAFE-IPC-001`、`EXT-ROUTER-001`、`EXT-COMMAND-001` / IPC v1 + generated bindings | 领取后创建 task note；先复制 canonical schema，不重构语义 |
 | `P0-FIXTURE-01` | READY | unowned | `52dc387` / — | `DATA-ROUNDTRIP-001`、`DATA-UNKNOWN-001`、`EDIT-IME-001`、`EDIT-TABLE-001` / privacy-safe fixtures | 领取后创建 task note；危险大夹具只允许运行时生成 |
-| `P0-SPIKE-01` | READY | unowned | `52dc387` / — | `EDIT-IME-001`、`EDIT-TABLE-001`、`PERF-LARGE-001` / CodeMirror feasibility | 领取后创建 task note；仅 spike/测量，不实现 Phase 1 编辑器 |
+| `P0-SPIKE-01` | CLAIMED | Editor (`/root/p0_spike_01`) / same owner | `576a435` / working tree | `EDIT-IME-001`、`EDIT-TABLE-001`、`PERF-LARGE-001` / isolated CodeMirror feasibility + measurements | [`P0-SPIKE-01.md`](tasks/P0-SPIKE-01.md)；基线 PASS，下一步实现可移除 harness，禁止接入 Phase 1 产品编辑器 |
 | `P0-SPIKE-02` | READY | unowned | `52dc387` / — | `FILE-PREFLIGHT-001`、`PERF-LARGE-001`、`SAFE-DATAURI-001`、`SAFE-IPC-001` / native safety feasibility | 领取后创建 task note；仅 spike/测量，不实现 Phase 1 file open |
 
 只列出了依赖已满足的第一批任务；`P0-FLAG-01` 必须等待 `P0-CONTRACT-01` 生成初始契约后才能进入 READY。
