@@ -67,6 +67,22 @@ def file_contains_any?(path, needles)
   needles.any? { |needle| bytes.include?(needle.b) }
 end
 
+def assert_host_app_binary_matches_raw!
+  assert!(File.file?(HOST_APP_BINARY), "host release app binary is not a regular file")
+  assert!(!File.lstat(HOST_APP_BINARY).symlink?, "host release app binary is a symlink")
+
+  app_root = File.realpath(HOST_APP)
+  bundled_binary = File.realpath(HOST_APP_BINARY)
+  assert!(
+    bundled_binary.start_with?("#{app_root}#{File::SEPARATOR}"),
+    "host release app binary escaped its bundle"
+  )
+  assert!(
+    Digest::SHA256.file(BINARY).digest == Digest::SHA256.file(bundled_binary).digest,
+    "host release app binary does not match the current raw release binary"
+  )
+end
+
 def private_root
   root = Dir.mktmpdir(ROOT_PREFIX)
   File.chmod(0o700, root)
@@ -269,6 +285,7 @@ def build_and_verify_isolation!
   assert!(tree_contains_any?(File.join(ROOT, "dist"), FRONTEND_SENTINELS), "host frontend surface missing")
   assert!(file_contains_all?(BINARY, NATIVE_SENTINELS), "host native surface missing")
   assert!(File.executable?(HOST_APP_BINARY), "host release app binary missing")
+  assert_host_app_binary_matches_raw!
   assert!(file_contains_all?(HOST_APP_BINARY, NATIVE_SENTINELS), "host release app surface missing")
   assert!(!file_contains_any?(BINARY, LEGACY_TRUST_BYPASS_SENTINELS), "legacy frontend-authored evidence command remains")
   assert!(
