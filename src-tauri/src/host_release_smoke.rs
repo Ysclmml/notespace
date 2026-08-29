@@ -25,14 +25,27 @@ const ROOT_ENV: &str = "MARKDOWN_WORKSPACE_HOST_RELEASE_SMOKE_ROOT";
 const ROOT_PREFIX: &str = "markdown-workspace-host-smoke.";
 const RESULT_FILE: &str = "host-smoke-result.json";
 const RESULT_TEMP_FILE: &str = ".host-smoke-result.json.tmp";
-const RUNTIME_FRONTEND_LATCH: &str = r#"
-Object.defineProperty(window, "__MARKDOWN_WORKSPACE_HOST_RELEASE_SMOKE__", {
-  value: true,
-  configurable: false,
-  enumerable: false,
-  writable: false
-});
-"#;
+const INITIALIZATION_SCRIPT_TEMPLATE: &str = include_str!("host_release_smoke_init.js");
+const AUDITED_HOST_UI_SOURCE: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../src/features/editor/host-smoke/HostReleaseSmoke.tsx"
+));
+const TOKEN_BUNDLE_PLACEHOLDER: &str = "__HOST_SMOKE_TOKEN_BUNDLE__";
+const TOKEN_BYTES: usize = 32;
+const TOKEN_COUNT: usize = 7;
+const NO_READ_FORBIDDEN_TOKENS: [&str; 11] = [
+    "FileReader",
+    ".files",
+    ".value",
+    ".arrayBuffer(",
+    ".text(",
+    ".stream(",
+    ".name",
+    ".path",
+    "webkitRelativePath",
+    "createObjectURL",
+    "getAsFile",
+];
 const MENU_SUBMENU_ID: &str = "host-smoke-menu";
 const MENU_PING_ID: &str = "host-smoke-menu-ping";
 const TASK_ID: &str = "P0-HOST-SMOKE-01";
@@ -84,6 +97,34 @@ impl AtomicReplaceEvidence {
 }
 
 #[derive(Clone, Debug)]
+struct StaticNoReadAudit {
+    status: &'static str,
+    forbidden_api_match_count: u32,
+}
+
+impl StaticNoReadAudit {
+    fn run() -> Self {
+        let sources = [AUDITED_HOST_UI_SOURCE, INITIALIZATION_SCRIPT_TEMPLATE];
+        let forbidden_api_match_count = sources
+            .iter()
+            .flat_map(|source| {
+                NO_READ_FORBIDDEN_TOKENS
+                    .iter()
+                    .filter(move |token| source.contains(**token))
+            })
+            .count() as u32;
+        Self {
+            status: if forbidden_api_match_count == 0 {
+                "passed"
+            } else {
+                "failed"
+            },
+            forbidden_api_match_count,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
 struct ImeEvidence {
     status: &'static str,
     composition_start_count: u32,
@@ -91,11 +132,13 @@ struct ImeEvidence {
     composition_end_count: u32,
     before_input_count: u32,
     input_count: u32,
-    unsafe_runtime_samples: u32,
-    event_order_valid: bool,
-    saw_composing_phase: bool,
-    saw_refresh_pending_phase: bool,
+    rejected_untrusted_event_count: u32,
+    strict_sequence_valid: bool,
+    composition_data_valid: bool,
+    input_fields_valid: bool,
+    single_target_valid: bool,
     final_state_matches: bool,
+    native_nonce_flow_consumed: bool,
     final_utf16_length: u32,
 }
 
@@ -108,39 +151,50 @@ impl ImeEvidence {
             composition_end_count: 0,
             before_input_count: 0,
             input_count: 0,
-            unsafe_runtime_samples: 0,
-            event_order_valid: false,
-            saw_composing_phase: false,
-            saw_refresh_pending_phase: false,
+            rejected_untrusted_event_count: 0,
+            strict_sequence_valid: false,
+            composition_data_valid: false,
+            input_fields_valid: false,
+            single_target_valid: false,
             final_state_matches: false,
+            native_nonce_flow_consumed: false,
             final_utf16_length: 0,
         }
     }
 
-    fn from_wire(scenario: &str, counts: &[u32], flags: &[bool], final_utf16_length: u32) -> Self {
+    fn from_private_capture(
+        scenario: &str,
+        counts: &[u32],
+        flags: &[bool],
+        final_utf16_length: u32,
+    ) -> Self {
         let expected_length = match scenario {
-            "confirm" => "# \u{4e2d}\u{6587}\n\n".encode_utf16().count() as u32,
-            "cancel" => "# \u{4e2d}\u{6587}\n\n\u{53d6}\u{6d88}\u{ff1a}"
+            "confirm" => "\u{786e}\u{8ba4}\u{ff1a}\u{4e2d}\u{6587}"
                 .encode_utf16()
                 .count() as u32,
+            "cancel" => "\u{53d6}\u{6d88}\u{ff1a}".encode_utf16().count() as u32,
             _ => 0,
         };
-        let counts_valid = counts.len() == 6 && counts.iter().all(|count| *count <= 10_000);
-        let flags_valid = flags.len() == 4;
-        if !counts_valid || !flags_valid || expected_length == 0 || final_utf16_length > 10_000 {
+        let shape_valid = counts.len() == 6
+            && flags.len() == 5
+            && counts.iter().all(|count| *count <= 10_000)
+            && final_utf16_length <= 10_000
+            && expected_length > 0;
+        if !shape_valid {
             return Self {
                 status: "failed",
                 ..Self::pending()
             };
         }
 
-        let pass = counts[0] >= 1
+        let pass = counts[0] == 1
             && counts[1] >= 1
-            && counts[2] >= 1
+            && counts[2] == 1
+            && counts[3] == counts[4]
+            && counts[3] >= 1
             && counts[5] == 0
             && flags.iter().all(|value| *value)
             && final_utf16_length == expected_length;
-
         Self {
             status: if pass { "passed" } else { "failed" },
             composition_start_count: counts[0],
@@ -148,11 +202,13 @@ impl ImeEvidence {
             composition_end_count: counts[2],
             before_input_count: counts[3],
             input_count: counts[4],
-            unsafe_runtime_samples: counts[5],
-            event_order_valid: flags[0],
-            saw_composing_phase: flags[1],
-            saw_refresh_pending_phase: flags[2],
-            final_state_matches: flags[3],
+            rejected_untrusted_event_count: counts[5],
+            strict_sequence_valid: flags[0],
+            composition_data_valid: flags[1],
+            input_fields_valid: flags[2],
+            single_target_valid: flags[3],
+            final_state_matches: flags[4],
+            native_nonce_flow_consumed: false,
             final_utf16_length,
         }
     }
@@ -162,9 +218,10 @@ impl ImeEvidence {
 struct ChooserEvidence {
     status: &'static str,
     event_kind: &'static str,
-    selected_count_bucket: &'static str,
-    file_read_attempts: u32,
-    path_read_attempts: u32,
+    event_was_trusted: bool,
+    native_dialog_interaction_observed: bool,
+    native_nonce_flow_consumed: bool,
+    selection_data_inspected: bool,
 }
 
 impl ChooserEvidence {
@@ -172,45 +229,27 @@ impl ChooserEvidence {
         Self {
             status: "pending",
             event_kind: "none",
-            selected_count_bucket: "zero",
-            file_read_attempts: 0,
-            path_read_attempts: 0,
+            event_was_trusted: false,
+            native_dialog_interaction_observed: false,
+            native_nonce_flow_consumed: false,
+            selection_data_inspected: false,
         }
     }
 
-    fn from_wire(event_kind: &str, metrics: &[u32]) -> Self {
-        if metrics.len() != 3 || metrics.iter().any(|value| *value > 1_000) {
-            return Self {
-                status: "failed",
-                event_kind: "invalid",
-                selected_count_bucket: "invalid",
-                file_read_attempts: 0,
-                path_read_attempts: 0,
-            };
-        }
-
-        let selected_count = metrics[0];
-        let file_read_attempts = metrics[1];
-        let path_read_attempts = metrics[2];
-        let passed = event_kind == "cancel"
-            && selected_count == 0
-            && file_read_attempts == 0
-            && path_read_attempts == 0;
-
+    fn from_private_capture(event_kind: &str) -> Self {
+        let event_kind = match event_kind {
+            "cancel" => "cancel",
+            "change" => "change",
+            _ => "invalid",
+        };
+        let passed = event_kind == "cancel";
         Self {
             status: if passed { "passed" } else { "failed" },
-            event_kind: match event_kind {
-                "cancel" => "cancel",
-                "change" => "change",
-                _ => "invalid",
-            },
-            selected_count_bucket: if selected_count == 0 {
-                "zero"
-            } else {
-                "nonzero"
-            },
-            file_read_attempts,
-            path_read_attempts,
+            event_kind,
+            event_was_trusted: true,
+            native_dialog_interaction_observed: true,
+            native_nonce_flow_consumed: false,
+            selection_data_inspected: false,
         }
     }
 }
@@ -219,8 +258,10 @@ impl ChooserEvidence {
 struct HostReport {
     mode: HostMode,
     atomic_replace: AtomicReplaceEvidence,
+    no_read_audit: StaticNoReadAudit,
     menu_built: bool,
     menu_activation_count: u32,
+    capture_boundary_ready: bool,
     frontend_ready: bool,
     editor_mounted: bool,
     content_editable: bool,
@@ -233,6 +274,7 @@ struct HostReport {
 impl HostReport {
     fn result_state(&self) -> &'static str {
         if self.atomic_replace.status == "failed"
+            || self.no_read_audit.status == "failed"
             || self.ime_confirm.status == "failed"
             || self.ime_cancel.status == "failed"
             || self.chooser.status == "failed"
@@ -240,12 +282,7 @@ impl HostReport {
             return "failed";
         }
 
-        if self.atomic_replace.status == "passed"
-            && self.menu_built
-            && self.frontend_ready
-            && self.editor_mounted
-            && self.content_editable
-            && self.native_file_input_present
+        if self.automated_ready()
             && self.menu_activation_count >= 1
             && self.ime_confirm.status == "passed"
             && self.ime_cancel.status == "passed"
@@ -253,35 +290,40 @@ impl HostReport {
         {
             return "manualPass";
         }
-
-        if self.atomic_replace.status == "passed"
-            && self.menu_built
-            && self.frontend_ready
-            && self.editor_mounted
-            && self.content_editable
-            && self.native_file_input_present
-        {
+        if self.automated_ready() {
             "automatedReady"
         } else {
             "starting"
         }
     }
 
+    fn automated_ready(&self) -> bool {
+        self.atomic_replace.status == "passed"
+            && self.no_read_audit.status == "passed"
+            && self.menu_built
+            && self.capture_boundary_ready
+            && self.frontend_ready
+            && self.editor_mounted
+            && self.content_editable
+            && self.native_file_input_present
+    }
+
     fn to_json(&self) -> String {
         format!(
             concat!(
                 "{{\n",
-                "  \"schemaVersion\": 1,\n",
+                "  \"schemaVersion\": 2,\n",
                 "  \"taskId\": \"{}\",\n",
                 "  \"resultState\": \"{}\",\n",
                 "  \"build\": {{\"profile\": \"release\", \"targetOs\": \"macos\", \"webview\": \"WKWebView\", \"cargoFeature\": \"host-release-smoke\", \"runtimeEnabled\": true, \"mode\": \"{}\"}},\n",
                 "  \"atomicReplace\": {},\n",
                 "  \"menu\": {{\"status\": \"{}\", \"itemIds\": [\"{}\", \"{}\"], \"activationCount\": {}}},\n",
-                "  \"frontend\": {{\"status\": \"{}\", \"editorKind\": \"CodeMirror6\", \"editorMounted\": {}, \"contentEditable\": {}, \"nativeFileInputPresent\": {}}},\n",
+                "  \"frontend\": {{\"status\": \"{}\", \"editorKind\": \"CodeMirror6\", \"editorMounted\": {}, \"contentEditable\": {}, \"nativeFileInputPresent\": {}, \"captureBoundary\": \"nativeInitializationScript\", \"captureBoundaryReady\": {}}},\n",
                 "  \"imeConfirm\": {},\n",
                 "  \"imeCancel\": {},\n",
                 "  \"chooserCancel\": {},\n",
-                "  \"privacy\": {{\"containsDocumentContent\": false, \"containsClipboardContent\": false, \"containsAbsolutePaths\": false}}\n",
+                "  \"chooserNoReadAudit\": {{\"status\": \"{}\", \"auditKind\": \"compiledSourceTokenDenylist\", \"compiledSourceCount\": 2, \"forbiddenApiMatchCount\": {}}},\n",
+                "  \"privacy\": {{\"containsDocumentContent\": false, \"containsClipboardContent\": false, \"containsAbsolutePaths\": false, \"containsCaptureNonce\": false}}\n",
                 "}}\n"
             ),
             TASK_ID,
@@ -296,10 +338,173 @@ impl HostReport {
             self.editor_mounted,
             self.content_editable,
             self.native_file_input_present,
+            self.capture_boundary_ready,
             ime_json(&self.ime_confirm),
             ime_json(&self.ime_cancel),
             chooser_json(&self.chooser),
+            self.no_read_audit.status,
+            self.no_read_audit.forbidden_api_match_count,
         )
+    }
+}
+
+#[derive(Clone, Debug)]
+struct TrustedTokenBundle {
+    capture_ready: String,
+    confirm_begin: String,
+    confirm_finish: String,
+    cancel_begin: String,
+    cancel_finish: String,
+    chooser_begin: String,
+    chooser_finish: String,
+}
+
+impl TrustedTokenBundle {
+    fn generate() -> Result<Self, &'static str> {
+        let mut random = [0_u8; TOKEN_BYTES * TOKEN_COUNT];
+        File::open("/dev/urandom")
+            .and_then(|mut file| file.read_exact(&mut random))
+            .map_err(|_| "ERR_HOST_SMOKE_NONCE_GENERATION")?;
+        let (chunks, remainder) = random.as_chunks::<TOKEN_BYTES>();
+        if !remainder.is_empty() || chunks.len() != TOKEN_COUNT {
+            return Err("ERR_HOST_SMOKE_NONCE_COUNT");
+        }
+        let mut chunks = chunks.iter().map(|chunk| hex_token(chunk));
+        Ok(Self {
+            capture_ready: chunks.next().ok_or("ERR_HOST_SMOKE_NONCE_COUNT")?,
+            confirm_begin: chunks.next().ok_or("ERR_HOST_SMOKE_NONCE_COUNT")?,
+            confirm_finish: chunks.next().ok_or("ERR_HOST_SMOKE_NONCE_COUNT")?,
+            cancel_begin: chunks.next().ok_or("ERR_HOST_SMOKE_NONCE_COUNT")?,
+            cancel_finish: chunks.next().ok_or("ERR_HOST_SMOKE_NONCE_COUNT")?,
+            chooser_begin: chunks.next().ok_or("ERR_HOST_SMOKE_NONCE_COUNT")?,
+            chooser_finish: chunks.next().ok_or("ERR_HOST_SMOKE_NONCE_COUNT")?,
+        })
+    }
+
+    fn javascript_object(&self) -> String {
+        format!(
+            concat!(
+                "{{captureReady:\"{}\",confirmBegin:\"{}\",confirmFinish:\"{}\",",
+                "cancelBegin:\"{}\",cancelFinish:\"{}\",chooserBegin:\"{}\",chooserFinish:\"{}\"}}"
+            ),
+            self.capture_ready,
+            self.confirm_begin,
+            self.confirm_finish,
+            self.cancel_begin,
+            self.cancel_finish,
+            self.chooser_begin,
+            self.chooser_finish,
+        )
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum TrustedFlowStage {
+    AwaitConfirmBegin,
+    ConfirmActive,
+    AwaitCancelBegin,
+    CancelActive,
+    AwaitChooserBegin,
+    ChooserActive,
+    Complete,
+    Failed,
+}
+
+struct TrustedFlow {
+    stage: TrustedFlowStage,
+    tokens: TrustedTokenBundle,
+}
+
+impl TrustedFlow {
+    fn consume(slot: &mut String, supplied: &str) -> bool {
+        if slot.is_empty() || slot != supplied {
+            return false;
+        }
+        slot.clear();
+        true
+    }
+
+    fn capture_ready(&mut self, token: &str) -> Result<(), &'static str> {
+        if Self::consume(&mut self.tokens.capture_ready, token) {
+            Ok(())
+        } else {
+            Err("ERR_HOST_SMOKE_CAPTURE_TOKEN")
+        }
+    }
+
+    fn begin_ime(&mut self, scenario: &str, token: &str) -> Result<(), &'static str> {
+        let valid = match (self.stage, scenario) {
+            (TrustedFlowStage::AwaitConfirmBegin, "confirm") => {
+                Self::consume(&mut self.tokens.confirm_begin, token)
+            }
+            (TrustedFlowStage::AwaitCancelBegin, "cancel") => {
+                Self::consume(&mut self.tokens.cancel_begin, token)
+            }
+            _ => false,
+        };
+        if !valid {
+            return Err("ERR_HOST_SMOKE_IME_BEGIN_TOKEN");
+        }
+        self.stage = if scenario == "confirm" {
+            TrustedFlowStage::ConfirmActive
+        } else {
+            TrustedFlowStage::CancelActive
+        };
+        Ok(())
+    }
+
+    fn finish_ime(
+        &mut self,
+        scenario: &str,
+        token: &str,
+        evidence_passed: bool,
+    ) -> Result<(), &'static str> {
+        let valid = match (self.stage, scenario) {
+            (TrustedFlowStage::ConfirmActive, "confirm") => {
+                Self::consume(&mut self.tokens.confirm_finish, token)
+            }
+            (TrustedFlowStage::CancelActive, "cancel") => {
+                Self::consume(&mut self.tokens.cancel_finish, token)
+            }
+            _ => false,
+        };
+        if !valid {
+            return Err("ERR_HOST_SMOKE_IME_FINISH_TOKEN");
+        }
+        self.stage = if evidence_passed {
+            if scenario == "confirm" {
+                TrustedFlowStage::AwaitCancelBegin
+            } else {
+                TrustedFlowStage::AwaitChooserBegin
+            }
+        } else {
+            TrustedFlowStage::Failed
+        };
+        Ok(())
+    }
+
+    fn begin_chooser(&mut self, token: &str) -> Result<(), &'static str> {
+        if self.stage != TrustedFlowStage::AwaitChooserBegin
+            || !Self::consume(&mut self.tokens.chooser_begin, token)
+        {
+            return Err("ERR_HOST_SMOKE_CHOOSER_BEGIN_TOKEN");
+        }
+        self.stage = TrustedFlowStage::ChooserActive;
+        Ok(())
+    }
+
+    fn finish_chooser(&mut self, token: &str, evidence_passed: bool) -> Result<(), &'static str> {
+        if self.stage != TrustedFlowStage::ChooserActive
+            || !Self::consume(&mut self.tokens.chooser_finish, token)
+        {
+            return Err("ERR_HOST_SMOKE_CHOOSER_FINISH_TOKEN");
+        }
+        self.stage = if evidence_passed {
+            TrustedFlowStage::Complete
+        } else {
+            TrustedFlowStage::Failed
+        };
+        Ok(())
     }
 }
 
@@ -307,10 +512,15 @@ struct HostSmokeState {
     root: PathBuf,
     mode: HostMode,
     report: Mutex<HostReport>,
+    trusted_flow: Mutex<TrustedFlow>,
 }
 
 impl HostSmokeState {
-    fn new(root: PathBuf, mode: HostMode) -> Result<Self, &'static str> {
+    fn new(
+        root: PathBuf,
+        mode: HostMode,
+        tokens: TrustedTokenBundle,
+    ) -> Result<Self, &'static str> {
         let atomic_replace = run_atomic_replace_self_test(&root);
         let state = Self {
             root,
@@ -318,8 +528,10 @@ impl HostSmokeState {
             report: Mutex::new(HostReport {
                 mode,
                 atomic_replace,
+                no_read_audit: StaticNoReadAudit::run(),
                 menu_built: false,
                 menu_activation_count: 0,
+                capture_boundary_ready: false,
                 frontend_ready: false,
                 editor_mounted: false,
                 content_editable: false,
@@ -327,6 +539,10 @@ impl HostSmokeState {
                 ime_confirm: ImeEvidence::pending(),
                 ime_cancel: ImeEvidence::pending(),
                 chooser: ChooserEvidence::pending(),
+            }),
+            trusted_flow: Mutex::new(TrustedFlow {
+                stage: TrustedFlowStage::AwaitConfirmBegin,
+                tokens,
             }),
         };
         state.persist_current()?;
@@ -350,6 +566,35 @@ impl HostSmokeState {
         write_report_json(&self.root, &json)?;
         Ok(json)
     }
+
+    fn result_state(&self) -> Result<&'static str, &'static str> {
+        self.report
+            .lock()
+            .map(|report| report.result_state())
+            .map_err(|_| "ERR_HOST_SMOKE_STATE")
+    }
+}
+
+fn hex_token(bytes: &[u8]) -> String {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let mut encoded = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        encoded.push(HEX[(byte >> 4) as usize] as char);
+        encoded.push(HEX[(byte & 0x0f) as usize] as char);
+    }
+    encoded
+}
+
+fn build_initialization_script(tokens: &TrustedTokenBundle) -> Result<String, &'static str> {
+    if INITIALIZATION_SCRIPT_TEMPLATE
+        .matches(TOKEN_BUNDLE_PLACEHOLDER)
+        .count()
+        != 1
+    {
+        return Err("ERR_HOST_SMOKE_INIT_TEMPLATE");
+    }
+    Ok(INITIALIZATION_SCRIPT_TEMPLATE
+        .replace(TOKEN_BUNDLE_PLACEHOLDER, &tokens.javascript_object()))
 }
 
 pub(crate) fn configure(builder: Builder<Wry>) -> Result<Builder<Wry>, &'static str> {
@@ -363,10 +608,21 @@ pub(crate) fn configure(builder: Builder<Wry>) -> Result<Builder<Wry>, &'static 
     let mode = HostMode::from_environment()?;
     let root = env::var_os(ROOT_ENV).ok_or("ERR_HOST_SMOKE_ROOT_MISSING")?;
     let root = validate_private_temp_root(Path::new(&root))?;
-    let state = HostSmokeState::new(root, mode)?;
+    let tokens = TrustedTokenBundle::generate()?;
+    let initialization_script = build_initialization_script(&tokens)?;
+    let state = HostSmokeState::new(root, mode, tokens)?;
+
+    // A plugin initialization script runs after Tauri's core script has
+    // installed `__TAURI_INTERNALS__.invoke`, but still at document start and
+    // before any HTML/application script. `append_invoke_initialization_script`
+    // runs earlier than the core script, so using it here would fail before the
+    // private capture closure can latch the invoke function.
+    let capture_plugin = tauri::plugin::Builder::<Wry>::new("host-release-smoke-capture")
+        .js_init_script(initialization_script)
+        .build();
 
     let builder = builder
-        .append_invoke_initialization_script(RUNTIME_FRONTEND_LATCH)
+        .plugin(capture_plugin)
         .manage(state)
         .menu(|app| {
             let ping = MenuItemBuilder::with_id(MENU_PING_ID, "Record Menu Activation")
@@ -397,14 +653,45 @@ pub(crate) fn configure(builder: Builder<Wry>) -> Result<Builder<Wry>, &'static 
             });
         })
         .invoke_handler(tauri::generate_handler![
+            host_release_smoke_capture_ready,
             host_release_smoke_frontend_ready,
-            host_release_smoke_record_ime,
-            host_release_smoke_record_chooser,
+            host_release_smoke_trusted_ime_begin,
+            host_release_smoke_trusted_ime_finish,
+            host_release_smoke_trusted_chooser_begin,
+            host_release_smoke_trusted_chooser_finish,
             host_release_smoke_status,
             host_release_smoke_finish,
         ]);
 
     Ok(builder)
+}
+
+fn maybe_exit_automated(app: &AppHandle, state: &HostSmokeState) {
+    if state.mode == HostMode::Automated && state.result_state() == Ok("automatedReady") {
+        app.exit(0);
+    }
+}
+
+#[tauri::command]
+fn host_release_smoke_capture_ready(
+    app: AppHandle,
+    state: State<'_, HostSmokeState>,
+    token: String,
+) -> Result<String, String> {
+    state
+        .trusted_flow
+        .lock()
+        .map_err(|_| "ERR_HOST_SMOKE_STATE".to_string())?
+        .capture_ready(&token)
+        .map_err(str::to_string)?;
+    let snapshot = state
+        .update(|report| {
+            report.capture_boundary_ready = true;
+            Ok(())
+        })
+        .map_err(str::to_string)?;
+    maybe_exit_automated(&app, &state);
+    Ok(snapshot)
 }
 
 #[tauri::command]
@@ -415,10 +702,9 @@ fn host_release_smoke_frontend_ready(
     editor_kind: String,
     capabilities: Vec<bool>,
 ) -> Result<String, String> {
-    if harness_version != 1 || editor_kind != "codemirror6" || capabilities.len() != 3 {
+    if harness_version != 2 || editor_kind != "codemirror6" || capabilities.len() != 3 {
         return Err("ERR_HOST_SMOKE_FRONTEND_CONTRACT".into());
     }
-
     let snapshot = state
         .update(|report| {
             report.frontend_ready = capabilities.iter().all(|value| *value);
@@ -428,57 +714,122 @@ fn host_release_smoke_frontend_ready(
             Ok(())
         })
         .map_err(str::to_string)?;
-
-    if state.mode == HostMode::Automated {
-        app.exit(0);
-    }
+    maybe_exit_automated(&app, &state);
     Ok(snapshot)
 }
 
 #[tauri::command]
-fn host_release_smoke_record_ime(
+fn host_release_smoke_trusted_ime_begin(
     state: State<'_, HostSmokeState>,
+    token: String,
+    scenario: String,
+) -> Result<String, String> {
+    if state.mode != HostMode::Manual {
+        return Err("ERR_HOST_SMOKE_MANUAL_MODE_REQUIRED".into());
+    }
+    state
+        .trusted_flow
+        .lock()
+        .map_err(|_| "ERR_HOST_SMOKE_STATE".to_string())?
+        .begin_ime(&scenario, &token)
+        .map_err(str::to_string)?;
+    state.persist_current().map_err(str::to_string)
+}
+
+#[tauri::command]
+fn host_release_smoke_trusted_ime_finish(
+    state: State<'_, HostSmokeState>,
+    token: String,
     scenario: String,
     counts: Vec<u32>,
     flags: Vec<bool>,
     final_utf16_length: u32,
 ) -> Result<String, String> {
-    if scenario != "confirm" && scenario != "cancel" {
-        return Err("ERR_HOST_SMOKE_IME_SCENARIO".into());
+    if state.mode != HostMode::Manual {
+        return Err("ERR_HOST_SMOKE_MANUAL_MODE_REQUIRED".into());
     }
-    let evidence = ImeEvidence::from_wire(&scenario, &counts, &flags, final_utf16_length);
+    let mut evidence =
+        ImeEvidence::from_private_capture(&scenario, &counts, &flags, final_utf16_length);
+    let passed = evidence.status == "passed";
     state
+        .trusted_flow
+        .lock()
+        .map_err(|_| "ERR_HOST_SMOKE_STATE".to_string())?
+        .finish_ime(&scenario, &token, passed)
+        .map_err(str::to_string)?;
+    evidence.native_nonce_flow_consumed = true;
+    let snapshot = state
         .update(|report| {
             let target = if scenario == "confirm" {
                 &mut report.ime_confirm
-            } else {
+            } else if scenario == "cancel" {
                 &mut report.ime_cancel
+            } else {
+                return Err("ERR_HOST_SMOKE_IME_SCENARIO");
             };
-            if target.status == "failed" {
-                return Err("ERR_HOST_SMOKE_IME_STICKY_FAILURE");
+            if target.status != "pending" {
+                return Err("ERR_HOST_SMOKE_IME_STICKY_RESULT");
             }
             *target = evidence;
             Ok(())
         })
-        .map_err(str::to_string)
+        .map_err(str::to_string)?;
+    if passed {
+        Ok(snapshot)
+    } else {
+        Err("ERR_HOST_SMOKE_IME_EVIDENCE".into())
+    }
 }
 
 #[tauri::command]
-fn host_release_smoke_record_chooser(
+fn host_release_smoke_trusted_chooser_begin(
     state: State<'_, HostSmokeState>,
-    event_kind: String,
-    metrics: Vec<u32>,
+    token: String,
 ) -> Result<String, String> {
-    let evidence = ChooserEvidence::from_wire(&event_kind, &metrics);
+    if state.mode != HostMode::Manual {
+        return Err("ERR_HOST_SMOKE_MANUAL_MODE_REQUIRED".into());
+    }
     state
+        .trusted_flow
+        .lock()
+        .map_err(|_| "ERR_HOST_SMOKE_STATE".to_string())?
+        .begin_chooser(&token)
+        .map_err(str::to_string)?;
+    state.persist_current().map_err(str::to_string)
+}
+
+#[tauri::command]
+fn host_release_smoke_trusted_chooser_finish(
+    state: State<'_, HostSmokeState>,
+    token: String,
+    event_kind: String,
+) -> Result<String, String> {
+    if state.mode != HostMode::Manual {
+        return Err("ERR_HOST_SMOKE_MANUAL_MODE_REQUIRED".into());
+    }
+    let mut evidence = ChooserEvidence::from_private_capture(&event_kind);
+    let passed = evidence.status == "passed";
+    state
+        .trusted_flow
+        .lock()
+        .map_err(|_| "ERR_HOST_SMOKE_STATE".to_string())?
+        .finish_chooser(&token, passed)
+        .map_err(str::to_string)?;
+    evidence.native_nonce_flow_consumed = true;
+    let snapshot = state
         .update(|report| {
-            if report.chooser.status == "failed" {
-                return Err("ERR_HOST_SMOKE_CHOOSER_STICKY_FAILURE");
+            if report.chooser.status != "pending" {
+                return Err("ERR_HOST_SMOKE_CHOOSER_STICKY_RESULT");
             }
             report.chooser = evidence;
             Ok(())
         })
-        .map_err(str::to_string)
+        .map_err(str::to_string)?;
+    if passed {
+        Ok(snapshot)
+    } else {
+        Err("ERR_HOST_SMOKE_CHOOSER_EVIDENCE".into())
+    }
 }
 
 #[tauri::command]
@@ -491,8 +842,8 @@ fn host_release_smoke_finish(
     app: AppHandle,
     state: State<'_, HostSmokeState>,
 ) -> Result<(), String> {
-    let snapshot = state.persist_current().map_err(str::to_string)?;
-    if !snapshot.contains("\"resultState\": \"manualPass\"") {
+    state.persist_current().map_err(str::to_string)?;
+    if state.result_state().map_err(str::to_string)? != "manualPass" {
         return Err("ERR_HOST_SMOKE_MANUAL_INCOMPLETE".into());
     }
     app.exit(0);
@@ -654,30 +1005,33 @@ fn atomic_json(evidence: &AtomicReplaceEvidence) -> String {
 
 fn ime_json(evidence: &ImeEvidence) -> String {
     format!(
-        "{{\"status\": \"{}\", \"compositionStartCount\": {}, \"compositionUpdateCount\": {}, \"compositionEndCount\": {}, \"beforeInputCount\": {}, \"inputCount\": {}, \"unsafeRuntimeSamples\": {}, \"eventOrderValid\": {}, \"sawComposingPhase\": {}, \"sawRefreshPendingPhase\": {}, \"finalStateMatches\": {}, \"finalUtf16Length\": {}}}",
+        "{{\"status\": \"{}\", \"captureSource\": \"nativeInitializationScript\", \"compositionStartCount\": {}, \"compositionUpdateCount\": {}, \"compositionEndCount\": {}, \"beforeInputCount\": {}, \"inputCount\": {}, \"rejectedUntrustedEventCount\": {}, \"strictSequenceValid\": {}, \"compositionDataValid\": {}, \"inputFieldsValid\": {}, \"singleTargetValid\": {}, \"finalStateMatches\": {}, \"nativeNonceFlowConsumed\": {}, \"finalUtf16Length\": {}}}",
         evidence.status,
         evidence.composition_start_count,
         evidence.composition_update_count,
         evidence.composition_end_count,
         evidence.before_input_count,
         evidence.input_count,
-        evidence.unsafe_runtime_samples,
-        evidence.event_order_valid,
-        evidence.saw_composing_phase,
-        evidence.saw_refresh_pending_phase,
+        evidence.rejected_untrusted_event_count,
+        evidence.strict_sequence_valid,
+        evidence.composition_data_valid,
+        evidence.input_fields_valid,
+        evidence.single_target_valid,
         evidence.final_state_matches,
+        evidence.native_nonce_flow_consumed,
         evidence.final_utf16_length,
     )
 }
 
 fn chooser_json(evidence: &ChooserEvidence) -> String {
     format!(
-        "{{\"status\": \"{}\", \"eventKind\": \"{}\", \"selectedCountBucket\": \"{}\", \"fileReadAttempts\": {}, \"pathReadAttempts\": {}}}",
+        "{{\"status\": \"{}\", \"captureSource\": \"nativeInitializationScript\", \"eventKind\": \"{}\", \"eventWasTrusted\": {}, \"nativeDialogInteractionObserved\": {}, \"nativeNonceFlowConsumed\": {}, \"selectionDataInspected\": {}}}",
         evidence.status,
         evidence.event_kind,
-        evidence.selected_count_bucket,
-        evidence.file_read_attempts,
-        evidence.path_read_attempts,
+        evidence.event_was_trusted,
+        evidence.native_dialog_interaction_observed,
+        evidence.native_nonce_flow_consumed,
+        evidence.selection_data_inspected,
     )
 }
 
@@ -692,6 +1046,18 @@ mod tests {
     use super::*;
 
     static TEST_SEQUENCE: AtomicU64 = AtomicU64::new(1);
+
+    fn test_tokens() -> TrustedTokenBundle {
+        TrustedTokenBundle {
+            capture_ready: "capture-ready".into(),
+            confirm_begin: "confirm-begin".into(),
+            confirm_finish: "confirm-finish".into(),
+            cancel_begin: "cancel-begin".into(),
+            cancel_finish: "cancel-finish".into(),
+            chooser_begin: "chooser-begin".into(),
+            chooser_finish: "chooser-finish".into(),
+        }
+    }
 
     fn private_test_root() -> PathBuf {
         let name = format!(
@@ -720,8 +1086,10 @@ mod tests {
         let report = HostReport {
             mode: HostMode::Automated,
             atomic_replace: evidence,
+            no_read_audit: StaticNoReadAudit::run(),
             menu_built: true,
             menu_activation_count: 0,
+            capture_boundary_ready: true,
             frontend_ready: true,
             editor_mounted: true,
             content_editable: true,
@@ -740,35 +1108,96 @@ mod tests {
     }
 
     #[test]
-    fn ime_001_and_chooser_evidence_fail_closed() {
-        let passing = ImeEvidence::from_wire(
+    fn ime_001_private_capture_evidence_rejects_untrusted_or_malformed_sequences() {
+        let passing = ImeEvidence::from_private_capture(
             "confirm",
             &[1, 2, 1, 2, 2, 0],
-            &[true, true, true, true],
-            "# \u{4e2d}\u{6587}\n\n".encode_utf16().count() as u32,
+            &[true, true, true, true, true],
+            "\u{786e}\u{8ba4}\u{ff1a}\u{4e2d}\u{6587}"
+                .encode_utf16()
+                .count() as u32,
         );
         assert_eq!(passing.status, "passed");
 
-        let unsafe_sample = ImeEvidence::from_wire(
+        let synthetic_sample = ImeEvidence::from_private_capture(
             "confirm",
             &[1, 2, 1, 2, 2, 1],
-            &[true, true, true, true],
-            "# \u{4e2d}\u{6587}\n\n".encode_utf16().count() as u32,
+            &[true, true, true, true, true],
+            "\u{786e}\u{8ba4}\u{ff1a}\u{4e2d}\u{6587}"
+                .encode_utf16()
+                .count() as u32,
         );
-        assert_eq!(unsafe_sample.status, "failed");
+        assert_eq!(synthetic_sample.status, "failed");
 
+        let loose_order = ImeEvidence::from_private_capture(
+            "confirm",
+            &[2, 2, 1, 2, 2, 0],
+            &[false, true, true, true, true],
+            5,
+        );
+        assert_eq!(loose_order.status, "failed");
         assert_eq!(
-            ChooserEvidence::from_wire("cancel", &[0, 0, 0]).status,
+            ChooserEvidence::from_private_capture("cancel").status,
             "passed"
         );
         assert_eq!(
-            ChooserEvidence::from_wire("change", &[1, 0, 0]).status,
+            ChooserEvidence::from_private_capture("change").status,
             "failed"
+        );
+    }
+
+    #[test]
+    fn native_nonce_flow_is_ordered_one_time_and_rejects_frontend_fabrication() {
+        let tokens = test_tokens();
+        let mut flow = TrustedFlow {
+            stage: TrustedFlowStage::AwaitConfirmBegin,
+            tokens,
+        };
+        assert_eq!(
+            flow.begin_ime("confirm", "frontend-invented"),
+            Err("ERR_HOST_SMOKE_IME_BEGIN_TOKEN")
+        );
+        assert_eq!(flow.stage, TrustedFlowStage::AwaitConfirmBegin);
+
+        let confirm_begin = flow.tokens.confirm_begin.clone();
+        let confirm_finish = flow.tokens.confirm_finish.clone();
+        flow.begin_ime("confirm", &confirm_begin)
+            .expect("private confirm begin token");
+        assert_eq!(
+            flow.begin_ime("confirm", &confirm_begin),
+            Err("ERR_HOST_SMOKE_IME_BEGIN_TOKEN")
         );
         assert_eq!(
-            ChooserEvidence::from_wire("cancel", &[0, 1, 0]).status,
-            "failed"
+            flow.finish_ime("confirm", "frontend-invented", true),
+            Err("ERR_HOST_SMOKE_IME_FINISH_TOKEN")
         );
+        flow.finish_ime("confirm", &confirm_finish, true)
+            .expect("private confirm finish token");
+        assert_eq!(flow.stage, TrustedFlowStage::AwaitCancelBegin);
+
+        let cancel_begin = flow.tokens.cancel_begin.clone();
+        let cancel_finish = flow.tokens.cancel_finish.clone();
+        flow.begin_ime("cancel", &cancel_begin)
+            .expect("private cancel begin token");
+        flow.finish_ime("cancel", &cancel_finish, false)
+            .expect("correct token consumes failing evidence");
+        assert_eq!(flow.stage, TrustedFlowStage::Failed);
+        assert_eq!(
+            flow.begin_chooser("frontend-invented"),
+            Err("ERR_HOST_SMOKE_CHOOSER_BEGIN_TOKEN")
+        );
+    }
+
+    #[test]
+    fn chooser_no_read_audit_is_compiled_source_fact_not_runtime_counter() {
+        let audit = StaticNoReadAudit::run();
+        assert_eq!(audit.status, "passed");
+        assert_eq!(audit.forbidden_api_match_count, 0);
+        let evidence = ChooserEvidence::from_private_capture("cancel");
+        let json = chooser_json(&evidence);
+        assert!(json.contains("\"selectionDataInspected\": false"));
+        assert!(!json.contains("fileReadAttempts"));
+        assert!(!json.contains("pathReadAttempts"));
     }
 
     #[test]

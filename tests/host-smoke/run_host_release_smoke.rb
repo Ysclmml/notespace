@@ -22,8 +22,14 @@ FRONTEND_SENTINELS = [
 NATIVE_SENTINELS = [
   "MARKDOWN_WORKSPACE_HOST_RELEASE_SMOKE_ROOT",
   "__MARKDOWN_WORKSPACE_HOST_RELEASE_SMOKE__",
+  "host_release_smoke_trusted_ime_finish",
+  "host_release_smoke_trusted_chooser_finish",
   "host_release_smoke_frontend_ready",
   "host-smoke-menu-ping"
+].freeze
+LEGACY_TRUST_BYPASS_SENTINELS = [
+  "host_release_smoke_record_ime",
+  "host_release_smoke_record_chooser"
 ].freeze
 PINNED_PNPM = [
   "volta", "run", "--node", "24.14.0", "--pnpm", "10.32.1", "pnpm"
@@ -137,7 +143,7 @@ def assert_privacy!(report)
 end
 
 def assert_automated_report!(report)
-  assert!(report.fetch("schemaVersion") == 1, "wrong report schema")
+  assert!(report.fetch("schemaVersion") == 2, "wrong report schema")
   assert!(report.fetch("taskId") == "P0-HOST-SMOKE-01", "wrong task id")
   assert!(report.fetch("resultState") == "automatedReady", "automated host not ready")
   build = report.fetch("build")
@@ -155,9 +161,14 @@ def assert_automated_report!(report)
   assert!(report.dig("frontend", "editorMounted"), "CodeMirror was not mounted")
   assert!(report.dig("frontend", "contentEditable"), "CodeMirror was not contenteditable")
   assert!(report.dig("frontend", "nativeFileInputPresent"), "native file input was absent")
+  assert!(report.dig("frontend", "captureBoundary") == "nativeInitializationScript", "wrong capture boundary")
+  assert!(report.dig("frontend", "captureBoundaryReady"), "private capture boundary was not ready")
   assert!(report.dig("imeConfirm", "status") == "pending", "automated run fabricated IME evidence")
   assert!(report.dig("imeCancel", "status") == "pending", "automated run fabricated IME evidence")
   assert!(report.dig("chooserCancel", "status") == "pending", "automated run fabricated chooser evidence")
+  assert!(report.dig("chooserNoReadAudit", "status") == "passed", "compiled no-read audit failed")
+  assert!(report.dig("chooserNoReadAudit", "auditKind") == "compiledSourceTokenDenylist", "wrong no-read audit kind")
+  assert!(report.dig("chooserNoReadAudit", "forbiddenApiMatchCount") == 0, "forbidden chooser API found")
   assert_privacy!(report)
 end
 
@@ -168,18 +179,39 @@ def assert_manual_report!(report)
   assert!(report.dig("imeConfirm", "status") == "passed", "IME confirm did not pass")
   assert!(report.dig("imeCancel", "status") == "passed", "IME cancel did not pass")
   assert!(report.dig("chooserCancel", "status") == "passed", "chooser cancel did not pass")
-  assert!(report.dig("chooserCancel", "fileReadAttempts") == 0, "chooser read file content")
-  assert!(report.dig("chooserCancel", "pathReadAttempts") == 0, "chooser read a path")
+  %w[imeConfirm imeCancel].each do |section|
+    assert!(report.dig(section, "captureSource") == "nativeInitializationScript", "#{section} was frontend-authored")
+    assert!(report.dig(section, "compositionStartCount") == 1, "#{section} did not have exactly one start")
+    assert!(report.dig(section, "compositionEndCount") == 1, "#{section} did not have exactly one end")
+    assert!(report.dig(section, "compositionUpdateCount").to_i >= 1, "#{section} had no update")
+    assert!(report.dig(section, "beforeInputCount") == report.dig(section, "inputCount"), "#{section} input pair mismatch")
+    assert!(report.dig(section, "rejectedUntrustedEventCount") == 0, "#{section} included an untrusted event")
+    %w[strictSequenceValid compositionDataValid inputFieldsValid singleTargetValid finalStateMatches nativeNonceFlowConsumed].each do |field|
+      assert!(report.dig(section, field), "#{section}.#{field} was false")
+    end
+  end
+  chooser = report.fetch("chooserCancel")
+  assert!(chooser.fetch("captureSource") == "nativeInitializationScript", "chooser evidence was frontend-authored")
+  assert!(chooser.fetch("eventKind") == "cancel", "chooser did not emit cancel")
+  assert!(chooser.fetch("eventWasTrusted"), "chooser cancel was synthetic")
+  assert!(chooser.fetch("nativeDialogInteractionObserved"), "native chooser interaction was not observed")
+  assert!(chooser.fetch("nativeNonceFlowConsumed"), "chooser nonce flow was not consumed")
+  assert!(chooser.fetch("selectionDataInspected") == false, "chooser inspected selection data")
+  assert!(report.dig("chooserNoReadAudit", "status") == "passed", "compiled no-read audit failed")
+  assert!(report.dig("chooserNoReadAudit", "forbiddenApiMatchCount") == 0, "forbidden chooser API found")
   assert_privacy!(report)
 end
 
 def assert_chooser_source_is_read_free!
-  source = File.read(
+  sources = [
     File.join(ROOT, "src", "features", "editor", "host-smoke", "HostReleaseSmoke.tsx"),
-    encoding: "UTF-8"
-  )
-  forbidden = ["FileReader", ".arrayBuffer(", ".text(", ".stream(", ".name", ".path", "webkitRelativePath"]
-  hits = forbidden.select { |token| source.include?(token) }
+    File.join(ROOT, "src-tauri", "src", "host_release_smoke_init.js")
+  ].map { |path| File.read(path, encoding: "UTF-8") }
+  forbidden = [
+    "FileReader", ".files", ".value", ".arrayBuffer(", ".text(", ".stream(", ".name", ".path",
+    "webkitRelativePath", "createObjectURL", "getAsFile"
+  ]
+  hits = forbidden.select { |token| sources.any? { |source| source.include?(token) } }
   assert!(hits.empty?, "chooser source reads file/path data: #{hits.join(",")}")
 end
 
@@ -230,6 +262,8 @@ def build_and_verify_isolation!
   )
   assert!(tree_contains_any?(File.join(ROOT, "dist"), FRONTEND_SENTINELS), "host frontend surface missing")
   assert!(file_contains_all?(BINARY, NATIVE_SENTINELS), "host native surface missing")
+  assert!(!file_contains_any?(BINARY, LEGACY_TRUST_BYPASS_SENTINELS), "legacy frontend-authored evidence command remains")
+  assert!(!tree_contains_any?(File.join(ROOT, "dist"), LEGACY_TRUST_BYPASS_SENTINELS), "legacy evidence command remains in frontend")
   assert_chooser_source_is_read_free!
   assert_frontend_runtime_gate_source!
   assert_runtime_gate!
