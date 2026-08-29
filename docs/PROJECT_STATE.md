@@ -92,7 +92,7 @@
 | `P0-CI-01` | READY | unowned | `52dc387` / — | `OPS-CI-001` / pinned CI quality gates and artifact build | 领取后创建 task note；只由 Integration 修改 global CI |
 | `P0-CONTRACT-01` | READY | unowned | `52dc387` / — | `DATA-REVISION-001`、`SAFE-IPC-001`、`EXT-ROUTER-001`、`EXT-COMMAND-001` / IPC v1 + generated bindings | 领取后创建 task note；先复制 canonical schema，不重构语义 |
 | `P0-FIXTURE-01` | READY | unowned | `52dc387` / — | `DATA-ROUNDTRIP-001`、`DATA-UNKNOWN-001`、`EDIT-IME-001`、`EDIT-TABLE-001` / privacy-safe fixtures | 领取后创建 task note；危险大夹具只允许运行时生成 |
-| `P0-SPIKE-01` | CLAIMED | Editor review fixes (`/root/p0_spike_01_fix`) / Integration | `576a435` / `a2781a8` | `EDIT-IME-001`、`EDIT-TABLE-001`、`PERF-VIEWPORT-001` / fix reviewed decoration propagation, post-composition mutation freeze, and complete source reveal | [`P0-SPIKE-01.md`](tasks/P0-SPIKE-01.md)；在现有 disposable spike 上补边界失效、DOM 事件序列与结构优先级回归，然后重跑 focused/measurement/全门禁 |
+| `P0-SPIKE-01` | REVIEW | Editor review fixes (`/root/p0_spike_01_fix`) / Integration | `576a435` / `86e109f` | `EDIT-IME-001`、`EDIT-TABLE-001`、`PERF-VIEWPORT-001` / isolated CodeMirror feasibility + independent-review fixes | [`P0-SPIKE-01.md`](tasks/P0-SPIKE-01.md)；15/15 focused、18/18 全量前端、30-sample measurement、`pnpm verify`、文档门禁 PASS；Integration 合并后跑当前 schema drift，真实 macOS Pinyin/WKWebView 仍属 Phase 1/4 平台证据 |
 | `P0-SPIKE-02` | READY | unowned | `52dc387` / — | `FILE-PREFLIGHT-001`、`PERF-LARGE-001`、`SAFE-DATAURI-001`、`SAFE-IPC-001` / native safety feasibility | 领取后创建 task note；仅 spike/测量，不实现 Phase 1 file open |
 
 只列出了依赖已满足的第一批任务；`P0-FLAG-01` 必须等待 `P0-CONTRACT-01` 生成初始契约后才能进入 READY。
