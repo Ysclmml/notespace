@@ -1,14 +1,14 @@
 # P0-FIXTURE-01 — 脱敏 Markdown 与病态输入语料
 
-- Status: REVIEW
-- Owner / next owner: QA (`/root`) / Integration
-- Base revision / head revision: `28e6d8e` / `fadd833`
+- Status: CLAIMED
+- Owner / next owner: QA (`/root/p0_fixture_01_fix`) / Integration
+- Base revision / head revision: `28e6d8e` / `dec8bef` (independent-review remediation start)
 - Requirement IDs: `DATA-ROUNDTRIP-001`, `DATA-UNKNOWN-001`, `EDIT-IME-001`, `EDIT-TABLE-001`
 - Product UX IDs: fixture 基础设施任务，不直接关闭产品 UX
 - Test / acceptance IDs: `RT-001`, `RT-002`, `IME-001`, `TABLE-001`
 - ADRs / contract and schema versions: `ADR-0002`, `ADR-0004`; fixture manifest version 1
 - Feature flags: 无
-- Owned and touched paths: `tests/fixtures/**`; `tools/generate_fixtures.rb`; `scripts/validate_fixtures.rb`; 本 task note；`PROJECT_STATE.md` 的 `P0-FIXTURE-01` 行
+- Owned and touched paths: `tests/fixtures/**`; `tools/generate_fixtures.rb`; `scripts/validate_fixtures.rb`; `package.json`; Integration 明确授权的根 `.gitattributes` 精确 fixture 规则；本 task note；`PROJECT_STATE.md` 的 `P0-FIXTURE-01` 行
 
 ## Goal and non-goals
 

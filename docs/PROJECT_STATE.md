@@ -91,7 +91,7 @@
 | `P0-BOOT-01` | DONE | Integration / none | `7f98624` / `52dc387` | `OPS-BUILD-001`、`OPS-CONTEXT-001` / Git baseline + desktop shell | [`P0-BOOT-01.md`](tasks/P0-BOOT-01.md)；主线文档门禁与 `pnpm verify` PASS |
 | `P0-CI-01` | REVIEW | Integration/QA / Integration | `576a435` / `2cdc7df` | `OPS-CI-001`、`OPS-BUILD-001`、`OPS-CONTEXT-001` / pinned CI quality gates and artifact build | [`P0-CI-01.md`](tasks/P0-CI-01.md)；本地等价门禁与 artifact PASS；合并后等待首次 GitHub hosted run 补证 |
 | `P0-CONTRACT-01` | READY | unowned | `52dc387` / — | `DATA-REVISION-001`、`SAFE-IPC-001`、`EXT-ROUTER-001`、`EXT-COMMAND-001` / IPC v1 + generated bindings | 领取后创建 task note；先复制 canonical schema，不重构语义 |
-| `P0-FIXTURE-01` | REVIEW | QA / Integration | `28e6d8e` / `fadd833` | `DATA-ROUNDTRIP-001`、`DATA-UNKNOWN-001`、`EDIT-IME-001`、`EDIT-TABLE-001` / privacy-safe fixtures | [`P0-FIXTURE-01.md`](tasks/P0-FIXTURE-01.md)；10 manifests、15 committed files、9 runtime-only artifacts 与全仓门禁 PASS |
+| `P0-FIXTURE-01` | CLAIMED | QA (`/root/p0_fixture_01_fix`) / Integration | `28e6d8e` / `dec8bef` | `DATA-ROUNDTRIP-001`、`DATA-UNKNOWN-001`、`EDIT-IME-001`、`EDIT-TABLE-001` / privacy-safe fixtures + independent-review remediation | [`P0-FIXTURE-01.md`](tasks/P0-FIXTURE-01.md)；修复 symlink/realpath 边界、fixture byte policy、strict schema 与 09 §4.3 覆盖后重新交接 |
 | `P0-SPIKE-01` | READY | unowned | `52dc387` / — | `EDIT-IME-001`、`EDIT-TABLE-001`、`PERF-LARGE-001` / CodeMirror feasibility | 领取后创建 task note；仅 spike/测量，不实现 Phase 1 编辑器 |
 | `P0-SPIKE-02` | READY | unowned | `52dc387` / — | `FILE-PREFLIGHT-001`、`PERF-LARGE-001`、`SAFE-DATAURI-001`、`SAFE-IPC-001` / native safety feasibility | 领取后创建 task note；仅 spike/测量，不实现 Phase 1 file open |
 
