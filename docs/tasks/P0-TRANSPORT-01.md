@@ -1,8 +1,8 @@
 # P0-TRANSPORT-01 — 真实 Tauri 正文 IPC 容量验证
 
-- Status: REVIEW
-- Owner / next owner: Performance/Integration (`/root`) / independent reviewer
-- Base revision / head revision: `28e6d8e` / `e07efb8`
+- Status: DONE
+- Owner / next owner: Integration / future transport regression owner
+- Base revision / head revision: `28e6d8e` / implementation `e07efb8`, reviewed handoff `097e0f8`, main merge `8b11c21`
 - Requirement IDs: `SAFE-IPC-001`, `PERF-LARGE-001`
 - Product UX IDs: `UX-SAFE-001`
 - Test / acceptance IDs: `CONTRACT-024`（Phase 0 transport feasibility evidence only）
@@ -54,6 +54,8 @@
 | worst-escaping measurement | 同上；32 MiB NUL 正文，JSON 6x escaping | PASS | request `201,326,606` bytes，response `201,326,594` bytes；`878/872/872 ms`，median `872 ms`，max `878 ms` |
 | boundary unit tests | `cargo test --all-targets --all-features` via `pnpm verify` | PASS | Rust 2/2；32 MiB raw、193 MiB wire、1 MiB default 的 `-1/exact/+1` 语义 |
 | repository quality gate | hygiene self-test/scan；design validator；Ruby syntax；`pnpm verify`，Cargo 工具链目录显式加入当次命令环境 | PASS | format/lint/typecheck；Vitest 3/3；Rust fmt/clippy/tests；Vite；Tauri debug build |
+| Integration real transport | `PATH="${HOME}/.cargo/bin:${PATH}" ruby scripts/run_tauri_ipc_transport_spike.rb` on main merge `8b11c21` | PASS；default debug/release isolation；ordinary 3/3；worst-escaping 3/3 | ordinary request/response `33,554,446` / `33,554,434` B, median/max `165/238 ms`；worst request/response `201,326,606` / `201,326,594` B, median/max `938/1,057 ms` |
+| Integration repository gate | `PATH="${HOME}/.cargo/bin:${PATH}" pnpm verify` on main merge `8b11c21` | PASS | frontend 50/50；canonical contract Rust 16/16 + TS 29/29；fixtures 14/18/18/33；Rust unit 19/19 + safety 18/18；Vite/Tauri debug build |
 
 ## Open questions and blockers
 
@@ -63,9 +65,7 @@
 
 ## Remaining numbered steps
 
-1. 独立复核 feature isolation、fallback 观测和 runner 超时/清理边界。
-2. 在独立复核环境再运行 `ruby scripts/run_tauri_ipc_transport_spike.rb`与 `pnpm verify`。
-3. 复核 MERGE 后由 Integration 合并，并把这份实测作为 `P0-CONTRACT-01`/F0 发布的 `CONTRACT-024` transport 证据；不要把其他产品行为标为完成。
+1. 后续若正文 envelope、serializer、Tauri/Wry/WebView 版本或 wire 预算变化，transport regression owner 必须重跑该 runner；本任务不把其他产品行为标为完成。
 
 ## Data safety, recovery, and temporary artifacts
 
@@ -74,4 +74,4 @@
 
 ## Single recommended next action
 
-独立复核 branch `task/P0-TRANSPORT-01-tauri-ipc` 的 `e07efb8`，重跑真实 transport runner 与全门禁；给出 MERGE/NO-MERGE。
+Phase 0 Integration 继续收口 typed flags、host release 真实交互和 hosted CI 证据；不得因本任务通过而跳过这些出口。

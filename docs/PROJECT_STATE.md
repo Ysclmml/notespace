@@ -94,17 +94,17 @@
 | `P0-FLAG-01` | READY | unowned | `055084b` / — | `DATA-REVISION-001`、`SAFE-IPC-001`、`EXT-ROUTER-001`、`EXT-COMMAND-001`、`UX-EXT-001` / typed feature registry | 从已集成契约的 main 领取；实现 production defaults、test overrides、dependency/capability validation 与脱敏 diagnostics |
 | `P0-FIXTURE-01` | DONE | Integration / downstream fixture consumers | implementation `80e434a` / merge `9172a9c` | `DATA-ROUNDTRIP-001`、`DATA-UNKNOWN-001`、`EDIT-IME-001`、`EDIT-TABLE-001` + 09 §4.3 safety/recovery corpus / privacy-safe fixtures | [`P0-FIXTURE-01.md`](tasks/P0-FIXTURE-01.md)；14 manifests、18 committed files、18 runtime artifacts、33 `-text` paths；独立终审 MERGE；fixture/canonical/full main 门禁 PASS |
 | `P0-SPIKE-01` | DONE | Integration / `P1-EDITOR-01` | implementation `2e0beb2`, reviewed handoff `4fcc284` / merge `9688df8` | `EDIT-IME-001`、`EDIT-TABLE-001`、`PERF-VIEWPORT-001` / isolated CodeMirror spike | [`P0-SPIKE-01.md`](tasks/P0-SPIKE-01.md)；独立终审 MERGE；main focused 18/18、30-sample measurement、frontend 50/50、canonical contract/fixture/Rust/Vite/Tauri 全门禁 PASS |
-| `P0-SPIKE-02` | DONE | Integration / `P1-PREFLIGHT-01` | implementation `67e33dd`, reviewed handoff `eb11e2e` / merge `d30e1db` | `FILE-PREFLIGHT-001`、`PERF-LARGE-001`、`SAFE-DATAURI-001`、`SAFE-IPC-001` / native safety feasibility | [`P0-SPIKE-02.md`](tasks/P0-SPIKE-02.md)；独立终审 MERGE；main debug/release focused 各 18/18，canonical contract/fixture/Rust/Vite/Tauri 全门禁 PASS；真实 transport 仍由独立任务关闭 |
+| `P0-SPIKE-02` | DONE | Integration / `P1-PREFLIGHT-01` | implementation `67e33dd`, reviewed handoff `eb11e2e` / merge `d30e1db` | `FILE-PREFLIGHT-001`、`PERF-LARGE-001`、`SAFE-DATAURI-001`、`SAFE-IPC-001` / native safety feasibility | [`P0-SPIKE-02.md`](tasks/P0-SPIKE-02.md)；独立终审 MERGE；main debug/release focused 各 18/18，canonical contract/fixture/Rust/Vite/Tauri 全门禁 PASS；真实 transport 已由 `P0-TRANSPORT-01` 关闭本机 F0 feasibility |
+| `P0-TRANSPORT-01` | DONE | Integration / future transport regression owner | implementation `e07efb8`, reviewed handoff `097e0f8` / merge `8b11c21` | `SAFE-IPC-001`、`PERF-LARGE-001` / real Tauri/WKWebView `CONTRACT-024` feasibility | [`P0-TRANSPORT-01.md`](tasks/P0-TRANSPORT-01.md)；default builds 零测试 surface；32 MiB ordinary 与约 193 MiB worst escaping 各 3/3 real round-trip；main 全门禁 PASS |
 
 只列出了依赖已满足的第一批任务；`P0-FLAG-01` 必须等待 `P0-CONTRACT-01` 生成初始契约后才能进入 READY。
 
 ## 7. 下一步（精确到可执行）
 
-1. 从 `055084b` 集成检查点领取 `P0-FLAG-01`，不改动已生成 IPC 契约。
-2. 按固定顺序集成已复审的 fixture、editor spike、native safety 与 real transport；每次保留其他 ledger 行并重跑全门禁。
-3. 完成 host release 可信证据修复的独立终审和真实系统拼音/菜单/chooser 人工验证。
-4. 获取 GitHub hosted `macos-15` 精确提交的 workflow/artifact 证据；当前无 remote，未获得前不得宣称 `P0-CI-01` DONE。
-5. 只有 Phase 0 出口全部满足时由 Integration 发布 F0；F0 之前禁止进入 Phase 1 功能实现。
+1. 完成 `P0-FLAG-01` typed registry 的独立终审、合并与全门禁，不改动已生成 IPC 契约。
+2. 完成 host release 可信证据修复的独立终审和真实系统拼音/菜单/chooser 人工验证。
+3. 获取 GitHub hosted `macos-15` 精确提交的 workflow/artifact 证据；当前无 remote，未获得前不得宣称 `P0-CI-01` DONE。
+4. 只有 Phase 0 出口全部满足时由 Integration 发布 F0；F0 之前禁止进入 Phase 1 功能实现。
 
 ## 8. 验证记录
 
@@ -119,6 +119,7 @@
 - 2026-08-30 Integration no-ff 合并 `P0-FIXTURE-01` 到 `main` revision `9172a9c`，保留 canonical contract gate 并把 `fixtures:check` 接入 root `check`/`verify`/CI；fixture validator（14/18/18/33）、canonical Rust 15/15 + TS 29/29、full Vitest 32/32 + Rust 17/17、Vite/Tauri debug build 全部 PASS。
 - 2026-08-30 Integration no-ff 合并 `P0-SPIKE-01` 到 `main` revision `9688df8`；focused 18/18、30-sample editor measurement、full Vitest 50/50、canonical contract Rust 15/15 + TS 29/29、fixture validator（14/18/18/33）、Rust 17/17、Vite/Tauri debug build 全部 PASS。当前桌面 shell 首次运行未继承 Rustup PATH，显式加入 `${HOME}/.cargo/bin` 后同一代码门禁通过。
 - 2026-08-30 Integration no-ff 合并 `P0-SPIKE-02` 到 `main` revision `d30e1db`，仅增加 exact-pinned test-only UUID direct edge；native safety debug/release focused 各 18/18，full Vitest 50/50、canonical contract Rust 15/15 + TS 29/29、fixture validator（14/18/18/33）、Rust unit 17/17 + safety 18/18、Vite/Tauri debug build 全部 PASS。
+- 2026-08-30 Integration no-ff 合并 `P0-TRANSPORT-01` 到 `main` revision `8b11c21`；真实 Tauri/WKWebView ordinary 与 worst-escaping 各 3/3 往返、default debug/release isolation、structured result/timeout/cleanup 全部 PASS。main full Vitest 50/50、canonical contract Rust 16/16 + TS 29/29、fixture validator（14/18/18/33）、Rust unit 19/19 + safety 18/18、Vite/Tauri debug build 全部 PASS。
 
 ## 9. 标准任务交接
 
