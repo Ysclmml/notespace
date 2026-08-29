@@ -1,12 +1,12 @@
 # Markdown Workspace 完整设计
 
-| 字段 | 值 |
-|---|---|
-| 状态 | Approved baseline 0.2（精简产品基线） |
-| 日期 | 2026-08-30 |
-| 首发平台 | macOS |
-| 技术栈 | React 19 + TypeScript + CodeMirror 6 + Tauri 2 + Rust |
-| 数据原则 | 本地 Markdown 与相邻资源文件是唯一持久化真相 |
+| 字段     | 值                                                    |
+| -------- | ----------------------------------------------------- |
+| 状态     | Approved baseline 0.2（精简产品基线）                 |
+| 日期     | 2026-08-30                                            |
+| 首发平台 | macOS                                                 |
+| 技术栈   | React 19 + TypeScript + CodeMirror 6 + Tauri 2 + Rust |
+| 数据原则 | 本地 Markdown 与相邻资源文件是唯一持久化真相          |
 
 本文是实现、评审和上下文压缩后的首要产品规范。若历史设计与本文冲突，以 [ADR-0005](decisions/0005-lean-local-editor-boundary.md) 和本文为准。
 
@@ -46,13 +46,17 @@ Markdown Workspace 是一个“像 Typora 一样编辑、像浏览器一样阅�
 - HTML 任意执行、第三方插件市场、复杂 feature flag 系统。
 - Git、知识图谱、全文索引、AI；只预留清晰模块边界。
 
+### 2.3 当前实现边界
+
+截至 2026-08-30，工作区、文件树、Tab/基础 back-forward、可点击定位的 Outline、单画布编辑、本地打开/保存和截图落盘的自动化纵向切片已连通。当前仍待完成的是 back/forward 精确滚动/选区恢复、Mermaid 文内预览和沉浸查看器；实时状态以 [PROJECT_STATE.md](PROJECT_STATE.md) 为准。
+
 ## 3. 体验与视觉
 
-视觉基线是 [Paper & Ink 主界面原型](prototypes/markdown-workspace-main-v1.png)。参考 Typora 的克制排版，但交互骨架更接近浏览器。
+视觉基线是 [Paper & Ink 主界面原型](prototypes/markdown-workspace-main-v1.svg)。参考 Typora 的克制排版，但交互骨架更接近浏览器。
 
 ### 3.1 窗口结构
 
-~~~text
+```text
 ┌──────────────────────────────────────────────────────────────┐
 │ ←  →  [侧栏]  工作区 / 当前文档       快速打开  更多        │
 ├──────────────┬───────────────────────────────────────────────┤
@@ -64,7 +68,7 @@ Markdown Workspace 是一个“像 Typora 一样编辑、像浏览器一样阅�
 ├──────────────┴───────────────────────────────────────────────┤
 │ 保存状态 · 字数 · 行列 · 模式                                │
 └──────────────────────────────────────────────────────────────┘
-~~~
+```
 
 - 顶部工具栏只承载导航、工作区身份、快速打开和少量全局动作。
 - Tab Rail 始终位于内容上方；未保存以圆点表示，关闭前询问。
@@ -74,17 +78,17 @@ Markdown Workspace 是一个“像 Typora 一样编辑、像浏览器一样阅�
 
 ### 3.2 核心交互
 
-| 动作 | 行为 |
-|---|---|
-| 点击内部 Markdown 链接 | 当前 Tab 原地跳转并写入历史 |
-| `⌘` 点击或中键 | 新后台 Tab 打开 |
-| `⌘⇧` 点击 | 新前台 Tab 打开 |
-| 后退 / 前进 | 只改变当前 Tab 的浏览历史，不触发编辑 Undo |
-| 点击同页 heading 链接 | 滚动到标题，并记录来源位置 |
-| `⌘P` / `⌘K` | 快速打开工作区文档 |
-| 粘贴截图 | 写图片成功后插入 `![](relative-uri)` |
-| 点击 Mermaid / 大图 | 打开沉浸查看器 |
-| `Esc` | 退出查看器，焦点回到原块 |
+| 动作                   | 行为                                       |
+| ---------------------- | ------------------------------------------ |
+| 点击内部 Markdown 链接 | 当前 Tab 原地跳转并写入历史                |
+| `⌘` 点击或中键         | 新后台 Tab 打开                            |
+| `⌘⇧` 点击              | 新前台 Tab 打开                            |
+| 后退 / 前进            | 只改变当前 Tab 的浏览历史，不触发编辑 Undo |
+| 点击同页 heading 链接  | 滚动到标题，并记录来源位置                 |
+| `⌘P` / `⌘K`            | 快速打开工作区文档                         |
+| 粘贴截图               | 写图片成功后插入 `![](relative-uri)`       |
+| 点击 Mermaid / 大图    | 打开沉浸查看器                             |
+| `Esc`                  | 退出查看器，焦点回到原块                   |
 
 ## 4. 编辑模型
 
@@ -115,7 +119,7 @@ Markdown Workspace 是一个“像 Typora 一样编辑、像浏览器一样阅�
 
 ### 5.1 最小模型
 
-~~~ts
+```ts
 type DocumentId = string; // 首版可使用规范化绝对路径作为内部 key
 
 interface DocumentSession {
@@ -146,7 +150,7 @@ interface Tab {
   back: HistoryEntry[];
   forward: HistoryEntry[];
 }
-~~~
+```
 
 ### 5.2 不变量
 
@@ -167,15 +171,15 @@ Rust 负责原生 chooser、目录枚举、文件预检/读取、原子保存和
 
 第一批命令只包含实际需要的接口：
 
-~~~text
+```text
 pick_workspace() -> WorkspaceSelection | null
-list_workspace(root) -> WorkspaceEntry[]
+list_workspace(rootPath) -> WorkspaceNode[]
 open_document(path) -> DocumentOpenResult
-save_document(path, content, expectedMtime?) -> SaveResult
-save_clipboard_image(documentPath, bytes, mimeType) -> AssetWriteResult
-~~~
+save_document(path, content) -> SaveDocumentResult
+save_clipboard_image(documentPath) -> SavedClipboardImage
+```
 
-这些类型可以在 Rust 和 TypeScript 两侧保持简短同构；当前不引入全仓库 schema 生成器。新增命令时再新增对应类型和测试。
+参数名按 Tauri `camelCase` 边界表示。`save_clipboard_image` 由 Rust 直接读取系统剪贴板，不接收 `bytes`、MIME 或 Base64 字符串。这些类型在 Rust 和 TypeScript 两侧保持简短同构；当前不引入全仓库 schema 生成器。新增命令时再新增对应类型和测试。
 
 ### 6.1 打开和预检
 
@@ -183,14 +187,13 @@ Rust 以固定 64 KiB 缓冲先扫描：总字节、UTF-8 有效性、最长物�
 
 分类建议值：
 
-| 结果 | 条件 | 前端行为 |
-|---|---|---|
-| `normal` | 不大于 2 MiB，最长行不大于 256 KiB | 完整单画布能力 |
-| `sourceOnly` | 普通 UTF-8 多行文本，约 2–32 MiB | 关闭昂贵块渲染/Outline，可编辑保存 |
-| `blocked` | 大型 data-image，或单行超过 1 MiB | 不返回正文，显示说明页 |
-| `unsupported` | 非 UTF-8、明显二进制或超过 32 MiB | 不创建编辑器 |
+| 结果         | 当前条件                                                  | 前端行为                           |
+| ------------ | --------------------------------------------------------- | ---------------------------------- |
+| `normal`     | 不大于 8 MiB，最长行不大于 256 KiB                        | 完整单画布能力                     |
+| `sourceOnly` | 超过 8 MiB 的普通 UTF-8 多行文本，或较长但未阻止的物理行  | 关闭昂贵块渲染/Outline，可编辑保存 |
+| `blocked`    | 非 UTF-8、超过 512 KiB 的 data-image 行，或单行超过 1 MiB | 不返回正文，显示说明页             |
 
-阈值是初始性能预算，可依据实测调整；它们不是威胁模型。约 10 MiB 普通多行文件必须可走 `sourceOnly`。
+阈值是初始性能预算，可依据实测调整；它们不是威胁模型。当前不额外设置通用文件字节上限；约 10 MiB 普通多行文件必须可走 `sourceOnly`。
 
 ### 6.2 原子保存
 
@@ -204,9 +207,11 @@ Rust 以固定 64 KiB 缓冲先扫描：总字节、UTF-8 有效性、最长物�
 
 ### 6.3 截图粘贴
 
-- 通过 paste event 获取图片二进制；未保存文档先触发 Save As。
+- 前端 paste event 只判断系统剪贴板中有图片，不把图片经 Base64 或巨型 IPC 文本传入 Rust。
+- 前端调用 `save_clipboard_image(documentPath)`；Rust 直接读取剪贴板 RGBA 像素并编码为 PNG。
+- 当前纵向切片编辑已存在的 Markdown 文件；未保存文档必须在调用前完成 Save As。
 - 默认目录：文档同级 `assets/`。
-- 文件名：时间戳 + 短随机后缀，保留已知扩展名。
+- 文件名：`paste-<timestamp>-<counter>.png`，不覆盖现有资源。
 - Rust 写入成功后返回相对于文档目录的 URI；前端此时才插入 Markdown。
 - 写入失败、用户取消或格式不支持时不改变正文。
 - Undo 只撤销正文链接，保留图片文件；资产清理以后按真实需求增加。
@@ -218,30 +223,27 @@ Rust 以固定 64 KiB 缓冲先扫描：总字节、UTF-8 有效性、最长物�
 - 只渲染可见或邻近 viewport 的 fenced `mermaid` 块。
 - 渲染任务带文档 revision；迟到结果只在 revision 仍匹配时显示。
 - 失败或超时显示源码和“重试”，不阻塞编辑。
-- SVG 容器禁止脚本和任意事件处理器；外部链接由应用路由处理。
+- 查看器只消费渲染结果，不改写 Markdown 正文；外部链接由应用路由处理。
 - 查看器保留 SVG，支持滚轮/触控板缩放、拖拽平移、双击 Fit、`+/-/0` 和 `Esc`。
 
 图片使用同一个 viewer shell，并提供 100%、Fit 和打开文件位置。
 
 ## 8. 前端架构
 
-~~~text
+```text
 src/
 ├─ app/
-│  ├─ bootstrap/           # 启动与环境适配
-│  ├─ shell/               # Paper & Ink 窗口骨架
-│  ├─ state/               # sessions / tabs / navigation reducer
-│  └─ commands/            # 快捷键与菜单动作
+│  ├─ shell/               # Paper & Ink 窗口骨架与当前纵向切片组装
+│  └─ state/               # sessions / tabs / navigation reducer
 ├─ features/
-│  ├─ workspace/           # chooser、文件树、Outline、Quick Open
+│  ├─ workspace/           # 文件树与 Outline
 │  ├─ editor/              # CodeMirror adapter 与 source-first 装饰
 │  ├─ navigation/          # 链接解析、Tab、history
-│  ├─ assets/              # paste pipeline
-│  └─ diagrams/            # Mermaid 与 viewer
+│  └─ diagrams/            # 待实现：Mermaid 与 viewer
 └─ infrastructure/tauri/   # invoke wrapper 与当前命令类型
-~~~
+```
 
-应用状态用 React reducer/context 即可；第一版不引入 Redux。跨模块动作通过明确函数或 reducer action 连接，不建设事件总线。
+快速打开、截图粘贴编排和快捷键当前保持在 shell 这一小型组装层；第二个真实消费者出现前不抽取通用 commands/assets 框架。应用状态用 React reducer/context 即可；第一版不引入 Redux。跨模块动作通过明确函数或 reducer action 连接，不建设事件总线。
 
 ### 8.1 浏览器开发模式
 
@@ -249,27 +251,25 @@ Tauri adapter 提供环境判断。纯浏览器 `pnpm dev` 可以使用内存演
 
 ## 9. Rust 架构
 
-~~~text
+```text
 src-tauri/src/
-├─ commands/        # #[tauri::command] 参数/返回转换
-├─ application/     # open/save/workspace/asset 用例
-├─ infrastructure/  # filesystem、chooser
+├─ commands/mod.rs  # 当前 5 个命令及可单测文件逻辑
 └─ lib.rs           # 小型 invoke_handler 注册
-~~~
+```
 
-避免抽象层空壳：一个用例在出现第二个实现或复杂规则前可以直接位于小模块。所有文件逻辑应可在临时目录中单测，不依赖 WebView。
+当前命令和文件逻辑保持在一个可读小模块中；只在文件继续增长或出现第二个实现时才拆分 application/infrastructure 层。所有文件逻辑可在临时目录中单测，不依赖 WebView。
 
 ## 10. 性能预算
 
-| 场景 | 初始目标 |
-|---|---|
-| 普通文档打开（约 250 KiB） | 交互可用小于 300 ms |
-| Tab/历史切换 | UI 响应小于 100 ms；内容异步恢复 |
-| 连续输入 | 60 fps 体感，无 composition 抖动 |
-| 约 10 MiB 普通多行文档 | 进入 source-only，不冻结窗口 |
-| 大型 data-image 文件 | Rust 扫描后阻止，正文不穿过 IPC |
-| 文件树 | 分批或懒加载，首屏不因深目录阻塞 |
-| Mermaid | 离屏不渲染；单块失败不影响正文 |
+| 场景                       | 初始目标                         |
+| -------------------------- | -------------------------------- |
+| 普通文档打开（约 250 KiB） | 交互可用小于 300 ms              |
+| Tab/历史切换               | UI 响应小于 100 ms；内容异步恢复 |
+| 连续输入                   | 60 fps 体感，无 composition 抖动 |
+| 约 10 MiB 普通多行文档     | 进入 source-only，不冻结窗口     |
+| 大型 data-image 文件       | Rust 扫描后阻止，正文不穿过 IPC  |
+| 文件树                     | 分批或懒加载，首屏不因深目录阻塞 |
+| Mermaid                    | 离屏不渲染；单块失败不影响正文   |
 
 优化顺序：先测量，再关闭昂贵投影，再做增量计算；不先写分块编辑器。
 
@@ -317,14 +317,14 @@ src-tauri/src/
 
 可以并行的所有权边界：
 
-| 轨道 | 独占路径 | 依赖输出 |
-|---|---|---|
-| Native file | `src-tauri/**` | 当前命令与返回类型 |
-| App state/navigation | `src/app/state/**`, `src/features/navigation/**` | reducer API |
-| Editor | `src/features/editor/**` | Editor adapter props/events |
-| Workspace UI | `src/features/workspace/**` | tree/outline components |
-| Assets/diagrams | 对应 feature 目录 | paste/viewer API |
-| Integration | shell、root manifests、lockfile、状态文档 | 合并与端到端验证 |
+| 轨道                 | 独占路径                                         | 依赖输出                    |
+| -------------------- | ------------------------------------------------ | --------------------------- |
+| Native file          | `src-tauri/**`                                   | 当前命令与返回类型          |
+| App state/navigation | `src/app/state/**`, `src/features/navigation/**` | reducer API                 |
+| Editor               | `src/features/editor/**`                         | Editor adapter props/events |
+| Workspace UI         | `src/features/workspace/**`                      | tree/outline components     |
+| Assets/diagrams      | 对应 feature 目录                                | paste/viewer API            |
+| Integration          | shell、root manifests、lockfile、状态文档        | 合并与端到端验证            |
 
 每个任务应产出可单测的小接口；不同代理不要同时编辑 shell、根清单或 `PROJECT_STATE.md`。实现顺序和验收见 [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md)。
 

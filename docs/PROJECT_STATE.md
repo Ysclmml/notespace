@@ -2,7 +2,7 @@
 
 最后更新：2026-08-30
 
-状态版本：6
+状态版本：7
 
 设计基线：Approved baseline 0.2
 
@@ -11,27 +11,28 @@
 ## 1. 当前结论
 
 - 产品定位：普通单用户、本地优先 Markdown 编辑器；Typora 风格单画布 + 浏览器式 Tab/历史。
-- 运行时技术栈：React 19、TypeScript、CodeMirror 6、Tauri 2、Rust。Node 只用于构建/测试/仓库检查；Ruby 已退出活动工具链。
-- 当前代码：已有可启动的 Paper & Ink 桌面壳和经过测试的 CodeMirror source-first 技术 spike；工作区、真实文件打开/保存、Tab/history 和产品 Editor adapter 正在实现。
-- 当前设计：baseline 0.2 由 `ADR-0005` 收窄，只保留 Base64 防卡死、截图落盘、原子保存三项实用护栏。
-- 旧 Phase 0 的 HMAC/nonce、host smoke、复杂 native safety、193 MiB transport、14 flags 和预冻结 37 命令契约已从主线删除，不得作为未完成任务恢复。
-- Hosted CI 不是本地产品开发的阻塞条件；标准门禁是 `pnpm verify`。
+- 运行时技术栈：React 19、TypeScript、CodeMirror 6、Tauri 2、Rust。Node 只用于构建、测试和轻量仓库检查；Ruby 已从活动代码和工具链移除。
+- 基本纵向切片已连通：工作区选择/文件树 → 打开 Markdown → 单画布编辑 → dirty 状态 → `⌘S` 原子保存。
+- 浏览器式基础链路已实现：Tab、每 Tab back/forward、内部 Markdown 链接解析、快速打开、文件树和 Outline 点击定位。精确的 back/forward 滚动/选区恢复尚未连到 EditorView。
+- 截图粘贴自动化链路已实现：前端只识别粘贴中有图片，Rust 直接读取系统剪贴板、写入文档相邻 `assets/`，成功后前端才插入相对链接。真实 macOS 剪贴板仍需人工 smoke。
+- 设计只保留三项实用护栏：大 Base64/data-image 预检、截图先落盘后插链接、同目录原子保存。不得恢复通用安全平台、巨型 IPC 契约或 feature flag 框架。
+- Mermaid 文内渲染与沉浸查看器尚未实现。
 
 ## 2. 已实现事实
 
-| 能力 | 状态 | 证据/说明 |
-|---|---|---|
-| Tauri 2 + React/Vite/Rust desktop shell | DONE | debug app 可构建启动 |
-| Paper & Ink 空状态与侧栏/Tab 视觉骨架 | DONE | shell 组件和快照图片 |
-| CodeMirror/Lezer source-first feasibility | DONE SPIKE | CJK composition、选择、Undo、装饰增量测试 |
-| 精简产品边界 | DONE | `ADR-0005`、baseline 0.2 文档 |
-| 活动工具链移除 Ruby | INTEGRATING | Node repository check 替代旧验证器；遗留实验脚本删除 |
-| Rust 文件纵向切片 | IN_PROGRESS | chooser/list/open/preflight/save/image 正在独立实现 |
-| 前端 DocumentSession/Tab/history | NOT_STARTED | Phase 1 下一项 |
-| 产品 Editor adapter | NOT_STARTED | 从 spike 收敛，不直接把 spike 当产品代码 |
-| 工作区文件树和真实打开/保存 | NOT_STARTED | 等最小 native adapter 接口 |
-| 截图粘贴 | NOT_STARTED | Rust 写入接口后接入 |
-| Mermaid viewer | NOT_STARTED | Phase 3 |
+| 能力                                          | 状态             | 证据/说明                                                                                                         |
+| --------------------------------------------- | ---------------- | ----------------------------------------------------------------------------------------------------------------- |
+| Tauri 2 + React/Vite/Rust desktop shell       | DONE             | debug app 可构建                                                                                                  |
+| Paper & Ink 应用壳、文件树、Tab Rail、Outline | DONE             | shell 已接入真实 adapter 与浏览器 demo adapter；Outline 可点击定位                                                |
+| Ruby 移除                                     | DONE             | Node `scripts/check_repository.mjs` 负责轻量仓库检查；活动路径无 Ruby                                             |
+| Rust 本地文件纵向切片                         | DONE             | `pick_workspace` / `list_workspace` / `open_document` / `save_document` / `save_clipboard_image`；11 个 Rust 测试 |
+| DocumentSession / Tab / HistoryEntry reducer  | DONE             | 同文档共享正文，每 Tab 历史独立；5 个 reducer 测试                                                                |
+| 产品 MarkdownEditor adapter                   | DONE             | CodeMirror 6/Lezer、source-first、source-only、CJK/Undo/选择回归、大 Base64 paste guard                           |
+| 工作区打开→编辑→保存                          | DONE (automated) | shell 集成及 adapter/Rust 测试覆盖；待真实 Tauri 人工 smoke                                                       |
+| 内部链接、Tab、back/forward、Quick Open       | BASIC DONE       | 文档级导航可用；精确 view-state 恢复待完成                                                                        |
+| 截图落盘后插入相对链接                        | DONE (automated) | Rust 生成 PNG；成功/失败前端行为有测试；待系统剪贴板人工 smoke                                                    |
+| 大文件预检与 source-only                      | DONE             | 64 KiB 固定缓冲；10 MiB 普通多行文档和 blocked 无正文有 Rust 测试                                                 |
+| Mermaid 预览/沉浸查看器                       | NOT_STARTED      | 下一产品功能                                                                                                      |
 
 ## 3. 当前不可变决策
 
@@ -40,7 +41,7 @@
 3. 内部链接默认当前 Tab 跳转；`⌘`/中键新后台 Tab，`⌘⇧` 新前台 Tab。
 4. 截图先写相邻 `assets/`，成功后才插入相对链接；产品不生成 Base64 Markdown。
 5. 大 data-image/病态长行在进入 EditorView 前阻止；约 10 MiB 普通多行文档走 source-only。
-6. 保存使用同目录临时文件 + flush + rename；失败保留旧文件。
+6. 保存使用同目录临时文件 + flush/sync + rename；失败保留旧文件。
 7. 当前命令当前定义类型，不建设未来接口全集、通用 flags 或安全认证框架。
 8. macOS 首发；保持普通 Rust/Tauri 代码的跨平台可移植性，不提前实现三平台差异层。
 
@@ -55,36 +56,37 @@
 
 任何实现与测试都不得把真实语料内容或其个人路径带入仓库。
 
-## 5. 当前任务
+## 5. 当前工作包
 
-| Task | Status | Owner | 独占范围 | 出口 |
-|---|---|---|---|---|
-| `LEAN-DOCS-01` | IN_PROGRESS | Integration | docs、AGENTS、README | baseline 0.2 无旧 F0 阻塞 |
-| `LEAN-TOOLING-01` | REVIEW | Integration | package、CI、scripts | Node check；活动路径无 Ruby/旧 contract gate |
-| `P1-NATIVE-01` | IN_PROGRESS | Native agent | `src-tauri/**` | chooser/list/open/save/image + Rust tests |
-| `P1-STATE-01` | READY | next agent | `src/app/state/**` | sessions/tabs/history reducer + tests |
-| `P1-EDITOR-01` | READY after state types | next agent | `src/features/editor/**` | 产品 EditorView adapter + paste guard |
-| `P1-INTEGRATE-01` | WAITING | Integration | shell/adapter/root config | 真工作区打开→编辑→保存 |
+| 工作包                                  | 状态             | 说明                                     |
+| --------------------------------------- | ---------------- | ---------------------------------------- |
+| 精简文档与 Node tooling                 | DONE             | baseline 0.2；无 Ruby/旧 contract gate   |
+| Rust 文件纵向切片                       | DONE             | 5 个当前 Tauri 命令 + 11 个测试          |
+| Session/Tab/history 状态                | DONE             | reducer + selectors + 5 个测试           |
+| 产品 Editor、Workspace UI 与 shell 集成 | DONE (automated) | 前端总计 40 个测试                       |
+| 真实 Tauri 主链路人工 smoke             | READY            | 必须只用临时示例工作区                   |
+| 精确 anchor/滚动/选区恢复               | READY            | reducer 已存 view，EditorView 接线未完成 |
+| Mermaid 预览与沉浸查看器                | READY            | 尚无实现                                 |
 
-## 6. 精确下一步
+## 6. 唯一下一步
 
-1. 集成 Node tooling 与 Rust native slice，运行完整门禁。
-2. 实现并单测 `DocumentSession`、Tab 和 per-tab history reducer。
-3. 把 CodeMirror spike 收敛成产品组件，先完成打开、编辑、dirty、保存和大 Base64 paste guard。
-4. 将真实工作区、文件树和 Tab 接入现有 Paper & Ink shell。
-5. 在隔离的临时示例工作区上启动 Tauri app，人工验证主链路；不操作真实用户目录。
+在隔离的临时示例工作区启动真实 Tauri app，人工验证“选择工作区 → 打开 → 编辑 → 保存 → 粘贴系统剪贴板截图”。不操作真实用户文档；验收结果写回本文件后，再实现 Mermaid 查看器。
 
 ## 7. 最近主线变更
 
-- `54d9ef4`：删除未被产品调用的 host security、transport、native safety 和 feature flag 实验，共约 6.7k 行。
-- `a367d98`：删除预生成 37 命令/巨型 IPC schema 与绑定，共约 35.7k 行。
-- baseline 0.2：新增 `ADR-0005`，将产品重新聚焦到可运行纵向切片。
+- `54d9ef4`：删除未被产品调用的 host security、transport、native safety 和 feature flag 实验。
+- `a367d98`：删除预生成 37 命令/巨型 IPC schema 与绑定。
+- `151de32`：确立 baseline 0.2 和 `ADR-0005`，Ruby 工具链退役。
+- `54ef34e`：增加产品 MarkdownEditor adapter。
+- `82e8957`：增加精简 Rust 本地文档后端。
+- `6d036ac`：增加 Tauri/demo desktop adapter。
+- `ce36eda`：增加 Session/Tab/history reducer。
+- 当前未提交集成层：工作区/大纲、内部链接、Paper & Ink shell 与截图粘贴接线。
 
 ## 8. 验证记录
 
-- 删除安全实验后：`cargo check --all-targets --all-features`、`pnpm typecheck`、`pnpm test` 通过（前端 21/21）。
-- 删除巨型 IPC 后：相同检查通过；Rust 仅保留可启动 Tauri 壳。
-- Node tooling 和 native slice 完成合并后，必须在这里记录一次最新 `pnpm verify` 的准确结果，旧 baseline 0.1 的通过数字不代表当前版本。
+- 当前完整集成门禁：`pnpm verify` 通过；前端 40/40、Rust 11/11，并通过仓库检查、format、lint、typecheck、Web build 与 Tauri debug no-bundle build。
+- 浏览器演示模式已人工点测文内原地跳转、back/forward、`⌘`/中键后台 Tab、Quick Open 与 Outline 定位；浏览器控制台无错误。
 
 ## 9. 退役记录
 

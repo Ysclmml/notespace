@@ -91,6 +91,7 @@ describe("P0-SPIKE-01 cursor-local source reveal", () => {
       { from: linkFrom, to: linkFrom + 1 },
       { from: linkFrom + 6, to: linkFrom + 7 },
       { from: linkFrom + 7, to: linkFrom + 8 },
+      { from: linkFrom + 8, to: linkTo - 1 },
       { from: linkTo - 1, to: linkTo },
     ]);
     expect(view.state.doc.toString()).toBe(source);

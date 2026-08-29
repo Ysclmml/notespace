@@ -42,7 +42,7 @@ pnpm verify
 - [需求与验收 ID](docs/REQUIREMENTS.md)
 - [多代理实施计划](docs/IMPLEMENTATION_PLAN.md)
 - [精简本地编辑器边界](docs/decisions/0005-lean-local-editor-boundary.md)
-- [Paper & Ink 主界面原型](docs/prototypes/markdown-workspace-main-v1.png)
+- [Paper & Ink 主界面原型](docs/prototypes/markdown-workspace-main-v1.svg)
 - [代理协作规则](AGENTS.md)
 
 历史 `docs/design/*` 和早期 ADR 保存了交互探索；若与当前 baseline 0.2 冲突，以 `ADR-0005`、`DESIGN.md` 和 `REQUIREMENTS.md` 为准。

@@ -93,13 +93,13 @@ const demoDocuments = new Map<string, string>([
 ## 今天的阅读顺序
 
 1. 先读 [产品设计](01-产品设计.md)，了解单画布编辑和 Paper & Ink 风格。
-2. 再读 [浏览器式导航](02-浏览器式导航.md)，体验 Tab、前进和后退。
+2. 再读 [浏览器式导航](guide/02-浏览器式导航.md)，体验 Tab、前进和后退。
 3. 最后查看下面的 Mermaid 图，后续可进入沉浸查看器。
 
 ## 文档地图
 
 - [产品设计](01-产品设计.md)
-- [浏览器式导航](02-浏览器式导航.md)
+- [浏览器式导航](guide/02-浏览器式导航.md)
 
 \`\`\`mermaid
 flowchart LR
@@ -127,7 +127,7 @@ Markdown 源码是唯一真相。光标所在区域显示语法，其他区域�
 `,
   ],
   [
-    "demo://paper-and-ink/02-浏览器式导航.md",
+    "demo://paper-and-ink/guide/02-浏览器式导航.md",
     `# 浏览器式导航
 
 普通点击在当前 Tab 打开，后退会回到原来的阅读位置。修饰键点击可以打开新 Tab。
@@ -165,7 +165,7 @@ const demoTree: readonly WorkspaceNode[] = [
       {
         kind: "markdown",
         name: "02-浏览器式导航.md",
-        path: "demo://paper-and-ink/02-浏览器式导航.md",
+        path: "demo://paper-and-ink/guide/02-浏览器式导航.md",
         relativePath: "guide/02-浏览器式导航.md",
       },
     ],

@@ -1,0 +1,33 @@
+.outline {
+  display: flex;
+  flex-direction: column;
+  padding: 8px;
+}
+
+.outline__item {
+  min-height: 30px;
+  overflow: hidden;
+  padding-block: 5px;
+  padding-right: 8px;
+  border: 0;
+  border-radius: 5px;
+  color: var(--ink-500);
+  background: transparent;
+  font-size: 12.5px;
+  line-height: 1.45;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.outline__item:hover {
+  color: var(--ink-800);
+  background: var(--paper-0);
+}
+
+.outline-empty {
+  margin: 0;
+  padding: 20px;
+  color: var(--ink-400);
+  font-size: 12px;
+}

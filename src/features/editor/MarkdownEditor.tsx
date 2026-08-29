@@ -9,6 +9,11 @@ import { drawSelection, EditorView, highlightActiveLine, keymap } from "@codemir
 import { tags } from "@lezer/highlight";
 import { useEffect, useLayoutEffect, useRef } from "react";
 
+import {
+  linkDispositionFromPointer,
+  markdownLinkTargetAt,
+  type LinkDisposition,
+} from "./linkTarget";
 import { isOversizedInlineImagePaste } from "./pasteGuard";
 import { createEditorSpikeMetrics, editorSpikeExtensions } from "./spike/editorSpike";
 import "./MarkdownEditor.css";
@@ -18,13 +23,20 @@ export interface SelectionRange {
   readonly to: number;
 }
 
+export interface EditorRevealRequest {
+  readonly position: number;
+  readonly requestId: number;
+}
+
 export interface MarkdownEditorProps {
   readonly documentId: string;
   readonly value: string;
   readonly mode: "normal" | "sourceOnly";
   readonly autofocus?: boolean;
+  readonly reveal?: EditorRevealRequest;
   readonly onChange: (value: string) => void;
-  readonly onImagePaste?: (selection: SelectionRange) => Promise<void>;
+  readonly onImagePaste?: (selection: SelectionRange) => Promise<string>;
+  readonly onInternalLink?: (target: string, disposition: LinkDisposition) => void;
   readonly onPasteRejected?: (message: string) => void;
   readonly onPasteError?: (message: string) => void;
 }
@@ -100,6 +112,7 @@ function editorExtensions(
   mode: MarkdownEditorProps["mode"],
   onChange: MarkdownEditorProps["onChange"],
   onImagePaste: MarkdownEditorProps["onImagePaste"],
+  onInternalLink: MarkdownEditorProps["onInternalLink"],
   onPasteRejected: MarkdownEditorProps["onPasteRejected"],
   onPasteError: MarkdownEditorProps["onPasteError"],
 ) {
@@ -107,6 +120,25 @@ function editorExtensions(
     mode === "normal"
       ? editorSpikeExtensions({ metrics: createEditorSpikeMetrics() })
       : [history()];
+
+  const openMarkdownLink = (event: MouseEvent, view: EditorView): boolean => {
+    if (!onInternalLink || (event.button !== 0 && event.button !== 1)) return false;
+    const position = view.posAtCoords({ x: event.clientX, y: event.clientY });
+    if (position === null) return false;
+    const target = markdownLinkTargetAt(view.state, position);
+    if (!target) return false;
+
+    event.preventDefault();
+    onInternalLink(
+      target,
+      linkDispositionFromPointer(
+        event.metaKey || event.ctrlKey,
+        event.shiftKey,
+        event.button,
+      ),
+    );
+    return true;
+  };
 
   return [
     sourceFirst,
@@ -121,6 +153,12 @@ function editorExtensions(
       if (update.docChanged) onChange(update.state.doc.toString());
     }),
     EditorView.domEventHandlers({
+      click(event, view) {
+        return event.button === 0 ? openMarkdownLink(event, view) : false;
+      },
+      auxclick(event, view) {
+        return event.button === 1 ? openMarkdownLink(event, view) : false;
+      },
       paste(event, view) {
         const text = event.clipboardData?.getData("text/plain") ?? "";
         if (isOversizedInlineImagePaste(text)) {
@@ -134,12 +172,17 @@ function editorExtensions(
 
         event.preventDefault();
         const selection = view.state.selection.main;
-        void onImagePaste({ from: selection.from, to: selection.to }).catch(
-          (error: unknown) => {
+        void onImagePaste({ from: selection.from, to: selection.to })
+          .then((markdown) => {
+            view.dispatch({
+              changes: { from: selection.from, to: selection.to, insert: markdown },
+              selection: { anchor: selection.from + markdown.length },
+            });
+          })
+          .catch((error: unknown) => {
             const message = error instanceof Error ? error.message : "图片没有保存";
             onPasteError?.(message);
-          },
-        );
+          });
         return true;
       },
     }),
@@ -153,14 +196,17 @@ function MarkdownEditorInstance({
   autofocus = true,
   onChange,
   onImagePaste,
+  onInternalLink,
   onPasteRejected,
   onPasteError,
+  reveal,
 }: MarkdownEditorProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const valueRef = useRef(value);
   const onChangeRef = useRef(onChange);
   const onImagePasteRef = useRef(onImagePaste);
+  const onInternalLinkRef = useRef(onInternalLink);
   const onPasteRejectedRef = useRef(onPasteRejected);
   const onPasteErrorRef = useRef(onPasteError);
   const initialConfigRef = useRef({ autofocus, mode, value });
@@ -168,9 +214,10 @@ function MarkdownEditorInstance({
   useEffect(() => {
     onChangeRef.current = onChange;
     onImagePasteRef.current = onImagePaste;
+    onInternalLinkRef.current = onInternalLink;
     onPasteRejectedRef.current = onPasteRejected;
     onPasteErrorRef.current = onPasteError;
-  }, [onChange, onImagePaste, onPasteError, onPasteRejected]);
+  }, [onChange, onImagePaste, onInternalLink, onPasteError, onPasteRejected]);
 
   useLayoutEffect(() => {
     const host = hostRef.current;
@@ -188,9 +235,10 @@ function MarkdownEditorInstance({
           onChangeRef.current(nextValue);
         },
         async (selection) => {
-          if (!onImagePasteRef.current) return;
-          await onImagePasteRef.current(selection);
+          if (!onImagePasteRef.current) throw new Error("图片粘贴尚未启用");
+          return onImagePasteRef.current(selection);
         },
+        (target, disposition) => onInternalLinkRef.current?.(target, disposition),
         (message) => onPasteRejectedRef.current?.(message),
         (message) => onPasteErrorRef.current?.(message),
       ),
@@ -215,6 +263,17 @@ function MarkdownEditorInstance({
       annotations: Transaction.addToHistory.of(false),
     });
   }, [value]);
+
+  useEffect(() => {
+    const view = viewRef.current;
+    if (!view || !reveal) return;
+    const position = Math.max(0, Math.min(reveal.position, view.state.doc.length));
+    view.dispatch({
+      selection: EditorSelection.cursor(position),
+      effects: EditorView.scrollIntoView(position, { y: "start", yMargin: 40 }),
+    });
+    view.focus();
+  }, [reveal]);
 
   return (
     <div

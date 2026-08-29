@@ -16,6 +16,8 @@
 
 ### Phase 1：可编辑的本地工作区
 
+状态：**DONE (automated)**。Rust 文件能力、状态模型、产品 Editor、文件树/Outline 和 shell 已连通；真实 Tauri 主链路人工 smoke 仍待执行。
+
 任务：
 
 1. `P1-NATIVE-01`：Rust chooser、文件树、预检打开、原子保存、图片写入。
@@ -28,6 +30,8 @@
 
 ### Phase 2：浏览器式文档导航
 
+状态：**BASIC DONE**。Tab、内部链接解析、每 Tab back/forward、Quick Open 和 Outline 点击定位已实现；返回历史项时精确恢复滚动/选区仍待完成。
+
 任务：
 
 1. `P2-TABS-01`：创建、激活、关闭、dirty 提示。
@@ -39,9 +43,11 @@
 
 ### Phase 3：截图与视觉块
 
+状态：**IN_PROGRESS**。截图粘贴的代码与自动测试已完成；真实系统剪贴板 smoke、Mermaid 和 viewer 待完成。
+
 任务：
 
-1. `P3-ASSET-01`：paste event → bytes → Rust assets → relative link。
+1. `P3-ASSET-01`：paste event 识别图片 → Rust 直接读系统剪贴板 → `assets/` PNG → relative link。
 2. `P3-MERMAID-01`：按需 Mermaid 渲染和源码失败回退。
 3. `P3-VIEWER-01`：Mermaid/图片 viewer 的 zoom、pan、Fit、Esc。
 
@@ -64,14 +70,14 @@
 
 ## 3. 并行边界
 
-| 任务 | 路径所有权 | 可并行对象 | 合并前接口 |
-|---|---|---|---|
-| Native | `src-tauri/**` | State、Editor、Workspace UI | 当前 command 参数/返回样例 |
-| State | `src/app/state/**` | Native、Editor | reducer state/actions/selectors |
-| Editor | `src/features/editor/**` | Native、State、Workspace UI | props、change/save/link/paste callbacks |
-| Workspace | `src/features/workspace/**` | Native、State、Editor | TreeNode/OutlineItem props |
-| Navigation | `src/features/navigation/**` | Assets/Diagrams | resource resolution/result |
-| Integration | `src/app/shell/**`、root config、docs | 无同文件编辑 | 集成全部模块 |
+| 任务        | 路径所有权                            | 可并行对象                  | 合并前接口                              |
+| ----------- | ------------------------------------- | --------------------------- | --------------------------------------- |
+| Native      | `src-tauri/**`                        | State、Editor、Workspace UI | 当前 command 参数/返回样例              |
+| State       | `src/app/state/**`                    | Native、Editor              | reducer state/actions/selectors         |
+| Editor      | `src/features/editor/**`              | Native、State、Workspace UI | props、change/save/link/paste callbacks |
+| Workspace   | `src/features/workspace/**`           | Native、State、Editor       | TreeNode/OutlineItem props              |
+| Navigation  | `src/features/navigation/**`          | Assets/Diagrams             | resource resolution/result              |
+| Integration | `src/app/shell/**`、root config、docs | 无同文件编辑                | 集成全部模块                            |
 
 如果接口尚未确定，先用不超过一页的 TypeScript/Rust 类型冻结当前切片，不建设通用 schema 平台。
 
@@ -79,41 +85,47 @@
 
 ### Frontend adapter
 
-~~~ts
+```ts
 interface DesktopAdapter {
   pickWorkspace(): Promise<WorkspaceSelection | null>;
-  listWorkspace(root: string): Promise<WorkspaceEntry[]>;
+  listWorkspace(rootPath: string): Promise<readonly WorkspaceNode[]>;
   openDocument(path: string): Promise<DocumentOpenResult>;
-  saveDocument(input: SaveDocumentInput): Promise<SaveResult>;
-  saveClipboardImage(input: SaveImageInput): Promise<AssetWriteResult>;
+  saveDocument(path: string, content: string): Promise<SaveDocumentResult>;
+  saveClipboardImage(documentPath: string): Promise<SavedClipboardImage>;
 }
-~~~
+```
+
+`saveClipboardImage` 不接收图片 bytes 或 MIME；Rust 通过系统剪贴板 API 读取像素并编码 PNG。
 
 ### Editor adapter
 
-~~~ts
+```ts
 interface MarkdownEditorProps {
   documentId: string;
   value: string;
   mode: "normal" | "sourceOnly";
   onChange(value: string): void;
-  onInternalLink(target: string, disposition: LinkDisposition): void;
-  onImagePaste?(image: ClipboardImage, selection: SelectionRange): Promise<void>;
+  onInternalLink?(target: string, disposition: LinkDisposition): void;
+  onImagePaste?(selection: SelectionRange): Promise<string>;
+  onPasteRejected?(message: string): void;
+  onPasteError?(message: string): void;
 }
-~~~
+```
 
 ### Navigation reducer
 
-~~~ts
-openInCurrent(tabId, target, previousView)
-openInNewTab(target, active)
-goBack(tabId, currentView)
-goForward(tabId, currentView)
-closeTab(tabId)
-updateView(tabId, view)
-~~~
+```ts
+openInCurrent(tabId, target, previousView);
+openInNewTab(target, active);
+goBack(tabId, currentView);
+goForward(tabId, currentView);
+closeTab(tabId);
+updateView(tabId, view);
+```
 
-## 5. 必须先写的测试
+## 5. 测试状态
+
+已覆盖：
 
 1. 大型 data-image 粘贴被拒绝，正文与 Undo 不变。
 2. 同类文件 open 返回 blocked 且无 content 字段。
@@ -121,7 +133,9 @@ updateView(tabId, view)
 4. 图片写入成功生成文件和相对 URI；失败不插链接。
 5. 原子保存注入故障后旧文件完整，成功后新文件完整。
 6. 中文 composition 一次提交，不跳光标。
-7. A → B → back/forward 恢复 view；两个 Tab 的历史互不影响。
+7. A → B → back/forward 的文档导航以及两个 Tab 历史互不影响。
+
+待覆盖：EditorView 精确 view-state 恢复、真实系统剪贴板 smoke、Mermaid 失败/超时回退和 viewer 缩放/平移/Fit/Esc。
 
 ## 6. 每个任务的完成定义
 
@@ -137,7 +151,7 @@ updateView(tabId, view)
 
 只为跨天或跨代理任务创建 task note：
 
-~~~text
+```text
 Task:
 Status: IN_PROGRESS | REVIEW | DONE | BLOCKED
 Requirements:
@@ -147,7 +161,7 @@ Implemented behavior:
 Exact verification:
 Known limitations:
 Next action:
-~~~
+```
 
 小型完整改动直接用提交、测试和 `PROJECT_STATE.md` 记录，不为流程创建额外文档。
 

@@ -1,0 +1,133 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="900" viewBox="0 0 1440 900" role="img" aria-labelledby="title desc">
+  <title id="title">Markdown Workspace Paper and Ink prototype</title>
+  <desc id="desc">A desktop Markdown editor with a workspace tree, browser-like tabs, navigation controls, a single-canvas document, and a status bar.</desc>
+  <defs>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="130%">
+      <feDropShadow dx="0" dy="18" stdDeviation="28" flood-color="#20242b" flood-opacity="0.16"/>
+    </filter>
+    <style>
+      .ui { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", sans-serif; }
+      .mono { font-family: "SFMono-Regular", Menlo, monospace; }
+      .muted { fill: #747d8c; }
+      .ink { fill: #20242b; }
+      .body { fill: #414854; }
+      .link { fill: #3568e8; }
+      .line { stroke: #e3e6eb; }
+    </style>
+  </defs>
+
+  <rect width="1440" height="900" fill="#eef1f5"/>
+  <rect x="40" y="34" width="1360" height="824" rx="18" fill="#fbfbfa" filter="url(#shadow)"/>
+  <path d="M40 52a18 18 0 0 1 18-18h1324a18 18 0 0 1 18 18v48H40z" fill="#f8f8f7"/>
+  <circle cx="66" cy="58" r="7" fill="#ff5f57"/>
+  <circle cx="88" cy="58" r="7" fill="#febc2e"/>
+  <circle cx="110" cy="58" r="7" fill="#28c840"/>
+  <text class="ui ink" x="136" y="64" font-size="14" font-weight="650">Markdown Workspace</text>
+
+  <rect x="40" y="82" width="1360" height="58" fill="#fbfbfa"/>
+  <line class="line" x1="40" y1="140" x2="1400" y2="140"/>
+  <g transform="translate(64 102)" fill="none" stroke="#596273" stroke-width="2" stroke-linecap="round">
+    <path d="m10 0-7 7 7 7"/><path d="M4 7h12"/>
+    <path d="m42 0 7 7-7 7" opacity=".38"/><path d="M48 7H36" opacity=".38"/>
+    <rect x="70" y="-5" width="22" height="22" rx="4" stroke="#d4d8e0"/>
+    <path d="M78-4v20" stroke="#747d8c"/>
+  </g>
+  <rect x="178" y="96" width="28" height="28" rx="8" fill="#3568e8"/>
+  <path d="M185 104h14M184 110h16M185 116h14M188 102l-2 16M197 102l-2 16" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/>
+  <text class="ui ink" x="218" y="115" font-size="14" font-weight="650">Paper &amp; Ink</text>
+  <text class="ui muted" x="312" y="115" font-size="13">/</text>
+  <text class="ui muted" x="330" y="115" font-size="13">00-阅读导航.md</text>
+  <rect x="1192" y="94" width="152" height="32" rx="7" fill="#fff" stroke="#e3e6eb"/>
+  <circle cx="1210" cy="109" r="5" fill="none" stroke="#596273" stroke-width="1.5"/>
+  <path d="m1214 113 5 5" stroke="#596273" stroke-width="1.5"/>
+  <text class="ui muted" x="1228" y="115" font-size="12">快速打开</text>
+  <text class="ui muted" x="1312" y="115" font-size="10">⌘K</text>
+
+  <rect x="40" y="140" width="282" height="678" fill="#f6f7f8"/>
+  <line class="line" x1="322" y1="140" x2="322" y2="818"/>
+  <rect x="58" y="154" width="246" height="32" rx="8" fill="#eff1f4"/>
+  <rect x="60" y="156" width="120" height="28" rx="6" fill="#fff"/>
+  <text class="ui link" x="112" y="176" font-size="12" font-weight="650">文件</text>
+  <text class="ui muted" x="230" y="176" font-size="12">大纲</text>
+
+  <g class="ui" font-size="12.5">
+    <g transform="translate(60 214)">
+      <path d="M4 3h7l3 3h13v15H4z" fill="none" stroke="#747d8c" stroke-width="1.4"/>
+      <text class="body" x="36" y="16">设计文档</text>
+    </g>
+    <rect x="50" y="244" width="262" height="32" rx="5" fill="#fff"/>
+    <rect x="50" y="244" width="3" height="32" rx="1.5" fill="#3568e8"/>
+    <path d="M77 250h9l4 4v15H77z" fill="none" stroke="#747d8c" stroke-width="1.2"/>
+    <text class="ink" x="102" y="265" font-weight="600">00-阅读导航.md</text>
+    <path d="M77 286h9l4 4v15H77z" fill="none" stroke="#747d8c" stroke-width="1.2"/>
+    <text class="muted" x="102" y="301">01-产品设计.md</text>
+    <path d="M77 322h9l4 4v15H77z" fill="none" stroke="#747d8c" stroke-width="1.2"/>
+    <text class="muted" x="102" y="337">02-浏览器式导航.md</text>
+    <g transform="translate(60 370)">
+      <path d="M4 3h7l3 3h13v15H4z" fill="none" stroke="#747d8c" stroke-width="1.4"/>
+      <text class="body" x="36" y="16">apps</text>
+    </g>
+    <path d="M77 406h9l4 4v15H77z" fill="none" stroke="#747d8c" stroke-width="1.2"/>
+    <text class="muted" x="102" y="421">workspace.md</text>
+    <path d="M77 442h9l4 4v15H77z" fill="none" stroke="#747d8c" stroke-width="1.2"/>
+    <text class="muted" x="102" y="457">editor.md</text>
+  </g>
+  <line class="line" x1="40" y1="776" x2="322" y2="776"/>
+  <text class="ui muted" x="60" y="800" font-size="11">5 篇文档</text>
+  <text class="ui" x="274" y="800" font-size="11" fill="#237a50">离线</text>
+
+  <rect x="322" y="140" width="1078" height="44" fill="#f6f7f8"/>
+  <line class="line" x1="322" y1="184" x2="1400" y2="184"/>
+  <rect x="338" y="148" width="224" height="36" rx="8" fill="#fff" stroke="#e3e6eb"/>
+  <rect x="356" y="148" width="188" height="2" rx="1" fill="#3568e8"/>
+  <text class="ui ink" x="366" y="170" font-size="12.5" font-weight="600">00-阅读导航.md</text>
+  <circle cx="536" cy="166" r="3.5" fill="#3568e8"/>
+  <rect x="566" y="148" width="212" height="36" rx="8" fill="none" stroke="#e3e6eb"/>
+  <text class="ui muted" x="588" y="170" font-size="12.5">01-产品设计.md</text>
+  <text class="ui muted" x="798" y="172" font-size="22">+</text>
+
+  <rect x="322" y="184" width="1078" height="592" fill="#fff"/>
+  <g class="ui" transform="translate(500 234)">
+    <text class="ink" x="0" y="34" font-size="38" font-weight="760">Markdown Workspace：阅读导航</text>
+    <line class="line" x1="0" y1="52" x2="720" y2="52"/>
+    <rect x="0" y="72" width="4" height="44" rx="2" fill="#d4d8e0"/>
+    <text class="muted" x="20" y="94" font-size="15">像 Typora 一样写作，像浏览器一样穿行于本地文档。</text>
+    <text class="ink" x="0" y="154" font-size="25" font-weight="720">今天的阅读顺序</text>
+    <line class="line" x1="0" y1="168" x2="720" y2="168"/>
+    <text class="body" x="10" y="204" font-size="15">1.</text>
+    <text class="body" x="38" y="204" font-size="15">先读</text>
+    <text class="link" x="78" y="204" font-size="15" text-decoration="underline">产品设计</text>
+    <text class="body" x="142" y="204" font-size="15">，了解单画布编辑和 Paper &amp; Ink 风格。</text>
+    <text class="body" x="10" y="236" font-size="15">2.</text>
+    <text class="body" x="38" y="236" font-size="15">再读</text>
+    <text class="link" x="78" y="236" font-size="15" text-decoration="underline">浏览器式导航</text>
+    <text class="body" x="174" y="236" font-size="15">，体验 Tab、前进和后退。</text>
+    <text class="ink" x="0" y="296" font-size="25" font-weight="720">文档地图</text>
+    <line class="line" x1="0" y1="310" x2="720" y2="310"/>
+    <circle cx="12" cy="342" r="3.5" fill="#414854"/>
+    <text class="link" x="32" y="348" font-size="15" text-decoration="underline">产品设计</text>
+    <circle cx="12" cy="378" r="3.5" fill="#414854"/>
+    <text class="link" x="32" y="384" font-size="15" text-decoration="underline">浏览器式导航</text>
+
+    <g transform="translate(360 330)">
+      <rect width="360" height="150" rx="10" fill="#fbfbfa" stroke="#e3e6eb"/>
+      <rect x="18" y="54" width="76" height="42" rx="6" fill="#edf2ff" stroke="#9bb4f4"/>
+      <rect x="142" y="54" width="76" height="42" rx="6" fill="#edf2ff" stroke="#9bb4f4"/>
+      <rect x="266" y="54" width="76" height="42" rx="6" fill="#edf2ff" stroke="#9bb4f4"/>
+      <path d="M94 75h48M218 75h48" fill="none" stroke="#747d8c" stroke-width="1.4"/>
+      <path d="m137 71 5 4-5 4M261 71l5 4-5 4" fill="none" stroke="#747d8c" stroke-width="1.4"/>
+      <text class="ui body" x="36" y="80" font-size="12">工作区</text>
+      <text class="ui body" x="169" y="80" font-size="12">Tab</text>
+      <text class="ui body" x="282" y="80" font-size="12">历史</text>
+      <circle cx="330" cy="20" r="13" fill="#fff" stroke="#e3e6eb"/>
+      <path d="M325 20h10M330 15v10" stroke="#596273" stroke-width="1.5"/>
+    </g>
+  </g>
+
+  <rect x="40" y="818" width="1360" height="40" fill="#fbfbfa"/>
+  <line class="line" x1="40" y1="818" x2="1400" y2="818"/>
+  <circle cx="62" cy="838" r="4" fill="#237a50"/>
+  <text class="ui" x="76" y="842" font-size="11" fill="#237a50" font-weight="600">已保存</text>
+  <text class="ui muted" x="680" y="842" font-size="11">单画布 · 126 词</text>
+  <text class="ui muted" x="1238" y="842" font-size="11">Markdown Workspace 0.1</text>
+</svg>
