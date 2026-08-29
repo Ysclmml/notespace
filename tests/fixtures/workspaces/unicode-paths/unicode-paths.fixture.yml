@@ -1,0 +1,11 @@
+fixtureVersion: 1
+id: workspace.paths.unicode-space-001
+purpose: Unicode directory and percent-encoded space navigation
+encoding: utf-8
+newline: lf
+expectedMode: editable/normal
+sensitive: false
+generatedBy: committed-synthetic
+files:
+  - 中文 空格/index.md
+  - 中文 空格/目标 page.md

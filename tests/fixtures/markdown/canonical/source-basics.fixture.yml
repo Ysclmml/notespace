@@ -1,0 +1,10 @@
+fixtureVersion: 1
+id: markdown.canonical.source-basics-001
+purpose: Canonical Markdown source and unknown raw HTML round-trip
+encoding: utf-8
+newline: lf
+expectedMode: editable/normal
+sensitive: false
+generatedBy: committed-synthetic
+files:
+  - source-basics.md

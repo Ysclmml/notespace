@@ -1,0 +1,11 @@
+fixtureVersion: 1
+id: workspace.conflicts.external-change-001
+purpose: Two deterministic disk revisions for conflict and reload tests
+encoding: utf-8
+newline: lf
+expectedMode: editable/normal
+sensitive: false
+generatedBy: committed-synthetic
+files:
+  - original.md
+  - external.md

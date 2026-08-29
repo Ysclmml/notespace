@@ -1,0 +1,10 @@
+fixtureVersion: 1
+id: markdown.math.source-only-001
+purpose: Math source preservation before the optional renderer exists
+encoding: utf-8
+newline: lf
+expectedMode: editable/normal
+sensitive: false
+generatedBy: committed-synthetic
+files:
+  - source-only.md

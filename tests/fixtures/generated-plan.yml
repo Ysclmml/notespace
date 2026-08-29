@@ -1,0 +1,67 @@
+fixtureVersion: 1
+generatedBy: tools/generate_fixtures.rb
+sensitive: false
+artifacts:
+  - id: markdown.pathological.normal-multiline-10mib-001
+    kind: normal_multiline
+    path: markdown/pathological/normal-multiline-10mib.md
+    expectedMode: editable/largeText
+    parameters:
+      bytes: 10485760
+    expectedSha256: b60b19820fa7d9d9fe1842613d0089f6da180d49d55cd744bb7db34fc58f6555
+  - id: markdown.pathological.data-image-single-line-10mib-001
+    kind: data_image_single_line
+    path: markdown/pathological/data-image-single-line-10mib.md
+    expectedMode: safetyBlocked
+    parameters:
+      payloadBytes: 10485760
+    expectedSha256: 209d3fdc1f275acde654c1c1828e58ce9619c23e3eabdfb2ac05d6ae8695ba46
+  - id: markdown.pathological.line-boundary-exact-001
+    kind: single_line
+    path: markdown/pathological/line-boundary-exact.md
+    expectedMode: editable/largeText
+    parameters:
+      lineBytes: 1048576
+    expectedSha256: eb92ca55ea07796e15fde2c54bbda31bdaed01130013c4ecb7ba9fd41533afd4
+  - id: markdown.pathological.line-boundary-over-001
+    kind: single_line
+    path: markdown/pathological/line-boundary-over.md
+    expectedMode: safetyBlocked
+    parameters:
+      lineBytes: 1048577
+    expectedSha256: 7f984db72c78933d8b48bb8defb319667ca5ec2cd4e0236d39d1ccaa7a68645a
+  - id: markdown.encodings.invalid-utf8-001
+    kind: invalid_utf8
+    path: markdown/encodings/invalid-utf8.md
+    expectedMode: unsupported
+    parameters: {}
+    expectedSha256: 01b3491eece67c1d1cf89891a4c7e527878087dc6e4d4b4cf92357931f52a832
+  - id: markdown.encodings.bom-crlf-001
+    kind: bom_crlf
+    path: markdown/encodings/bom-crlf.md
+    expectedMode: editable/normal
+    parameters: {}
+    expectedSha256: 14ae41f5978e2c5a2bc066ee1eb12f73ad78484fe53f1072b65b1bf11784850b
+  - id: markdown.tables.dense-300-001
+    kind: dense_tables
+    path: markdown/tables/dense-300.md
+    expectedMode: editable/normal
+    parameters:
+      tableCount: 300
+    expectedSha256: 4aa3064da01f315644d8c64ca8114ecaf0c7fd155ef000a25e03c22b807ff1b2
+  - id: markdown.links.broken-relative-001
+    kind: broken_link
+    path: markdown/links/broken-relative.md
+    expectedMode: editable/normal
+    parameters: {}
+    expectedSha256: c496e7eeba33bc3025935d3ef612d76c90bc30b43aef4a699e649e21e8de525e
+  - id: workspace.synthetic.shape-79-001
+    kind: synthetic_workspace
+    path: workspaces/synthetic-shape-79
+    expectedMode: workspace
+    parameters:
+      markdownFiles: 79
+      linksPerFile: 14
+      mermaidFiles: 4
+      imageReferences: 2
+    expectedSha256: 25396906f814129e4415ae86fe7b66ee09cffe26c40df16614bdf1612cfe1b11

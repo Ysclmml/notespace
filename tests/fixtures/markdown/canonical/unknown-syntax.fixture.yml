@@ -1,0 +1,10 @@
+fixtureVersion: 1
+id: markdown.canonical.unknown-syntax-001
+purpose: Preserve an unrecognized extension block while editing adjacent text
+encoding: utf-8
+newline: lf
+expectedMode: editable/normal
+sensitive: false
+generatedBy: committed-synthetic
+files:
+  - unknown-syntax.md

@@ -1,0 +1,10 @@
+fixtureVersion: 1
+id: markdown.tables.gfm-edge-001
+purpose: GFM alignment, empty cells, escaped pipes, and code pipes
+encoding: utf-8
+newline: lf
+expectedMode: editable/normal
+sensitive: false
+generatedBy: committed-synthetic
+files:
+  - gfm-edge-cases.md

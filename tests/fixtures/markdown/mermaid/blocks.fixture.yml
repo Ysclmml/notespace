@@ -1,0 +1,10 @@
+fixtureVersion: 1
+id: markdown.mermaid.valid-invalid-malicious-001
+purpose: Valid Chinese graph, syntax error, and unsafe click directive isolation
+encoding: utf-8
+newline: lf
+expectedMode: editable/normal
+sensitive: false
+generatedBy: committed-synthetic
+files:
+  - blocks.md

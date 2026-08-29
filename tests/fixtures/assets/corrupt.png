@@ -1,0 +1,1 @@
+This is deliberately not a PNG. A decoder must reject it without trusting the extension.
