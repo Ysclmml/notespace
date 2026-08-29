@@ -4,9 +4,16 @@ pub mod domain;
 mod infrastructure;
 pub mod ipc_schema;
 
+#[cfg(all(feature = "ipc-transport-spike", target_os = "macos"))]
+mod ipc_transport_spike;
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let builder = tauri::Builder::default();
+    #[cfg(all(feature = "ipc-transport-spike", target_os = "macos"))]
+    let builder = ipc_transport_spike::configure(builder);
+
+    builder
         .run(tauri::generate_context!())
         .expect("failed to run Markdown Workspace");
 }
