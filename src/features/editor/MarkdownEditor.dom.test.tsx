@@ -1,4 +1,5 @@
 import { fireEvent, render, waitFor } from "@testing-library/react";
+import { EditorView } from "@codemirror/view";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 
 import { MarkdownEditor } from "./MarkdownEditor";
@@ -7,7 +8,7 @@ import { installCodeMirrorDomMeasurementStubs } from "./spike/domTestSupport";
 
 beforeAll(() => installCodeMirrorDomMeasurementStubs());
 
-describe("MarkdownEditor paste boundary", () => {
+describe("MarkdownEditor DOM integration", () => {
   it("rejects a large inline image before creating an editor transaction", () => {
     const onChange = vi.fn();
     const onPasteRejected = vi.fn();
@@ -96,5 +97,62 @@ describe("MarkdownEditor paste boundary", () => {
 
     await waitFor(() => expect(onPasteError).toHaveBeenCalledWith("disk full"));
     expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it("restores and reports the tab-specific selection and scroll position", async () => {
+    const onViewChange = vi.fn();
+    const value = `${"正文内容\n".repeat(160)}目标标题\n`;
+    const selectionFrom = value.indexOf("目标标题");
+    const { container, rerender } = render(
+      <MarkdownEditor
+        autofocus={false}
+        documentId="view-state"
+        initialView={{ scrollTop: 420, selectionFrom, selectionTo: selectionFrom + 2 }}
+        mode="normal"
+        onChange={vi.fn()}
+        onViewChange={onViewChange}
+        value={value}
+      />,
+    );
+    const editor = container.querySelector<HTMLElement>(".cm-editor");
+    if (!editor) throw new Error("CodeMirror editor was not mounted");
+    const view = EditorView.findFromDOM(editor);
+    if (!view) throw new Error("CodeMirror view was not found");
+
+    await waitFor(() => expect(view.scrollDOM.scrollTop).toBe(420));
+    expect(view.state.selection.main).toMatchObject({
+      from: selectionFrom,
+      to: selectionFrom + 2,
+    });
+
+    view.scrollDOM.scrollTop = 610;
+    fireEvent.scroll(view.scrollDOM);
+    await waitFor(() =>
+      expect(onViewChange).toHaveBeenLastCalledWith({
+        scrollTop: 610,
+        selectionFrom,
+        selectionTo: selectionFrom + 2,
+      }),
+    );
+
+    const revealPosition = value.indexOf("正文内容", 30);
+    rerender(
+      <MarkdownEditor
+        autofocus={false}
+        documentId="view-state"
+        initialView={{ scrollTop: 420, selectionFrom, selectionTo: selectionFrom + 2 }}
+        mode="normal"
+        onChange={vi.fn()}
+        onViewChange={onViewChange}
+        reveal={{ position: revealPosition, requestId: 1 }}
+        value={value}
+      />,
+    );
+    await waitFor(() =>
+      expect(view.state.selection.main).toMatchObject({
+        from: revealPosition,
+        to: revealPosition,
+      }),
+    );
   });
 });

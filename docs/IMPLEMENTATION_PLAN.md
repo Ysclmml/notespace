@@ -30,7 +30,7 @@
 
 ### Phase 2：浏览器式文档导航
 
-状态：**BASIC DONE**。Tab、内部链接解析、每 Tab back/forward、Quick Open 和 Outline 点击定位已实现；返回历史项时精确恢复滚动/选区仍待完成。
+状态：**DONE**。Tab、内部链接解析、heading anchor、每 Tab back/forward、Quick Open、Outline 点击定位，以及返回历史项时的滚动/选区恢复均已实现。
 
 任务：
 
@@ -43,7 +43,7 @@
 
 ### Phase 3：截图与视觉块
 
-状态：**IN_PROGRESS**。截图粘贴的代码与自动测试已完成；真实系统剪贴板 smoke、Mermaid 和 viewer 待完成。
+状态：**DONE (automated + browser visual QA)**。截图粘贴、产品 live preview、Mermaid 文内渲染和 Mermaid/图片 viewer 已完成；真实系统剪贴板与 Tauri UI smoke 因当前 macOS 锁屏待补。
 
 任务：
 
@@ -102,13 +102,18 @@ interface DesktopAdapter {
 ```ts
 interface MarkdownEditorProps {
   documentId: string;
+  instanceId?: string;
   value: string;
   mode: "normal" | "sourceOnly";
+  initialView?: EditorViewSnapshot;
+  reveal?: EditorRevealRequest;
   onChange(value: string): void;
   onInternalLink?(target: string, disposition: LinkDisposition): void;
   onImagePaste?(selection: SelectionRange): Promise<string>;
   onPasteRejected?(message: string): void;
   onPasteError?(message: string): void;
+  onOpenVisual?(visual: PreviewVisual): void;
+  onViewChange?(view: EditorViewSnapshot): void;
 }
 ```
 
@@ -135,7 +140,9 @@ updateView(tabId, view);
 6. 中文 composition 一次提交，不跳光标。
 7. A → B → back/forward 的文档导航以及两个 Tab 历史互不影响。
 
-待覆盖：EditorView 精确 view-state 恢复、真实系统剪贴板 smoke、Mermaid 失败/超时回退和 viewer 缩放/平移/Fit/Esc。
+新增覆盖：产品 live preview 保持原文字节、任务复选框、表格阅读态/源码退路、Mermaid 异步渲染、图片路径解析、viewer zoom/Fit/焦点恢复、heading slug/anchor，以及 EditorView 选区/滚动恢复。
+
+当前自动化合计：前端 51 项、Rust 11 项。仍需在 Mac 解锁后用隔离临时工作区补跑真实系统剪贴板和 `.app` 主链路；Mermaid 极端规模的 worker 超时属于后续性能增强，不恢复复杂安全框架。
 
 ## 6. 每个任务的完成定义
 

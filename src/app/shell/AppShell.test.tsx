@@ -58,5 +58,6 @@ describe("AppShell", () => {
     await waitFor(() =>
       expect(screen.getByTitle("demo://paper-and-ink/00-阅读导航.md")).toBeVisible(),
     );
+    expect(screen.getByText("00-阅读导航.md 已恢复")).toBeVisible();
   });
 });

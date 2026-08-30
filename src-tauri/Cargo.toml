@@ -19,4 +19,4 @@ arboard = { version = "=3.6.1", default-features = false, features = ["image-dat
 png = { version = "=0.18.1", default-features = false }
 rfd = { version = "=0.17.2", default-features = true }
 serde = { version = "=1.0.229", features = ["derive"] }
-tauri = { version = "=2.11.5", features = [] }
+tauri = { version = "=2.11.5", features = ["protocol-asset"] }

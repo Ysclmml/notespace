@@ -3,7 +3,11 @@ import { createElement } from "react";
 import { describe, expect, it, vi } from "vitest";
 
 import { Outline } from "./Outline";
-import { extractOutline } from "./outlineModel";
+import {
+  extractOutline,
+  findMarkdownAnchorPosition,
+  markdownHeadingSlug,
+} from "./outlineModel";
 
 describe("outline extraction", () => {
   it("collects ATX headings and ignores fenced examples", () => {
@@ -26,5 +30,18 @@ describe("outline extraction", () => {
       line: 3,
       title: "B",
     });
+  });
+
+  it("resolves encoded anchors and duplicate heading slugs", () => {
+    const markdown = "# 阅读导航\n\n## 状态与异常\n\n## 状态与异常\n";
+
+    expect(markdownHeadingSlug("状态与异常！")).toBe("状态与异常");
+    expect(
+      findMarkdownAnchorPosition(
+        markdown,
+        "#%E7%8A%B6%E6%80%81%E4%B8%8E%E5%BC%82%E5%B8%B8",
+      ),
+    ).toBe(8);
+    expect(findMarkdownAnchorPosition(markdown, "状态与异常-1")).toBe(18);
   });
 });

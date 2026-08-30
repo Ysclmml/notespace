@@ -31,9 +31,12 @@ import {
   type Tab,
 } from "../state";
 import type { LinkDisposition } from "../../features/editor/linkTarget";
+import type { PreviewVisual } from "../../features/editor/livePreview";
 import { resolveWorkspaceLink } from "../../features/navigation/resolveWorkspaceLink";
+import { VisualViewer } from "../../features/viewer/VisualViewer";
 import { Outline } from "../../features/workspace/Outline";
 import { WorkspaceTree } from "../../features/workspace/WorkspaceTree";
+import { findMarkdownAnchorPosition } from "../../features/workspace/outlineModel";
 import {
   createDesktopAdapter,
   type DesktopAdapter,
@@ -182,6 +185,7 @@ export function AppShell({
   const [status, setStatus] = useState("准备就绪");
   const [quickOpenVisible, setQuickOpenVisible] = useState(false);
   const [quickOpenQuery, setQuickOpenQuery] = useState("");
+  const [visual, setVisual] = useState<PreviewVisual | null>(null);
   const [editorReveal, setEditorReveal] = useState<{
     readonly documentId: string;
     readonly position: number;
@@ -229,7 +233,12 @@ export function AppShell({
         }
 
         const document = toOpenDocument(result);
-        const targetView = createViewState({ anchor });
+        const anchorPosition = findMarkdownAnchorPosition(result.content, anchor) ?? 0;
+        const targetView = createViewState({
+          anchor,
+          selectionFrom: anchorPosition,
+          selectionTo: anchorPosition,
+        });
         const currentState = appStateRef.current;
         const currentTab = selectActiveTab(currentState);
 
@@ -250,6 +259,13 @@ export function AppShell({
               targetView,
             ),
           );
+        }
+        if (anchor && disposition !== "newBackground") {
+          setEditorReveal({
+            documentId: document.path,
+            position: anchorPosition,
+            requestId: revealCounter.current++,
+          });
         }
         setStatus(
           disposition === "newBackground"
@@ -368,6 +384,18 @@ export function AppShell({
       : 0
     : 0;
 
+  const navigateHistory = (direction: "back" | "forward") => {
+    if (!activeTab) return;
+    const destination =
+      direction === "back" ? activeTab.back.at(-1) : activeTab.forward.at(-1);
+    dispatch(
+      direction === "back"
+        ? goBack(activeTab.id, activeTab.current.view)
+        : goForward(activeTab.id, activeTab.current.view),
+    );
+    if (destination) setStatus(`${fileName(destination.path)} 已恢复`);
+  };
+
   return (
     <div
       className={sidebarCollapsed ? "app-shell app-shell--sidebar-collapsed" : "app-shell"}
@@ -378,9 +406,7 @@ export function AppShell({
             aria-label="后退"
             className="icon-button"
             disabled={!activeTab || !canGoBack}
-            onClick={() =>
-              activeTab && dispatch(goBack(activeTab.id, activeTab.current.view))
-            }
+            onClick={() => navigateHistory("back")}
             type="button"
           >
             <ArrowLeftIcon />
@@ -389,9 +415,7 @@ export function AppShell({
             aria-label="前进"
             className="icon-button"
             disabled={!activeTab || !canGoForward}
-            onClick={() =>
-              activeTab && dispatch(goForward(activeTab.id, activeTab.current.view))
-            }
+            onClick={() => navigateHistory("forward")}
             type="button"
           >
             <ArrowRightIcon />
@@ -557,16 +581,27 @@ export function AppShell({
       </nav>
 
       <main className="main-viewport">
-        {activeSession ? (
+        {activeSession && activeTab ? (
           <Suspense fallback={<div className="editor-loading">正在准备编辑器…</div>}>
             <MarkdownEditor
               documentId={activeSession.id}
+              initialView={activeTab.current.view}
+              instanceId={activeTab.id}
               mode={activeSession.mode}
               onChange={(text) => dispatch(editDocument(activeSession.id, text))}
               onImagePaste={pasteClipboardImage}
               onInternalLink={handleInternalLink}
               onPasteError={(message) => setStatus(`图片没有保存：${message}`)}
               onPasteRejected={setStatus}
+              onOpenVisual={setVisual}
+              onViewChange={(view) =>
+                dispatch(
+                  updateView(
+                    activeTab.id,
+                    createViewState({ ...activeTab.current.view, ...view }),
+                  ),
+                )
+              }
               reveal={
                 editorReveal?.documentId === activeSession.id ? editorReveal : undefined
               }
@@ -612,6 +647,14 @@ export function AppShell({
               </div>
             </section>
           </div>
+        )}
+
+        {visual && (
+          <VisualViewer
+            key={`${visual.kind}:${visual.source}`}
+            visual={visual}
+            onClose={() => setVisual(null)}
+          />
         )}
       </main>
 

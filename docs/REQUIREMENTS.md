@@ -6,7 +6,7 @@
 
 本文件保存稳定需求 ID，供实现、测试和上下文压缩后继续执行。优先级：MVP、P1、Later。状态：Active、Deferred、Done。
 
-当前实现快照：工作区、文件树、基础 Tab/back-forward、单画布编辑、本地打开/原子保存、大 Base64 护栏和截图落盘已有自动化纵向切片。`NAV-HISTORY-001` 的精确 view-state 恢复、Mermaid/图片沉浸查看器、`FILE-EXTERNAL-001` 和真实 Tauri 人工验收仍未完成；准确进度以 `PROJECT_STATE.md` 为准。
+当前实现快照：工作区、文件树、Tab/back-forward、heading anchor、滚动/选区恢复、source-first live preview、GFM 表格、本地打开/原子保存、大 Base64 护栏、截图落盘、Mermaid 文内预览和 Mermaid/图片沉浸查看器均已有纵向切片与自动测试。`FILE-EXTERNAL-001` 和因 macOS 锁屏未能执行的真实 Tauri UI smoke 仍未完成；准确进度以 `PROJECT_STATE.md` 为准。
 
 ## 1. MVP 产品需求
 

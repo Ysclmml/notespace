@@ -1,0 +1,119 @@
+.visual-viewer {
+  position: absolute;
+  z-index: 30;
+  inset: 0;
+  display: grid;
+  grid-template-rows: 54px minmax(0, 1fr) 34px;
+  color: var(--ink-800);
+  background: rgba(247, 248, 250, 0.98);
+  backdrop-filter: blur(18px);
+}
+
+.visual-viewer__toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 18px;
+  border-bottom: 1px solid var(--line-200);
+  background: rgba(255, 255, 255, 0.88);
+}
+
+.visual-viewer__toolbar > div,
+.visual-viewer__toolbar nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.visual-viewer__toolbar span {
+  color: var(--ink-400);
+  font-size: 12px;
+}
+
+.visual-viewer__toolbar button {
+  min-width: 34px;
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--line-200);
+  border-radius: 6px;
+  color: var(--ink-700);
+  background: var(--paper-0);
+  font: inherit;
+}
+
+.visual-viewer__toolbar button:hover {
+  border-color: var(--accent-300);
+  color: var(--accent-700);
+}
+
+.visual-viewer__stage {
+  position: relative;
+  overflow: hidden;
+  cursor: grab;
+  touch-action: none;
+  background-color: #f6f7f9;
+  background-image: radial-gradient(#d6dbe4 0.7px, transparent 0.7px);
+  background-size: 18px 18px;
+}
+
+.visual-viewer__stage:active {
+  cursor: grabbing;
+}
+
+.visual-viewer__content {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: max-content;
+  height: max-content;
+  transform-origin: 0 0;
+  will-change: transform;
+}
+
+.visual-viewer__content img {
+  display: block;
+  max-width: none;
+  max-height: none;
+  box-shadow: 0 20px 60px rgba(26, 33, 46, 0.18);
+}
+
+.visual-viewer__diagram svg {
+  display: block;
+  max-width: none !important;
+  height: auto;
+  overflow: visible;
+  filter: drop-shadow(0 16px 30px rgba(45, 57, 79, 0.12));
+}
+
+.visual-viewer__loading,
+.visual-viewer__error {
+  display: grid;
+  min-width: 360px;
+  min-height: 180px;
+  place-content: center;
+  gap: 8px;
+  padding: 28px;
+  border: 1px solid var(--line-200);
+  border-radius: 10px;
+  background: var(--paper-0);
+}
+
+.visual-viewer__error {
+  position: absolute;
+  inset: 40px;
+  overflow: auto;
+  place-content: start;
+}
+
+.visual-viewer__error pre {
+  white-space: pre-wrap;
+}
+
+.visual-viewer > footer {
+  display: grid;
+  place-items: center;
+  border-top: 1px solid var(--line-200);
+  color: var(--ink-400);
+  background: var(--paper-1);
+  font-size: 11px;
+}

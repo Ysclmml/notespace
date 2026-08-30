@@ -48,7 +48,7 @@ Markdown Workspace 是一个“像 Typora 一样编辑、像浏览器一样阅�
 
 ### 2.3 当前实现边界
 
-截至 2026-08-30，工作区、文件树、Tab/基础 back-forward、可点击定位的 Outline、单画布编辑、本地打开/保存和截图落盘的自动化纵向切片已连通。当前仍待完成的是 back/forward 精确滚动/选区恢复、Mermaid 文内预览和沉浸查看器；实时状态以 [PROJECT_STATE.md](PROJECT_STATE.md) 为准。
+截至 2026-08-30，工作区、文件树、Tab/back-forward、heading anchor、可点击 Outline、滚动/选区恢复、source-first live preview、本地打开/保存、截图落盘、GFM 表格阅读态、Mermaid 文内 SVG 和 Mermaid/图片查看器均已连通。真实 `.app` UI smoke 因当前 macOS 锁屏待补；实时状态以 [PROJECT_STATE.md](PROJECT_STATE.md) 为准。
 
 ## 3. 体验与视觉
 
@@ -220,13 +220,13 @@ Rust 以固定 64 KiB 缓冲先扫描：总字节、UTF-8 有效性、最长物�
 
 第一版使用 Mermaid 的浏览器渲染库，按需加载：
 
-- 只渲染可见或邻近 viewport 的 fenced `mermaid` 块。
-- 渲染任务带文档 revision；迟到结果只在 revision 仍匹配时显示。
-- 失败或超时显示源码和“重试”，不阻塞编辑。
+- CodeMirror 只为实际挂载到视口的 fenced `mermaid` Widget 创建渲染 DOM；Mermaid 主包动态加载。
+- 渲染结果带 source cache key，并在目标 Widget 已卸载时丢弃迟到结果。
+- 失败在当前图块显示错误，工具栏仍可立即回到源码，不阻塞编辑。
 - 查看器只消费渲染结果，不改写 Markdown 正文；外部链接由应用路由处理。
 - 查看器保留 SVG，支持滚轮/触控板缩放、拖拽平移、双击 Fit、`+/-/0` 和 `Esc`。
 
-图片使用同一个 viewer shell，并提供 100%、Fit 和打开文件位置。
+图片使用同一个 viewer shell，并提供 100%、Fit、缩放和平移；“在 Finder 中显示”留给 Phase 4 菜单能力。
 
 ## 8. 前端架构
 
@@ -239,7 +239,7 @@ src/
 │  ├─ workspace/           # 文件树与 Outline
 │  ├─ editor/              # CodeMirror adapter 与 source-first 装饰
 │  ├─ navigation/          # 链接解析、Tab、history
-│  └─ diagrams/            # 待实现：Mermaid 与 viewer
+│  └─ viewer/              # Mermaid/图片 zoom、pan、Fit、100% viewer
 └─ infrastructure/tauri/   # invoke wrapper 与当前命令类型
 ```
 

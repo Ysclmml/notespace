@@ -35,6 +35,15 @@ pnpm desktop:dev
 pnpm verify
 ```
 
+生成可直接双击的 macOS debug 应用：
+
+```bash
+pnpm exec tauri build --debug --bundles app
+open "src-tauri/target/debug/bundle/macos/Markdown Workspace.app"
+```
+
+产物位于 `src-tauri/target/debug/bundle/macos/Markdown Workspace.app`；内部原生可执行文件位于 `Contents/MacOS/markdown-workspace`。
+
 ## 文档入口
 
 - [当前项目状态](docs/PROJECT_STATE.md)
