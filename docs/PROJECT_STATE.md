@@ -2,7 +2,7 @@
 
 最后更新：2026-09-03
 
-状态版本：35
+状态版本：36
 
 设计基线：Approved baseline 1.2（ADR-0015）
 
@@ -10,6 +10,7 @@
 
 ## 1. 当前结论
 
+- 用户授权后，最近 50 个路径的源码、测试和合成截图已提交为 `80162ee` 并正常推送到 `origin/main`。不重写历史，不上传构建产物、真实文档或签名材料。新增 [macOS 分发指南](RELEASING.md)，说明 Release DMG、个人 tap 和 Cask 的安装/卸载边界；目前仅有操作指南，尚未创建 tag、Release 或 Homebrew tap，也未在本机执行安装/卸载。
 - 失效图片在可视正文原位置显示双语占位、完整可换行的原始地址，以及“编辑引用…”/“删除引用”。空 alt 与行内图片均可操作；占位不改正文或原始属性，删除仅移除目标 Markdown 图片引用并可 Undo/Redo，不操作磁盘文件。普通正文/alt/title 修改不重复加载，换地址才重试并隔离迟到结果。合成浏览器页面已验证占位、长路径、删除/撤销及修复引用后重新显示图片。
 - “更多 → 关于笔记空间”和原生关于/帮助入口共用双语对话框，显示 `https://github.com/Ysclmml/notespace`；点击或中键使用既有系统默认浏览器入口，不后台访问、上传或改变文档导航。失败在对话框内提示、允许重试；模态阻止后台命令，关闭后恢复操作。未新增依赖或 Tauri 命令。
 - 用户授权使用合成图片后，已实际复现跨应用粘贴失败：NoteSpace 自己复制的 PNG 可以粘贴，隔离浏览器生成的 PNG 在旧版原生窗口报 `imageDecodeFailed`，底层为 arboard TIFF 转换失败。macOS 改为同一 NSPasteboard 的 PNG 优先、AppKit TIFF 转码回退；同一张 520×220 合成图在新版 dirty 空段落及源码表面均可粘贴，图片落盘和 Undo 保留图片文件已实测。没有读取或提交真实截图；尚未覆盖用户所用截图软件及所有平台。
@@ -17,8 +18,8 @@
 - 状态 33 的图片错误可见性与监听修复保留：dirty 文档不再遮住图片错误，错误绑定来源 Tab/文档并在重试时清除；普通/StrictMode 空段落监听回归通过，没有额外快捷键或 beforeinput 绕过。状态 32 的图片元数据兼容及 KaTeX 字体 CSP 修复同样保留；字体告警不是本次 TIFF 解码失败的根因。
 - 产品名称：英文 `NoteSpace`，中文“笔记空间”。产品定位是普通单用户、本地优先 Markdown/文本编辑器；Typora 风格主画布 + 浏览器式 Tab/历史 + 统一水平可编辑分屏 + 可关闭的只读浮层。
 - 截图粘贴和每工作区图片目录已接通：键盘与右键粘贴都进入编辑器正常事务；默认写 Markdown 同级目录，也可通过根右键“图片保存位置…”选择现有目录。按实际来源文档的最长匹配根读取设置，独立文件使用同级目录；成功落盘后才插链接。未命名 Markdown 先 Save As，取消不写图片；迁移后的插入校验原 Tab、正文和编辑表面，支持 Undo。
-- README 只保留产品能力、合成软件截图、技术栈与开发/构建用法。三张 JPEG 使用隔离的浏览器演示模式和合成写作、代码、Mermaid 文档实拍，没有真实用户文档、路径或剪贴板内容。本轮源码与 README 修改尚未提交/推送，不代表 GitHub 上的当前版本。
-- 源码已托管至公开仓库 [Ysclmml/notespace](https://github.com/Ysclmml/notespace)，`origin` 使用 SSH，`main` 已首次推送并跟踪 `origin/main`；保留原有 82 个提交，当前功能汇总提交为 `24f9efd`。只上传源码与开发文档，不上传依赖、构建产物、本机数据或签名材料。既有 Actions 会执行质量门禁并生成保留 7 天的 Debug ZIP；当前未发布正式 Release 或 Homebrew tap。
+- README 只保留产品能力、合成软件截图、技术栈与开发/构建用法。三张 JPEG 使用隔离的浏览器演示模式和合成写作、代码、Mermaid 文档实拍，没有真实用户文档、路径或剪贴板内容；已随 `80162ee` 推送。
+- 源码已托管至公开仓库 [Ysclmml/notespace](https://github.com/Ysclmml/notespace)，`origin` 使用 SSH，`main` 跟踪 `origin/main`；保留原有历史，首次功能汇总为 `24f9efd`，最新功能修复为 `80162ee`。只上传源码与开发文档，不上传依赖、构建产物、本机数据或签名材料。既有 Actions 会执行质量门禁并生成保留 7 天的 Debug ZIP；当前未发布正式 Release 或 Homebrew tap。
 - 侧栏“离线”已改成中性“本地文件”及说明：它只表示直接读写本地文件，不是网络故障或保存成功指示。底部字数跟随活动文档和正文修改/撤销/外部干净重载，点击可看字符（含/不含空白）及行数；CJK 逐字、其他连续字母数字计词，明确采用源码口径，包含代码和链接地址。120 ms 防抖、32 Ki UTF-16 分片与最多 32 个弱引用缓存，不额外读盘、不持久化正文、不 dirty。
 - 图片右键优先使用图片专属菜单，不再出现通用段落菜单和整图蓝色选择；支持预览、复制已加载像素/原地址/Markdown、编辑引用及本地图片定位。Markdown 图片多行编辑框可改 `src/alt/title`，单次事务支持 Undo，取消/相同值不修改；不移动/修改原图片。只读查看器没有正文编辑，Mermaid 只提供预览/编辑源码。菜单/弹窗双语，模态期间后台应用命令暂停、关闭弹窗后正常恢复。
 - Tauri 产品名、窗口标题、应用内品牌、双语原生菜单、Web 元数据、包/可执行文件和当前文档已同步改名。为兼容旧版本原地升级，bundle identifier `app.markdownworkspace.desktop`、既有 localStorage 键和内部事件/临时文件前缀保持不变。
@@ -181,10 +182,11 @@ set_native_menu_locale(locale)
 | 本轮自动化门禁                 | DONE    | 状态 35 的 `pnpm verify` 完整通过：59 个前端文件、797 项测试；Rust 64 项；格式/lint/类型及 Web、默认 Debug 构建通过                   |
 | 本轮界面回归                   | DONE    | 隔离 Browser 合成文档验证失效占位、长路径、删除/撤销、修改有效图地址恢复显示及关于仓库入口；未操作用户文档                          |
 | 本轮最终桌面验收               | PARTIAL | 独立 `src-tauri/target/debug/bundle/missing-image-fix.GBqp2J/NoteSpace.app` 已签名校验，本轮交互使用 Browser 验证；原生新包待用户验收 |
+| 源码公开同步与分发指南         | DONE    | 50 个路径审计后提交/推送 `80162ee`；Release/Cask/清理说明已编写，未创建发布资源或实际安装/卸载                                  |
 
 ## 7. 唯一下一步
 
-请用户保存并退出旧版，再打开 `src-tauri/target/debug/bundle/missing-image-fix.GBqp2J/NoteSpace.app` 验收缺失图片占位、编辑/删除引用与关于仓库入口；新包也保留状态 34 的剪贴板和模式位置修复。特定截图软件若仍失败，记录名称与新版可见错误后继续。不自动安装/重启正常实例、提交/推送源码、发布 Release 或创建 Homebrew tap。
+确认首版签名方式（个人试用 ad-hoc，或 Developer ID + 公证）及实际发布授权后，按 `docs/RELEASING.md` 从确定提交构建 Release DMG，再建立 `Ysclmml/homebrew-tap` 并用合成资料完成安装/普通卸载/带 zap 卸载/重装验收。当前只授权了源码推送及发布步骤咨询，不自动创建 tag/Release/tap，不重启正常实例或清理用户数据。
 
 ### 已知边界
 
@@ -198,6 +200,7 @@ set_native_menu_locale(locale)
 
 ## 8. 最近主线决策
 
+- 2026-09-03 用户要求提交远程并咨询 Release/Homebrew：源码已正常推送；首版建议 Apple Silicon Release DMG + 自有 tap。普通卸载保留设置，明确 `--zap` 才清理应用专属 WebKit、缓存及偏好；工作区、笔记、代码和粘贴图片永不纳入卸载目标。分发方式仍为待执行方案，ad-hoc 不等于公证，不绕过 Gatekeeper；安装/卸载回归尚未执行。
 - 2026-09-03 文内缺失图片显示可操作占位；“删除引用”只修改 Markdown 并可撤销，不复用磁盘废纸篓命令。关于软件公开展示用户 GitHub 仓库地址，点击复用已实现的外部浏览器能力，不增加网络抓取或上传。
 - `ADR-0015`：用户要求修复截图剪贴板粘贴并允许每工作区独立指定图片目录；默认改为 Markdown 同级目录，保留先落盘后插链接、Save As 与 Undo。键盘/右键入口、图像格式兼容、逐文件加载授权及错误/取消/过期保护作为同一纵向切片；不自动迁移旧图片或保存剪贴板快照。
 - 2026-09-03 README 采用隔离合成测试文档的软件截图；内容仅介绍最终产品、技术栈与使用/构建方式，不包含对话讨论或被排除技术的罗列。
@@ -221,6 +224,16 @@ set_native_menu_locale(locale)
 - 2026-09-02 分屏集成收尾：保存和确认状态 ref 在提交时同步，避免保存后立即关闭仍读旧 dirty；移走/关闭来源 Tab 或后退时废弃迟到导航；最终放弃移除无主 dirty 缓存。关闭 Tauri 原生拖放接管以保留 WebKit HTML5 标签拖放；图片仅放宽 `img-src` 的 HTTP(S)，asset 范围保持不变。
 
 ## 9. 验证记录
+
+本轮状态版本 36：源码公开审计与推送完成，发布步骤已核实；没有改动运行时代码。
+
+- **PASS (public content audit)** — 32 个修改及 18 个新增文件，共 50 个路径；282 个非忽略文件经个人路径、凭据、私钥、大型 Base64 与构建产物检查，无阻断项。三张 1280×720 JPEG 逐张确认仅合成内容，只有 JFIF 元信息，无 EXIF/评论字段。新分发指南只使用泛化的 `~/Library` 应用专属路径。
+- **PASS (local checks)** — 对已暂存的 282 个文件运行 `pnpm repo:check`（262 个文本、47 个 Markdown）通过；新增分发指南后再次检查 283 个文件（263 个文本、48 个 Markdown）通过。`pnpm format:check` 和 `git diff --check` 通过。运行时代码沿用状态 35 完整 `pnpm verify` 的 797 项前端/64 项 Rust 与 Web/Debug 构建结果，本轮未把它冒充新的全量执行。
+- **PASS (push)** — `git push origin main` 成功将远程从 `c19ac12` 推进至 `80162ee`，保留原历史，无强制推送。该提交包含截图粘贴、位置恢复、缺图占位、关于仓库及 README 更新。
+- **PASS (distribution inspection)** — 本机 ARM64、Homebrew 6.0.20，尚无 `notespace` Cask；仓库无 Release 自动化或 Cask 定义。只读确认应用专属 `~/Library/WebKit/app.markdownworkspace.desktop`、`~/Library/Caches/app.markdownworkspace.desktop` 和 `~/Library/Preferences/app.markdownworkspace.desktop.plist` 存在；未读取内部设置/剪贴板内容、未删除任何路径。官方 Release/tap/Cask/zap 与签名文档已核实并在指南引用。
+- **PENDING (release/install)** — 未打包新的 Release DMG、创建版本 tag/Release/tap 或操作 Homebrew 安装、升级、卸载。分发指南中的 Cask 是带 SHA-256 占位值的模板，不是可用安装源；完整安装清理回归需在隔离用户环境执行。
+
+### 以下为状态版本 35 验证记录（功能代码仍适用）
 
 本轮状态版本 35：失效图片占位及关于仓库入口已集成，全量门禁与独立 Debug 包校验通过。
 

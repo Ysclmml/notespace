@@ -71,3 +71,5 @@ open "src-tauri/target/debug/bundle/macos/NoteSpace.app"
 ```
 
 应用位于 `src-tauri/target/debug/bundle/macos/NoteSpace.app`，已包含前端资源，启动时无需运行开发服务器。
+
+Release 构建、签名、GitHub 发布与 Homebrew 配置见 [macOS 分发指南](docs/RELEASING.md)。
