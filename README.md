@@ -2,8 +2,6 @@
 
 一个本地优先的 Markdown 与文本桌面编辑器。专注写作、阅读与整理，支持可视化编辑、多工作区和分屏浏览。
 
-源码仓库：[Ysclmml/notespace](https://github.com/Ysclmml/notespace)。
-
 ## 安装
 
 macOS Apple Silicon 可通过 Homebrew 安装，也可在 [GitHub Releases](https://github.com/Ysclmml/notespace/releases) 下载 DMG。
@@ -12,16 +10,7 @@ macOS Apple Silicon 可通过 Homebrew 安装，也可在 [GitHub Releases](http
 brew install --cask ysclmml/tap/notespace
 ```
 
-当前 `0.1.0` 为预览版，采用 ad-hoc 签名，尚未完成 Apple 公证。此个人 Homebrew 安装源会在安装后自动移除 **NoteSpace.app 内的下载隔离标记**，以避免因未公证而需要到系统设置中单独放行；普通的“来自互联网”提示也可能不再出现。此处理不代表 Apple 已验证应用，不关闭系统全局安全检查，不影响其他应用，也不增加应用内提示窗口。请仅在信任本仓库及安装源时安装。
-
-已通过 Homebrew 安装的用户，保存文档并退出 NoteSpace 后执行以下命令，即可应用更新后的安装流程，设置和浏览记录会保留：
-
-```sh
-brew update
-brew reinstall --cask ysclmml/tap/notespace
-```
-
-直接下载 DMG 不会执行 Homebrew 的安装后处理，仍遵循 macOS 的下载与启动检查。详见 [签名与安装说明](docs/RELEASING.md#2-确定签名与发布版本)。
+当前 `0.1.0` 为预览版，尚未完成 Apple 公证。Homebrew 安装仅移除 NoteSpace 的下载隔离标记，不改变系统全局安全设置；请确认信任来源后安装。直接下载 DMG 仍需遵循 macOS 的启动检查。
 
 卸载前请保存文档并退出应用：
 
@@ -29,7 +18,7 @@ brew reinstall --cask ysclmml/tap/notespace
 brew uninstall ysclmml/tap/notespace
 ```
 
-普通卸载会将应用设置、最近文件、浏览恢复记录与缓存移入废纸篓，不删除笔记、工作区或图片。升级和 `brew reinstall` 保留这些应用数据。详见 [安装与卸载说明](docs/RELEASING.md#6-安装升级与卸载边界)。
+普通卸载会将应用设置、最近文件、浏览恢复记录与缓存移入废纸篓，不删除笔记、工作区或图片。升级和重装保留这些应用数据。
 
 ## 软件截图
 
@@ -99,4 +88,4 @@ open "src-tauri/target/debug/bundle/macos/NoteSpace.app"
 
 应用位于 `src-tauri/target/debug/bundle/macos/NoteSpace.app`，已包含前端资源，启动时无需运行开发服务器。
 
-Release 构建、签名、GitHub 发布与 Homebrew 配置见 [macOS 分发指南](docs/RELEASING.md)。
+产品设计与开发规范见 [技术文档](docs/README.md)。

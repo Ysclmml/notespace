@@ -52,7 +52,7 @@ NoteSpace（笔记空间）是一个“像 Typora 一样编辑、像浏览器一
 - GFM 表格真可视编辑、内部横向滚动、view-only 列宽、尺寸网格和行列结构操作。
 - Mermaid/图片文内预览与沉浸查看器。
 
-准确的自动验证、UI smoke 与 bundle 状态只记在 [PROJECT_STATE.md](PROJECT_STATE.md)。
+自动验证、桌面验收与构建状态以对应修订的实际执行结果为准，不用历史结果替代当前验证。
 
 ### 2.2 明确不做
 
@@ -634,7 +634,7 @@ src-tauri/src/
 
 ### 12.3 门禁
 
-标准自动门禁覆盖 Node repo check、Prettier、lint、typecheck、Vitest、Rust fmt/clippy/test、Web build 和 Tauri debug binary build。准确数字与当前 UI/bundle 待办只写 [PROJECT_STATE.md](PROJECT_STATE.md)，不在设计文档复制历史结果。
+标准自动门禁为 `pnpm verify`，覆盖 Node repo check、Prettier、lint、typecheck、Vitest、Rust fmt/clippy/test、Web build 和 Tauri debug binary build。测试数量、桌面验收与构建结果随修订变化，不在设计文档复制历史结果。
 
 ## 13. 多代理实现规则
 

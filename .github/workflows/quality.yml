@@ -2,9 +2,17 @@ name: Quality gate
 
 on:
   pull_request:
+    paths-ignore:
+      - README.md
+      - AGENTS.md
+      - docs/**
   push:
     branches:
       - main
+    paths-ignore:
+      - README.md
+      - AGENTS.md
+      - docs/**
   workflow_dispatch:
 
 permissions:

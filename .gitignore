@@ -31,6 +31,7 @@ artifacts/
 benchmark-results/
 
 # Local application state and user data
+/internal-docs/
 .markdown-workspace/
 workspace-data/
 recovery/
