@@ -2,7 +2,7 @@
 
 最后更新：2026-09-03
 
-状态版本：29
+状态版本：30
 
 设计基线：Approved baseline 1.1（ADR-0014）
 
@@ -11,6 +11,7 @@
 ## 1. 当前结论
 
 - 产品名称：英文 `NoteSpace`，中文“笔记空间”。产品定位是普通单用户、本地优先 Markdown/文本编辑器；Typora 风格主画布 + 浏览器式 Tab/历史 + 统一水平可编辑分屏 + 可关闭的只读浮层。
+- 源码已托管至公开仓库 [Ysclmml/notespace](https://github.com/Ysclmml/notespace)，`origin` 使用 SSH，`main` 已首次推送并跟踪 `origin/main`；保留原有 82 个提交，当前功能汇总提交为 `24f9efd`。只上传源码与开发文档，不上传依赖、构建产物、本机数据或签名材料。既有 Actions 会执行质量门禁并生成保留 7 天的 Debug ZIP；当前未发布正式 Release 或 Homebrew tap。
 - 侧栏“离线”已改成中性“本地文件”及说明：它只表示直接读写本地文件，不是网络故障或保存成功指示。底部字数跟随活动文档和正文修改/撤销/外部干净重载，点击可看字符（含/不含空白）及行数；CJK 逐字、其他连续字母数字计词，明确采用源码口径，包含代码和链接地址。120 ms 防抖、32 Ki UTF-16 分片与最多 32 个弱引用缓存，不额外读盘、不持久化正文、不 dirty。
 - 图片右键优先使用图片专属菜单，不再出现通用段落菜单和整图蓝色选择；支持预览、复制已加载像素/原地址/Markdown、编辑引用及本地图片定位。Markdown 图片多行编辑框可改 `src/alt/title`，单次事务支持 Undo，取消/相同值不修改；不移动/修改原图片。只读查看器没有正文编辑，Mermaid 只提供预览/编辑源码。菜单/弹窗双语，模态期间后台应用命令暂停、关闭弹窗后正常恢复。
 - Tauri 产品名、窗口标题、应用内品牌、双语原生菜单、Web 元数据、包/可执行文件和当前文档已同步改名。为兼容旧版本原地升级，bundle identifier `app.markdownworkspace.desktop`、既有 localStorage 键和内部事件/临时文件前缀保持不变。
@@ -168,10 +169,11 @@ set_native_menu_locale(locale)
 
 ## 7. 唯一下一步
 
-交用户保存并退出旧实例，启动本轮 standalone debug `.app`，以测试文件验收图片右键/引用修改、本地图片复制/定位和实时字数。完整门禁、Browser UI 与产物校验已通过，不代替原生桌面完整联调；不自动安装、重启或修改真实工作文档。
+核对 GitHub 最新 `main` 推送对应的 Actions 质量门禁与 Debug ZIP 产物。首次推送已进入队列，本地完整门禁通过不代表托管 CI 已通过；本轮不自动发布 Release、创建 Homebrew tap、安装或重启用户应用。
 
 ### 已知边界
 
+- 新版 standalone debug `.app` 的原生图片复制/定位、退出/重启恢复和完整桌面联调仍需用户以测试文件验收；此前 Browser UI、自动门禁及产物校验不能替代该项。当前只有 ad-hoc 签名，没有 Apple Developer ID 签名/公证。
 - 字数统一采用源码口径，不是移除 Markdown 语法/链接地址/代码后的排版字数。缓存可被回收并重算，不写入设置目录。
 - 复制图片只复制已加载像素为 PNG；未加载、超过 3200 万像素、跨域画布或系统剪贴板限制会显示错误，可改用地址/Markdown 复制。没有额外网络下载或修改原图；本地 asset 范围仍保持既有限制。
 - 外部重命名目前按删除/新增显示，不自动移动已打开标签或修改文内链接。磁盘版本保护不是文件锁，检查与 rename 之间仍有极小竞争窗口。
@@ -180,6 +182,7 @@ set_native_menu_locale(locale)
 
 ## 8. 最近主线决策
 
+- 2026-09-03 用户创建 GitHub 仓库并要求直接上传：将现有源码和历史正常推送到 `Ysclmml/notespace` 的 `main`，不重写历史。沿用现有只读权限的 Actions 质量门禁与临时 Debug artifact；正式安装包发布、Homebrew tap 与签名/公证另行决定，不改变应用本地优先边界。
 - `ADR-0014`：轻量原生外部变化通知、元数据检查、干净自动重载、dirty/缺失保留与显式确认、保存前磁盘版本检查；不引入正文快照、自动合并、文件锁或网络同步。
 - `ADR-0013`：启动浏览元数据恢复/空白设置，代码右侧合并编辑分组，右分屏移动原 Tab，当前页查找、递归隐藏项偏好、根标题和编辑细节修复。
 
@@ -199,6 +202,17 @@ set_native_menu_locale(locale)
 - 2026-09-02 分屏集成收尾：保存和确认状态 ref 在提交时同步，避免保存后立即关闭仍读旧 dirty；移走/关闭来源 Tab 或后退时废弃迟到导航；最终放弃移除无主 dirty 缓存。关闭 Tauri 原生拖放接管以保留 WebKit HTML5 标签拖放；图片仅放宽 `img-src` 的 HTTP(S)，asset 范围保持不变。
 
 ## 9. 验证记录
+
+本轮状态版本 30：GitHub 首次源码上传完成，原历史保留；未改应用运行时功能。
+
+- **PASS (upload audit)** — 检查全部 264 个待提交文件，未发现阻断上传的秘密、真实个人路径、用户截图或构建产物。旧 `main` 的 82 个提交、443 个唯一 blob、205 个历史路径经脱敏模式检查，未发现真实凭据或大型图片 Base64；保留正常 Git 作者元数据，不重写历史。
+- **PASS (full gate)** — 本轮重新运行 `PATH="$HOME/.cargo/bin:$PATH" pnpm verify`：Vitest 51 文件、616/616 tests；Rust 52/52；repository check、Prettier、ESLint、TypeScript、Web production build、Rust fmt/clippy 与 debug no-bundle build 全通过。既有 Vite 大 chunk 警告保留。
+- **PASS (tracked files)** — 所有新增文件纳入暂存后，`pnpm repo:check` 再次通过：`tracked=264 text=247 markdown=46`；`git diff --cached --check` 与 README 格式检查通过。
+- **PASS (GitHub)** — `git push -u origin main` 成功，功能汇总提交 `24f9efd` 上传至 `git@github.com:Ysclmml/notespace.git`；没有强制推送、上传其他分支/标签或安装包。
+- **PENDING (hosted CI)** — GitHub API 已确认功能提交触发 [Quality gate](https://github.com/Ysclmml/notespace/actions/runs/33716708025)，检查时状态为 `queued`。后续交接文档提交会触发新的运行，应以最新 `main` SHA 对应结果为准。
+- **UNCHANGED (distribution/native UI)** — 本轮只做 no-bundle 构建，未重新生成 `.app`/DMG、发布 Release/Homebrew 或安装/启动用户应用；原生桌面验收仍待完成。
+
+### 以下为状态版本 29 验证记录（非本轮交付证据）
 
 本轮状态版本 29：文档统计与图片右键/引用编辑已集成，定向测试、合成 Browser 界面、完整门禁和 debug bundle 校验均通过。
 
