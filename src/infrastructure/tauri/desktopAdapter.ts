@@ -1,5 +1,9 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import type {
+  WorkspaceSearch,
+  WorkspaceSearchMatch,
+} from "../../features/workspace-search/types";
 
 export interface WorkspaceSelection {
   readonly path: string;
@@ -17,8 +21,10 @@ export type NativeMenuActionId =
   | "workspace.open"
   | "file.save"
   | "file.saveAs"
+  | "file.exportHtml"
   | "file.reveal"
   | "edit.find"
+  | "edit.findWorkspace"
   | "app.settings"
   | "app.quit"
   | "view.toggleSource"
@@ -99,6 +105,12 @@ export interface DesktopAdapter {
   pickWorkspace(): Promise<WorkspaceSelection | null>;
   pickDocument(): Promise<DocumentSelection | null>;
   listWorkspace(rootPath: string, showHidden?: boolean): Promise<readonly WorkspaceNode[]>;
+  searchWorkspaces?: WorkspaceSearch;
+  exportHtml?(
+    suggestedFileName: string,
+    html: string,
+    excludedPaths: readonly string[],
+  ): Promise<{ readonly path: string; readonly bytesWritten: number } | null>;
   openDocument(path: string): Promise<OpenDocumentResult>;
   inspectDocuments?(paths: readonly string[]): Promise<readonly DocumentInspection[]>;
   watchFileSystem?(
@@ -146,6 +158,17 @@ export interface DesktopAdapter {
 
 export class TauriDesktopAdapter implements DesktopAdapter {
   readonly kind = "tauri" as const;
+
+  searchWorkspaces: WorkspaceSearch = (workspaces, query, caseSensitive) =>
+    invoke("search_workspaces", { workspaces, query, caseSensitive });
+
+  exportHtml(suggestedFileName: string, html: string, excludedPaths: readonly string[]) {
+    return invoke<{ path: string; bytesWritten: number } | null>("export_html", {
+      suggestedFileName,
+      html,
+      excludedPaths,
+    });
+  }
 
   pickWorkspace() {
     return invoke<WorkspaceSelection | null>("pick_workspace");
@@ -369,6 +392,55 @@ export class DemoDesktopAdapter implements DesktopAdapter {
   readonly kind = "demo" as const;
   private readonly documents = new Map(demoDocuments);
   private tree: readonly WorkspaceNode[] = demoTree;
+
+  searchWorkspaces: WorkspaceSearch = async (workspaces, query, caseSensitive) => {
+    const matches: WorkspaceSearchMatch[] = [];
+    let searchedFiles = 0;
+    const seen = new Set<string>();
+    if (!query.trim())
+      return {
+        matches,
+        searchedFiles,
+        skippedFiles: 0,
+        unavailableRoots: [],
+        truncated: false,
+      };
+    const needle = caseSensitive ? query : query.toLowerCase();
+    for (const root of workspaces) {
+      const visit = (nodes: readonly WorkspaceNode[]) => {
+        for (const node of nodes) {
+          if (node.children) visit(node.children);
+          if (node.kind === "directory" || seen.has(node.path)) continue;
+          seen.add(node.path);
+          const text = this.documents.get(node.path);
+          if (text === undefined) continue;
+          searchedFiles++;
+          for (const [line, snippet] of text.split("\n").entries()) {
+            const column = (caseSensitive ? snippet : snippet.toLowerCase()).indexOf(
+              needle,
+            );
+            if (column >= 0)
+              matches.push({
+                path: node.path,
+                relativePath: node.relativePath,
+                rootPath: root.path,
+                line: line + 1,
+                column: column + 1,
+                snippet,
+              });
+          }
+        }
+      };
+      visit(await this.listWorkspace(root.path, root.showHidden));
+    }
+    return {
+      matches: matches.slice(0, 200),
+      searchedFiles,
+      skippedFiles: 0,
+      unavailableRoots: [],
+      truncated: matches.length > 200,
+    };
+  };
 
   async pickWorkspace(): Promise<WorkspaceSelection> {
     return { path: "demo://paper-and-ink", name: "Paper & Ink 示例" };

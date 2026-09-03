@@ -1126,27 +1126,33 @@ describe("AppShell", () => {
     await waitFor(() => expect(container.querySelector(".tab-rail__dirty")).toBeTruthy());
 
     // File-tree clicks keep the dirty Tab. Navigate within it to test history-only dirtiness.
+    // Keep both fixtures on CodeMirror; visual-editor initialization is unrelated to this close contract.
     fireEvent.click(screen.getByRole("button", { name: "快速打开 ⌘K" }));
     const quickOpen = container.querySelector<HTMLElement>(".quick-open");
     if (!quickOpen) throw new Error("Quick Open was not mounted");
-    fireEvent.click(within(quickOpen).getByRole("button", { name: /other\.md/ }));
-    await screen.findByTitle("/workspace/other.md");
+    fireEvent.click(within(quickOpen).getByRole("button", { name: /worker\.rs/ }));
+    const tabs = screen.getByRole("navigation", { name: "文档标签页" });
+    await within(tabs).findByTitle("/workspace/worker.rs");
     expect(container.querySelector(".tab-rail__dirty")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "关闭 other.md" }));
+    fireEvent.click(screen.getByRole("button", { name: "关闭 worker.rs" }));
 
     const dialog = await screen.findByRole("alertdialog", {
       name: "有未保存的更改",
     });
     expect(within(dialog).getByText("example.py")).toBeVisible();
-    expect(screen.getByTitle("/workspace/other.md")).toBeVisible();
+    expect(within(tabs).getByTitle("/workspace/worker.rs")).toBeVisible();
     fireEvent.click(within(dialog).getByRole("button", { name: "取消" }));
     await waitFor(() =>
       expect(screen.queryByRole("alertdialog", { name: "有未保存的更改" })).toBeNull(),
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "关闭 other.md" }));
+    fireEvent.click(screen.getByRole("button", { name: "关闭 worker.rs" }));
     fireEvent.click(await screen.findByRole("button", { name: "放弃更改并关闭标签页" }));
-    await waitFor(() => expect(screen.queryByTitle("/workspace/other.md")).toBeNull());
+    await waitFor(() =>
+      expect(
+        container.querySelector('.tab-rail__tab[title="/workspace/worker.rs"]'),
+      ).toBeNull(),
+    );
   });
 
   it("prevents browser close while a referenced document is dirty", async () => {

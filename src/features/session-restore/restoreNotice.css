@@ -1,0 +1,141 @@
+.restore-notice {
+  flex: none;
+  min-width: 0;
+  border-bottom: 1px solid #dbc99f;
+  padding: 10px 16px;
+  background: #fff8e9;
+  color: #624814;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.restore-notice__header {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.restore-notice__summary {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.restore-notice button {
+  border: 1px solid #d3bd8c;
+  border-radius: 5px;
+  padding: 3px 8px;
+  background: #fffdf8;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.restore-notice button:hover:not(:disabled) {
+  background: #f3e5c6;
+}
+
+.restore-notice button:focus-visible,
+.restore-notice summary:focus-visible {
+  outline: 2px solid var(--accent-500, #4665e5);
+  outline-offset: 2px;
+}
+
+.restore-notice button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.restore-notice .restore-notice__dismiss {
+  flex: none;
+  min-width: 28px;
+  min-height: 28px;
+  border-color: transparent;
+  padding: 0 6px;
+  background: transparent;
+  font-size: 19px;
+  line-height: 1;
+}
+
+.restore-notice__details summary {
+  width: fit-content;
+  max-width: 100%;
+  margin-top: 4px;
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.restore-notice__body {
+  max-height: min(34vh, 300px);
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 8px 3px 3px;
+}
+
+.restore-notice__body p {
+  margin: 0 0 8px;
+  overflow-wrap: anywhere;
+}
+
+.restore-notice__help {
+  font-size: 12px;
+}
+
+.restore-notice__entries {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.restore-notice__entries li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 6px 16px;
+  min-width: 0;
+  border-top: 1px solid #e9dcbf;
+  padding-top: 8px;
+}
+
+.restore-notice__location {
+  flex: 1 1 250px;
+  min-width: 0;
+}
+
+.restore-notice__kind {
+  display: block;
+  margin-bottom: 2px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.restore-notice__path {
+  display: block;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  unicode-bidi: plaintext;
+  user-select: text;
+}
+
+.restore-notice__actions,
+.restore-notice__choose {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+}
+
+.restore-notice__choose {
+  margin-top: 12px;
+}
+
+.restore-notice__choose p {
+  flex: 1 1 250px;
+  margin: 0;
+}

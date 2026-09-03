@@ -100,6 +100,10 @@ export interface VisualEditorRevealRequest {
   readonly headingText?: string;
   /** Compatibility fallback for callers that only have a numeric location. */
   readonly position?: number;
+  /** Maps a Markdown source location onto the rendered document. */
+  readonly semanticPosition?: EditorSemanticPosition;
+  /** False reveals a background tab without moving keyboard focus. */
+  readonly focus?: boolean;
   /** Exact surface scroll restoration used by same-document history navigation. */
   readonly scrollTop?: number;
 }
@@ -1193,7 +1197,9 @@ function revealInEditor(
   scroller: HTMLElement,
   view: EditorView,
   reveal: VisualEditorRevealRequest,
+  autofocus: boolean,
 ): boolean {
+  const shouldFocus = reveal.focus === undefined || (reveal.focus && autofocus);
   let target: HTMLElement | null = null;
   const headings = Array.from(
     editorRoot.querySelectorAll<HTMLElement>("h1, h2, h3, h4, h5, h6"),
@@ -1241,14 +1247,17 @@ function revealInEditor(
         scroller.scrollTop + targetBounds.top - scrollerBounds.top - 36,
       );
     }
-    view.focus();
+    if (shouldFocus) view.focus();
     return true;
   }
 
-  if (reveal.position === undefined) return false;
-  const selection = selectionFor(view, reveal.position);
+  const position = reveal.semanticPosition
+    ? visualPositionFromSemantic(view.state.doc, reveal.semanticPosition)
+    : reveal.position;
+  if (position === undefined) return false;
+  const selection = selectionFor(view, position);
   view.dispatch(view.state.tr.setSelection(selection));
-  view.focus();
+  if (shouldFocus) view.focus();
   if (reveal.scrollTop !== undefined) {
     scroller.scrollTop = reveal.scrollTop;
     return true;
@@ -2098,7 +2107,13 @@ function VisualMarkdownEditorInstance({
           if (
             requestedReveal &&
             consumedRevealRef.current !== requestedReveal.requestId &&
-            revealInEditor(editorRoot, scroller, nextView, requestedReveal)
+            revealInEditor(
+              editorRoot,
+              scroller,
+              nextView,
+              requestedReveal,
+              latestAutofocusRef.current,
+            )
           ) {
             consumedRevealRef.current = requestedReveal.requestId;
             onRevealConsumedRef.current?.(requestedReveal.requestId);
@@ -2164,7 +2179,7 @@ function VisualMarkdownEditorInstance({
     ) {
       return;
     }
-    if (revealInEditor(editorRoot, scroller, view, reveal)) {
+    if (revealInEditor(editorRoot, scroller, view, reveal, latestAutofocusRef.current)) {
       consumedRevealRef.current = reveal.requestId;
       onRevealConsumedRef.current?.(reveal.requestId);
     }

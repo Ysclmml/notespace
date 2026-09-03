@@ -43,6 +43,9 @@ export interface EditorRevealRequest {
   readonly anchor?: string;
   readonly headingText?: string;
   readonly position?: number;
+  readonly semanticPosition?: EditorSemanticPosition;
+  /** False reveals a background tab without moving keyboard focus. */
+  readonly focus?: boolean;
   readonly requestId: number;
   readonly scrollTop?: number;
 }
@@ -556,10 +559,10 @@ function SourceMarkdownEditorInstance({
           : undefined,
     });
     if (reveal.scrollTop !== undefined) view.scrollDOM.scrollTop = reveal.scrollTop;
-    view.focus();
+    if (reveal.focus === undefined || (reveal.focus && autofocus)) view.focus();
     consumedRevealRef.current = reveal.requestId;
     onRevealConsumedRef.current?.(reveal.requestId);
-  }, [reveal]);
+  }, [autofocus, reveal]);
 
   return (
     <div

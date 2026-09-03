@@ -1,8 +1,18 @@
 # NoteSpace（笔记空间）需求基线
 
-状态：Approved baseline 1.2（ADR-0015）
+状态：Approved baseline 1.3（ADR-0016，产品版本 0.1.1）
 
 日期：2026-09-03
+
+ADR-0016 补充工作区磁盘全文搜索、静态 HTML 导出和失效恢复路径提示；保留既有数据与导航规则。新功能遵循以下验收：
+
+| ID | 状态 | 验收 |
+| --- | --- | --- |
+| `RESTORE-NOTICE-001` | Done | 失效工作区/文件显示完整路径与重试/选择文件夹/移除记录；只改变便利元数据，不关闭现有标签或创建/删除磁盘内容，迟到结果不覆盖用户操作。 |
+| `SEARCH-WORKSPACE-001` | Done | 左侧入口与 Cmd/Ctrl+Shift+F，提交后读取多根磁盘文本；大小写、CJK、隐藏/后缀/重目录/symlink规则、无持久索引。有限文件/字节/深度/200匹配行；截断、跳过、不可读根不伪装为完整无结果。结果在活动分屏按临时标签策略打开并定位，不丢dirty或抢迟到焦点。 |
+| `EXPORT-HTML-001` | Done | 从最新内存Markdown生成完整静态HTML，GFM、代码、资源引用与UTF-8正确；危险标记/协议不执行，不读编辑器DOM/网络。原生chooser取消或写失败保持原文件；拒绝覆盖已开文件、非HTML目标与符号链接；原子写入，不清dirty。 |
+
+导出暂不支持 source-only 文档；当前正文在解析前检查 8 MiB UTF-8 上限（含打开后增长的 normal 文档），超限清晰提示且不进入解析。Mermaid 保留源码，不打包图片。普通本地引用转换为 file URI，未命名页相对资源无法解析时显示地址提示。新增 `search_workspaces(workspaces, query, caseSensitive)` 返回有限行结果及覆盖状态，`export_html(suggestedFileName, html, excludedPaths)` 返回 path/bytesWritten 或取消 null；原生菜单新增 `edit.findWorkspace`、`file.exportHtml`，共 15 项前端 action。
 
 本文件保存稳定需求 ID，供实现、测试和上下文压缩后继续执行。优先级：MVP、P1、Later。状态：Active、Deferred、Done。
 
@@ -93,7 +103,7 @@ ADR-0013 明确取代 ADR-0007/0011 的独立只读辅助栏、分屏复制标�
 | `MENU-CONTEXT-001`          | Done | 编辑/表格/工作区/标签使用本地化自定义右键菜单    | 按目标裁剪并保留选择；默认禁用浏览器菜单，仅顶部工具栏例外                                 |
 | `MENU-DEVTOOLS-001`         | Done | debug 顶部原生视图菜单可打开开发者工具           | 中英文；release 隐藏；不新增 invoke，确认期间页面默认菜单仍禁止                            |
 | `MENU-APP-001`              | Done | 顶部“更多”和工作区文件动作本地化                 | 新建/reveal、折叠、复制路径、关闭工作区、移到废纸篓等当前动作可见                          |
-| `MENU-NATIVE-001`           | Done | macOS 原生菜单中英文可切换                       | 13 个前端 action 含 file.reveal/edit.find；编辑项预定义；close/quit 经 dirty               |
+| `MENU-NATIVE-001`           | Done | macOS 原生菜单中英文可切换                       | 15 个前端 action 含 file.reveal/edit.find；编辑项预定义；close/quit 经 dirty               |
 | `SETTINGS-PERSIST-001`      | Done | 界面、编辑、保存与启动偏好持久化                 | 九项含 manual/afterDelay、1–300 秒延迟和 restore/empty；损坏值归一化                       |
 
 ### 1.1 编辑与保存的精确语义
@@ -149,7 +159,7 @@ ADR-0013 明确取代 ADR-0007/0011 的独立只读辅助栏、分屏复制标�
 ### 1.4 国际化、菜单与设置
 
 - 默认 locale 为 `zh-CN`，可切换 `en-US`。切换立即更新 Shell、设置、代码控件、viewer、应用内菜单、自定义右键菜单，并调用 `set_native_menu_locale(locale)` 重建原生菜单。
-- 原生菜单只发送当前 13 个小型 action ID：`file.new`、`file.open`、`workspace.open`、`file.save`、`file.saveAs`、`file.reveal`、`edit.find`、`app.settings`、`app.quit`、`view.toggleSource`、`view.toggleSidebar`、`window.close`、`help.open`。编辑菜单的 Undo/Redo/Cut/Copy/Paste/Select All 使用 Tauri 预定义命令；Rust 不复制前端文档状态。
+- 原生菜单只发送当前 15 个小型 action ID：`file.new`、`file.open`、`workspace.open`、`file.save`、`file.saveAs`、`file.reveal`、`file.exportHtml`、`edit.find`、`edit.findWorkspace`、`app.settings`、`app.quit`、`view.toggleSource`、`view.toggleSidebar`、`window.close`、`help.open`。编辑菜单的 Undo/Redo/Cut/Copy/Paste/Select All 使用 Tauri 预定义命令；Rust 不复制前端文档状态。
 - `window.close` 和 `app.quit` 是自定义项：前端调用当前 Tauri 窗口的 close，`onCloseRequested` 再检查所有被 Tab current/history 引用的 dirty session并显示应用内非阻塞对话框；用户取消时阻止销毁并保持窗口和应用进程，确认或无 dirty 时只销毁一次窗口。macOS 主窗口销毁后应用进程必须实际退出，不能留下只能强制结束的后台进程。
 - 自定义右键菜单在 capture phase 捕获编辑器/链接/只读代码/工作区树上的右键或 Control-click，避免破坏现有选择或先触发普通打开。菜单采用紧凑、分组清晰的 macOS/Typora 风格，并有明确 hover、禁用、快捷键和子菜单状态。可写表面包含编辑、普通 Markdown 结构和表格动作；链接增加打开、在新 Tab 打开、复制链接；只读代码只显示复制/全选；标签提供保持打开/向右分屏/移组/关闭。根/文件菜单沿用既有能力。默认阻止平台右键但不停止自定义事件，仅显式顶部工具栏例外；菜单/对话框和确认期间不例外。点击外部、滚动、缩放或 Esc 关闭自定义菜单。
 - debug 原生视图菜单以本地 Rust 调用打开开发者工具，release 不显示该项；不新增前端应用 action 或 invoke。Tauri 主窗口关闭原生文件拖放捕获，把应用内部 HTML5 标签拖动交给 WebView；不新增外部文件拖放功能。
@@ -242,13 +252,15 @@ ADR-0013 明确取代 ADR-0007/0011 的独立只读辅助栏、分屏复制标�
 
 ## 4. 当前 Tauri 接口
 
-当前只存在下列 19 个命令：
+当前共 21 个命令（新增命令参数与约束见 ADR-0016）：
 
 ```text
 pick_workspace()
 pick_document()
 pick_image_directory(locale?)
 list_workspace(rootPath, showHidden?)
+search_workspaces(workspaces, query, caseSensitive)
+export_html(suggestedFileName, html, excludedPaths)
 open_document(path)
 inspect_documents(paths)
 watch_filesystem(workspaceRoots, documentPaths)
@@ -281,7 +293,7 @@ set_native_menu_locale(locale)
 | `IPC-PREVIEW-001`       | preview 接收原始 reference 与当前文档路径，固定缓冲读取局部 UTF-8 行，返回 path/language/startLine/targetLine/content                                  |
 | `IPC-SAVE-001`          | 原生 save/Save As 返回 path/bytesWritten/diskRevision；save 检查 expectedRevision；Save As 取消 null，excludedPaths 写前拒绝已打开目标；同目录原子保存 |
 | `IPC-ASSET-001`         | Rust 直接读系统剪贴板；只接收 `documentPath/directoryPath?`，返回路径/URI/尺寸；另有图片存在检查、目录选择和单文件访问准备，不传 bytes/Base64          |
-| `IPC-MENU-001`          | locale 仅为 `zh-CN/en-US`；Rust 重建原生菜单，13 个小型 action ID（含 file.reveal、edit.find 和自定义 close/quit）通知前端                             |
+| `IPC-MENU-001`          | locale 仅为 `zh-CN/en-US`；Rust 重建原生菜单，15 个小型 action ID（含 file.reveal、edit.find 和自定义 close/quit）通知前端                             |
 | `IPC-LEAN-001`          | 不预生成未来命令、错误码全集、巨型 schema 或通用事件总线                                                                                               |
 
 ## 5. 性能与体验目标
@@ -312,10 +324,10 @@ ADR-0010 补充验收：根/目录/文件同级与外部空白菜单的位置语
 | `NAV-SPLIT-001`        | P1     | Done     | ADR-0013 统一右侧编辑组与原 Tab 右移；不含额外辅助栏或任意 pane tree |
 | `NAV-RECENT-001`       | P1     | Done     | 最近路径及可选标签/组/数值视图恢复；无正文快照或持久导航历史         |
 | `TEXT-EDIT-001`        | P1     | Done     | 受支持代码/文本在主 Tab 编辑、保存和另存为                           |
-| `SEARCH-WORKSPACE-001` | P1     | Deferred | 工作区全文搜索与 Quick Open 高级排序                                 |
+| `SEARCH-WORKSPACE-001` | P1     | Done     | 有限工作区磁盘全文搜索；Quick Open 高级排序仍后置                     |
 | `LINK-BACKREF-001`     | P1     | Deferred | 反向链接、断链和重命名修复                                           |
 | `EDIT-MATH-001`        | P1     | Deferred | 数学渲染                                                             |
-| `EXPORT-001`           | P1     | Deferred | PDF/HTML/SVG/PNG 导出                                                |
+| `EXPORT-001`           | P1     | Deferred | PDF/SVG/PNG 导出；静态 HTML 已由 EXPORT-HTML-001 实现                  |
 | `I18N-POLISH-001`      | P1     | Deferred | 少量 chooser、窗口标题、帮助动作等收尾                               |
 | `GIT-001`              | Later  | Deferred | diff、历史与冲突工具                                                 |
 | `GRAPH-001`            | Later  | Deferred | 文档图谱                                                             |
@@ -379,4 +391,4 @@ ADR-0010 补充验收：根/目录/文件同级与外部空白菜单的位置语
 | `AC-DIAGRAM-001`           | production CSP 下 Mermaid 清晰；缩放/平移/Fit/Esc 正常                                                                         |
 | `AC-OFFLINE-001`           | 断网状态下核心工作流完整可用                                                                                                   |
 
-历史 ADR-0007 等验收记录只说明当时基线，不代表当前 ADR-0015 的交付结果。本轮新增能力的总测试数、全局 format/lint/typecheck/build、Rust fmt/clippy/test、UI smoke 与最终桌面产物由集成者统一确认，历史通过记录不代替当前修订的验证。
+历史 ADR-0007 等验收记录只说明当时基线，不代表当前 ADR-0016 的交付结果。本轮新增能力的总测试数、全局 format/lint/typecheck/build、Rust fmt/clippy/test、UI smoke 与最终桌面产物由集成者统一确认，历史通过记录不代替当前修订的验证。

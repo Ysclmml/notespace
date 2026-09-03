@@ -23,6 +23,8 @@ pub fn run() {
             commands::pick_document,
             commands::pick_image_directory,
             commands::list_workspace,
+            commands::workspace_search::search_workspaces,
+            commands::html_export::export_html,
             commands::open_document,
             commands::filesystem::inspect_documents,
             commands::filesystem::watch_filesystem,

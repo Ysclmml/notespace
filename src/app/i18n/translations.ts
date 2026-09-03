@@ -1,6 +1,16 @@
 import type { AppLocale } from "../settings";
 
 export const zhCN = {
+  "search.workspace": "工作区搜索",
+  "search.unavailable": "请在桌面应用中打开工作区后搜索。",
+  "export.html": "导出 HTML…",
+  "export.busy": "正在导出…",
+  "export.success": "已导出 {name}。图片仍引用原位置；Mermaid 保留源码。",
+  "export.cancelled": "已取消导出。",
+  "export.failed": "导出失败：{error}",
+  "export.sourceTooLarge":
+    "文档超过 HTML 导出的 8 MiB 大小限制。当前编辑已保留，请拆分文档后重试。",
+  "export.unavailable": "请选择 Markdown 页面，并在桌面应用中导出。",
   "external.title": "外部文件变化",
   "external.modified": "磁盘文件已被其他程序修改。已保留当前内容，自动保存已暂停。",
   "external.missing":
@@ -372,6 +382,17 @@ export const zhCN = {
 export type TranslationKey = keyof typeof zhCN;
 
 export const enUS = {
+  "search.workspace": "Workspace search",
+  "search.unavailable": "Open a workspace in the desktop app to search.",
+  "export.html": "Export HTML…",
+  "export.busy": "Exporting…",
+  "export.success":
+    "Exported {name}. Images refer to their original locations; Mermaid remains source code.",
+  "export.cancelled": "Export cancelled.",
+  "export.failed": "Export failed: {error}",
+  "export.sourceTooLarge":
+    "This document exceeds the 8 MiB HTML export limit. Your edits are preserved; split the document and try again.",
+  "export.unavailable": "Select a Markdown page in the desktop app to export.",
   "external.title": "External file change",
   "external.modified":
     "Another program changed this file. Your content is preserved and auto-save is paused.",

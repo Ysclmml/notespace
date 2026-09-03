@@ -1,6 +1,8 @@
 mod clipboard_image;
 mod external_url;
 pub mod filesystem;
+pub mod html_export;
+pub mod workspace_search;
 
 use serde::Serialize;
 use std::ffi::{OsStr, OsString};

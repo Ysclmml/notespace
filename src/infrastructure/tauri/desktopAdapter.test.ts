@@ -304,6 +304,36 @@ describe("Tauri desktop adapter", () => {
     ]);
   });
 
+  it("forwards bounded workspace search and independent HTML export without saving a document", async () => {
+    const adapter = new TauriDesktopAdapter();
+    const roots = [{ path: "/search-fixtures", showHidden: true }];
+    const response = {
+      matches: [],
+      searchedFiles: 0,
+      skippedFiles: 1,
+      unavailableRoots: [],
+      truncated: false,
+    };
+    invokeMock.mockResolvedValueOnce(response).mockResolvedValueOnce(null);
+    expect(await adapter.searchWorkspaces(roots, "中文", false)).toEqual(response);
+    expect(
+      await adapter.exportHtml("note.html", "<!doctype html><p>中文</p>", [
+        "/search-fixtures/note.md",
+      ]),
+    ).toBeNull();
+    expect(invokeMock.mock.calls).toEqual([
+      ["search_workspaces", { workspaces: roots, query: "中文", caseSensitive: false }],
+      [
+        "export_html",
+        {
+          suggestedFileName: "note.html",
+          html: "<!doctype html><p>中文</p>",
+          excludedPaths: ["/search-fixtures/note.md"],
+        },
+      ],
+    ]);
+  });
+
   it("forwards external URLs exactly and propagates browser launcher failures", async () => {
     invokeMock.mockResolvedValueOnce(undefined).mockRejectedValueOnce({
       code: "externalOpenFailed",

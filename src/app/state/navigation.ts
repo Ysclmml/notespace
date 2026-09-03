@@ -97,7 +97,16 @@ export function recordNavigationVisit(
 ): AppState {
   const destination = activeVisit(next);
   if (!destination) return next;
-  const navigation = refreshNavigationView(previous, previousView);
+  // Startup restores open pages, not a persisted trail. The first new visit
+  // still needs its current source page so Back can return to that location.
+  const source =
+    previous.navigation.visits.length === 0 ? activeVisit(previous) : undefined;
+  const navigation = source
+    ? {
+        visits: [{ ...source, entry: copyNavigationEntry(source.entry, previousView) }],
+        index: 0,
+      }
+    : refreshNavigationView(previous, previousView);
   const current = navigation.visits[navigation.index];
   if (current && sameVisit(current, destination)) return { ...next, navigation };
 

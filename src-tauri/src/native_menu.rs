@@ -22,6 +22,8 @@ pub const ACTION_TOGGLE_SIDEBAR: &str = "view.toggleSidebar";
 pub const ACTION_CLOSE_WINDOW: &str = "window.close";
 pub const ACTION_OPEN_HELP: &str = "help.open";
 pub const ACTION_FIND: &str = "edit.find";
+pub const ACTION_FIND_WORKSPACE: &str = "edit.findWorkspace";
+pub const ACTION_EXPORT_HTML: &str = "file.exportHtml";
 #[cfg(debug_assertions)]
 const ACTION_OPEN_DEVTOOLS: &str = "view.openDevtools";
 
@@ -39,6 +41,8 @@ const FORWARDED_ACTIONS: &[&str] = &[
     ACTION_CLOSE_WINDOW,
     ACTION_OPEN_HELP,
     ACTION_FIND,
+    ACTION_FIND_WORKSPACE,
+    ACTION_EXPORT_HTML,
 ];
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -91,6 +95,8 @@ struct NativeMenuLabels {
     paste: &'static str,
     select_all: &'static str,
     find: &'static str,
+    find_workspace: &'static str,
+    export_html: &'static str,
     toggle_source: &'static str,
     toggle_sidebar: &'static str,
     #[cfg(debug_assertions)]
@@ -132,6 +138,8 @@ fn labels(locale: NativeMenuLocale) -> NativeMenuLabels {
             paste: "粘贴",
             select_all: "全选",
             find: "当前页查找…",
+            find_workspace: "工作区搜索…",
+            export_html: "导出 HTML…",
             toggle_source: "切换可视/源码",
             toggle_sidebar: "显示/隐藏侧边栏",
             #[cfg(debug_assertions)]
@@ -170,6 +178,8 @@ fn labels(locale: NativeMenuLocale) -> NativeMenuLabels {
             paste: "Paste",
             select_all: "Select All",
             find: "Find in Page…",
+            find_workspace: "Search Workspace…",
+            export_html: "Export HTML…",
             toggle_source: "Toggle Visual/Source",
             toggle_sidebar: "Toggle Sidebar",
             #[cfg(debug_assertions)]
@@ -274,6 +284,7 @@ fn build_native_menu<R: Runtime>(
         .separator()
         .item(&save_document)
         .item(&save_document_as)
+        .item(&MenuItemBuilder::with_id(ACTION_EXPORT_HTML, labels.export_html).build(app)?)
         .separator()
         .item(&reveal_in_file_manager)
         .separator()
@@ -296,6 +307,11 @@ fn build_native_menu<R: Runtime>(
         )?)
         .separator()
         .item(&find)
+        .item(
+            &MenuItemBuilder::with_id(ACTION_FIND_WORKSPACE, labels.find_workspace)
+                .accelerator("CmdOrCtrl+Shift+F")
+                .build(app)?,
+        )
         .build()?;
 
     let toggle_source = MenuItemBuilder::with_id(ACTION_TOGGLE_SOURCE_MODE, labels.toggle_source)
@@ -386,7 +402,7 @@ mod tests {
 
     #[test]
     fn only_stable_application_actions_are_forwarded() {
-        assert_eq!(FORWARDED_ACTIONS.len(), 13);
+        assert_eq!(FORWARDED_ACTIONS.len(), 15);
         for id in FORWARDED_ACTIONS {
             assert_eq!(forwarded_action(id), Some(*id));
         }

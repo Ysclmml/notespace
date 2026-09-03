@@ -72,6 +72,43 @@ function visits(state: AppState) {
 }
 
 describe("window-level document navigation", () => {
+  it("seeds the restored source page on its first new visit without restoring old history", () => {
+    const source = reduce(
+      createInitialAppState(),
+      openPreviewTab("restored", document("source")),
+      updateView("restored", createViewState({ visualScrollTop: 321 })),
+    );
+    const restored: AppState = { ...source, navigation: { visits: [], index: -1 } };
+    expect(selectCanNavigateBack(restored)).toBe(false);
+    let state = reduce(restored, openPreviewTab("unused", document("target")));
+    expect(visits(state)).toEqual([
+      ["restored", document("source").path],
+      ["restored", document("target").path],
+    ]);
+    state = reduce(state, goNavigationBack());
+    expect(selectActiveTab(state)?.current).toMatchObject({
+      path: document("source").path,
+      view: { visualScrollTop: 321 },
+    });
+    state = reduce(state, goNavigationForward());
+    expect(selectActiveTab(state)?.current.path).toBe(document("target").path);
+  });
+
+  it("records a first explicit same-page location after restoration without duplicating it", () => {
+    const source = reduce(
+      createInitialAppState(),
+      openPreviewTab("restored", document("source")),
+    );
+    const restored: AppState = { ...source, navigation: { visits: [], index: -1 } };
+    const targetView = createViewState({ anchor: "details", visualSelectionFrom: 8 });
+    let state = reduce(restored, navigateToView("restored", targetView));
+    expect(state.navigation.visits).toHaveLength(2);
+    state = reduce(state, goNavigationBack());
+    expect(selectActiveTab(state)?.current.view.anchor).toBeUndefined();
+    state = reduce(state, goNavigationForward());
+    expect(selectActiveTab(state)?.current.view).toEqual(targetView);
+  });
+
   it("seeds the first active tab and excludes background opens", () => {
     let state = createInitialAppState();
     expect(selectCanNavigateBack(state)).toBe(false);
