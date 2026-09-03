@@ -2,7 +2,10 @@ import { act, fireEvent, render, waitFor } from "@testing-library/react";
 import { undo } from "@codemirror/commands";
 import { forceParsing } from "@codemirror/language";
 import { EditorView } from "@codemirror/view";
-import { useState } from "react";
+import { undo as undoVisual } from "@milkdown/kit/prose/history";
+import { TextSelection } from "@milkdown/kit/prose/state";
+import { EditorView as VisualEditorView } from "@milkdown/kit/prose/view";
+import { StrictMode, useState } from "react";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 
 import { MarkdownEditor } from "./MarkdownEditor";
@@ -10,6 +13,15 @@ import { LARGE_PASTE_TEXT_THRESHOLD } from "./pasteGuard";
 import { installCodeMirrorDomMeasurementStubs } from "./spike/domTestSupport";
 
 beforeAll(() => installCodeMirrorDomMeasurementStubs());
+
+function dispatchClipboardPaste(target: HTMLElement, data: Partial<DataTransfer>) {
+  const event = new Event("paste", { bubbles: true, cancelable: true });
+  Object.defineProperty(event, "clipboardData", {
+    value: { getData: () => "", items: [], files: [], types: [], ...data },
+  });
+  fireEvent(target, event);
+  return event;
+}
 
 describe("MarkdownEditor DOM integration", () => {
   it("routes relative and fragment links exactly once from source pointer gestures", async () => {
@@ -341,37 +353,46 @@ describe("MarkdownEditor DOM integration", () => {
     expect(getComputedStyle(selection).backgroundColor).not.toBe("rgb(0, 0, 0)");
   });
 
-  it("rejects a large inline image before creating an editor transaction", () => {
-    const onChange = vi.fn();
-    const onPasteRejected = vi.fn();
-    const { container } = render(
-      <MarkdownEditor
-        autofocus={false}
-        documentId="paste-test"
-        mode="normal"
-        presentationMode="source"
-        onChange={onChange}
-        onPasteRejected={onPasteRejected}
-        value="# 原文\n"
-      />,
-    );
-    const content = container.querySelector<HTMLElement>(".cm-content");
-    if (!content) throw new Error("CodeMirror content was not mounted");
+  it.each(["text/plain", "text/html"])(
+    "rejects a large inline image in %s before creating an editor transaction",
+    (type) => {
+      const onChange = vi.fn();
+      const onPasteRejected = vi.fn();
+      const onImagePaste = vi.fn(async () => "![](./capture.png)");
+      const { container } = render(
+        <MarkdownEditor
+          autofocus={false}
+          documentId="paste-test"
+          mode="normal"
+          presentationMode="source"
+          onChange={onChange}
+          onPasteRejected={onPasteRejected}
+          onImagePaste={onImagePaste}
+          value="# 原文\n"
+        />,
+      );
+      const content = container.querySelector<HTMLElement>(".cm-content");
+      if (!content) throw new Error("CodeMirror content was not mounted");
 
-    const paste = new Event("paste", { bubbles: true, cancelable: true });
-    Object.defineProperty(paste, "clipboardData", {
-      value: {
-        getData: () =>
-          "data:image/png;base64," + "A".repeat(LARGE_PASTE_TEXT_THRESHOLD + 1),
-        items: [],
-      },
-    });
-    fireEvent(content, paste);
+      const paste = new Event("paste", { bubbles: true, cancelable: true });
+      Object.defineProperty(paste, "clipboardData", {
+        value: {
+          getData: (requested: string) =>
+            requested === type
+              ? "data:image/png;base64," + "A".repeat(LARGE_PASTE_TEXT_THRESHOLD + 1)
+              : "",
+          items: [],
+          types: [type, "image/png"],
+        },
+      });
+      fireEvent(content, paste);
 
-    expect(paste.defaultPrevented).toBe(true);
-    expect(onPasteRejected).toHaveBeenCalledOnce();
-    expect(onChange).not.toHaveBeenCalled();
-  });
+      expect(paste.defaultPrevented).toBe(true);
+      expect(onPasteRejected).toHaveBeenCalledOnce();
+      expect(onChange).not.toHaveBeenCalled();
+      expect(onImagePaste).not.toHaveBeenCalled();
+    },
+  );
 
   it("inserts a relative image link only after the desktop write succeeds", async () => {
     const onChange = vi.fn();
@@ -432,6 +453,262 @@ describe("MarkdownEditor DOM integration", () => {
 
     await waitFor(() => expect(onPasteError).toHaveBeenCalledWith("disk full"));
     expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it.each(["files", "types", "Files", "empty"])(
+    "pastes source screenshots with a %s-only WebKit representation after writing",
+    async (representation) => {
+      let finish!: (markdown: string) => void;
+      const onChange = vi.fn();
+      const onImagePaste = vi.fn(
+        () => new Promise<string>((resolve) => (finish = resolve)),
+      );
+      const { container } = render(
+        <MarkdownEditor
+          autofocus={false}
+          documentId="/fixtures/paste.md"
+          mode="sourceOnly"
+          onChange={onChange}
+          onImagePaste={onImagePaste}
+          value=""
+        />,
+      );
+      const view = EditorView.findFromDOM(
+        container.querySelector<HTMLElement>(".cm-editor")!,
+      )!;
+      const data: Partial<DataTransfer> =
+        representation === "files"
+          ? {
+              files: [
+                new File(["fixture"], "capture.png", { type: "image/png" }),
+              ] as unknown as FileList,
+            }
+          : {
+              types:
+                representation === "types"
+                  ? ["image/tiff"]
+                  : representation === "Files"
+                    ? ["Files"]
+                    : [],
+            };
+      const event = dispatchClipboardPaste(view.contentDOM, data);
+      expect(event.defaultPrevented).toBe(true);
+      expect(onImagePaste).toHaveBeenCalledExactlyOnceWith(
+        { from: 0, to: 0 },
+        representation === "files" || representation === "types"
+          ? "image"
+          : "native-fallback",
+      );
+      expect(view.state.doc.toString()).toBe("");
+      expect(onChange).not.toHaveBeenCalled();
+      await act(async () => finish("![](./capture.png)"));
+      expect(view.state.doc.toString()).toBe("![](./capture.png)");
+      act(() => {
+        undo(view);
+      });
+      expect(view.state.doc.toString()).toBe("");
+    },
+  );
+
+  it("keeps normal text paste and ignores image handling when no host callback exists", async () => {
+    const onImagePaste = vi.fn();
+    const onChange = vi.fn();
+    const { container, rerender } = render(
+      <MarkdownEditor
+        documentId="/fixtures/plain.md"
+        mode="sourceOnly"
+        value=""
+        onChange={onChange}
+        onImagePaste={onImagePaste}
+      />,
+    );
+    const content = container.querySelector<HTMLElement>(".cm-content")!;
+    dispatchClipboardPaste(content, {
+      types: ["text/plain", "image/png"],
+      getData: (type) => (type === "text/plain" ? "ordinary text" : ""),
+    });
+    await waitFor(() => expect(onChange).toHaveBeenCalledWith("ordinary text"));
+    expect(onImagePaste).not.toHaveBeenCalled();
+    rerender(
+      <MarkdownEditor
+        documentId="/fixtures/plain.md"
+        mode="sourceOnly"
+        value="ordinary text"
+        onChange={onChange}
+      />,
+    );
+    dispatchClipboardPaste(content, { types: ["Files"] });
+    expect(onImagePaste).not.toHaveBeenCalled();
+    expect(content.textContent).toBe("ordinary text");
+  });
+
+  it("pastes a screenshot with image-only HTML and unknown item MIME after source selection changes", async () => {
+    let finish!: (markdown: string) => void;
+    const onChange = vi.fn();
+    const onPasteError = vi.fn();
+    const onImagePaste = vi.fn(() => new Promise<string>((resolve) => (finish = resolve)));
+    const { container } = render(
+      <MarkdownEditor
+        documentId="/fixtures/image.md"
+        mode="sourceOnly"
+        value="original"
+        autofocus={false}
+        onChange={onChange}
+        onImagePaste={onImagePaste}
+        onPasteError={onPasteError}
+      />,
+    );
+    const view = EditorView.findFromDOM(
+      container.querySelector<HTMLElement>(".cm-editor")!,
+    )!;
+    const original = view.state.doc;
+    const event = dispatchClipboardPaste(view.contentDOM, {
+      items: [{ kind: "file", type: "" }] as unknown as DataTransferItemList,
+      types: ["image/png", "text/html"],
+      getData: (type) =>
+        type === "text/html" ? '<img src="file:///fixtures/capture.png">' : "",
+    });
+    expect(event.defaultPrevented).toBe(true);
+    expect(onImagePaste).toHaveBeenCalledExactlyOnceWith({ from: 0, to: 0 }, "image");
+    act(() => view.dispatch({ selection: { anchor: 6 } }));
+    expect(view.state.doc).toBe(original);
+    expect(onChange).not.toHaveBeenCalled();
+    await act(async () => finish("![](./capture.png)"));
+    expect(view.state.doc.toString()).toBe("![](./capture.png)original");
+    expect(onPasteError).not.toHaveBeenCalled();
+    act(() => undo(view));
+    expect(view.state.doc.toString()).toBe("original");
+  });
+
+  it("does not erase selected source text when Save As is cancelled", async () => {
+    const onChange = vi.fn();
+    const onPasteError = vi.fn();
+    const { container } = render(
+      <MarkdownEditor
+        documentId="/fixtures/cancel.md"
+        mode="sourceOnly"
+        value="keep this"
+        onChange={onChange}
+        onImagePaste={async () => ""}
+        onPasteError={onPasteError}
+      />,
+    );
+    const view = EditorView.findFromDOM(
+      container.querySelector<HTMLElement>(".cm-editor")!,
+    )!;
+    act(() => view.dispatch({ selection: { anchor: 0, head: 9 } }));
+    await act(async () => {
+      dispatchClipboardPaste(view.contentDOM, { types: ["image/png"] });
+    });
+    expect(view.state.doc.toString()).toBe("keep this");
+    expect(onChange).not.toHaveBeenCalled();
+    expect(onPasteError).not.toHaveBeenCalled();
+  });
+
+  it.each([false, true])(
+    "inserts a saved image once after source Save As remount and supports Undo (Strict Mode: %s)",
+    async (strictMode) => {
+      const onChange = vi.fn();
+      const onImageInsertConsumed = vi.fn();
+      const request = {
+        id: 1,
+        documentId: "/fixtures/saved.md",
+        editorMode: "source" as const,
+        markdown: "![](./capture.png)",
+        expectedText: "original",
+        selection: { from: 8, to: 8 },
+      };
+      const { container, rerender } = render(
+        <MarkdownEditor
+          documentId={request.documentId}
+          mode="sourceOnly"
+          value="original"
+          onChange={onChange}
+          imageInsertRequest={request}
+          onImageInsertConsumed={onImageInsertConsumed}
+        />,
+        { wrapper: strictMode ? StrictMode : undefined },
+      );
+      const view = EditorView.findFromDOM(
+        container.querySelector<HTMLElement>(".cm-editor")!,
+      )!;
+      await waitFor(() =>
+        expect(view.state.doc.toString()).toBe("original![](./capture.png)"),
+      );
+      expect(onImageInsertConsumed).toHaveBeenCalledExactlyOnceWith(1);
+      rerender(
+        <MarkdownEditor
+          documentId={request.documentId}
+          mode="sourceOnly"
+          value="original![](./capture.png)"
+          onChange={onChange}
+          imageInsertRequest={{ ...request }}
+          onImageInsertConsumed={onImageInsertConsumed}
+        />,
+      );
+      expect(onImageInsertConsumed).toHaveBeenCalledTimes(1);
+      act(() => {
+        undo(view);
+      });
+      expect(view.state.doc.toString()).toBe("original");
+      onChange.mockClear();
+      rerender(
+        <MarkdownEditor
+          documentId={request.documentId}
+          mode="sourceOnly"
+          value="new edit"
+          onChange={onChange}
+          imageInsertRequest={{ ...request, id: 2 }}
+          onImageInsertConsumed={onImageInsertConsumed}
+        />,
+      );
+      expect(onImageInsertConsumed).toHaveBeenLastCalledWith(2);
+      expect(view.state.doc.toString()).toBe("new edit");
+      expect(onChange).not.toHaveBeenCalled();
+    },
+  );
+
+  it("rejects a late source insertion after editing and drops results after changing documents", async () => {
+    let finish!: (markdown: string) => void;
+    const onImagePaste = () => new Promise<string>((resolve) => (finish = resolve));
+    const onChange = vi.fn();
+    const onPasteError = vi.fn();
+    const { container, rerender } = render(
+      <MarkdownEditor
+        documentId="/fixtures/first.md"
+        locale="en-US"
+        mode="sourceOnly"
+        value="old"
+        onChange={onChange}
+        onImagePaste={onImagePaste}
+        onPasteError={onPasteError}
+      />,
+    );
+    const view = EditorView.findFromDOM(
+      container.querySelector<HTMLElement>(".cm-editor")!,
+    )!;
+    dispatchClipboardPaste(view.contentDOM, { types: ["image/png"] });
+    act(() => view.dispatch({ changes: { from: 0, to: 3, insert: "new text" } }));
+    await act(async () => finish("![](./capture.png)"));
+    expect(view.state.doc.toString()).toBe("new text");
+    expect(onPasteError).toHaveBeenCalledWith(expect.stringContaining("document changed"));
+    onChange.mockClear();
+    onPasteError.mockClear();
+    dispatchClipboardPaste(view.contentDOM, { types: ["image/png"] });
+    rerender(
+      <MarkdownEditor
+        documentId="/fixtures/second.md"
+        mode="sourceOnly"
+        value="second"
+        onChange={onChange}
+        onImagePaste={onImagePaste}
+        onPasteError={onPasteError}
+      />,
+    );
+    await act(async () => finish("![](./capture.png)"));
+    expect(container.querySelector(".cm-content")?.textContent).toBe("second");
+    expect(onChange).not.toHaveBeenCalled();
+    expect(onPasteError).not.toHaveBeenCalled();
   });
 
   it("restores and reports the tab-specific selection and scroll position", async () => {
@@ -640,4 +917,311 @@ describe("MarkdownEditor DOM integration", () => {
     if (!sourceView) throw new Error("Source editor was not mounted");
     await waitFor(() => expect(sourceView.state.selection.main.from).toBeGreaterThan(100));
   }, 20_000);
+
+  it.each([
+    { firstMode: "visual" as const, strict: false },
+    { firstMode: "source" as const, strict: false },
+    { firstMode: "visual" as const, strict: true },
+    { firstMode: "source" as const, strict: true },
+  ])(
+    "restores the original $firstMode reading position and range after a mode round trip (Strict Mode: $strict)",
+    async ({ firstMode, strict }) => {
+      const value = Array.from(
+        { length: 40 },
+        (_, index) => `## Section ${index}\n\nParagraph ${index} has distinctive content.`,
+      ).join("\n\n");
+      const visualViews = new Set<VisualEditorView>();
+      const updateState = VisualEditorView.prototype.updateState;
+      vi.spyOn(VisualEditorView.prototype, "updateState").mockImplementation(function (
+        this: VisualEditorView,
+        state,
+      ) {
+        updateState.call(this, state);
+        visualViews.add(this);
+      });
+      const onChange = vi.fn();
+      const onViewChange = vi.fn();
+      const renderMode = (presentationMode: "visual" | "source") => (
+        <MarkdownEditor
+          autofocus={false}
+          documentId="/fixtures/mode-round-trip.md"
+          initialView={{ scrollTop: 0, selectionFrom: 0, selectionTo: 0 }}
+          mode="normal"
+          onChange={onChange}
+          onViewChange={onViewChange}
+          presentationMode={presentationMode}
+          value={value}
+        />
+      );
+      const { container, rerender } = render(renderMode(firstMode), {
+        wrapper: strict ? StrictMode : undefined,
+      });
+      const findVisual = () => {
+        const dom = container.querySelector(".ProseMirror");
+        return [...visualViews].find((view) => view.dom === dom);
+      };
+      const findSource = () => {
+        const dom = container.querySelector<HTMLElement>(".cm-editor");
+        return dom ? EditorView.findFromDOM(dom) : null;
+      };
+      await waitFor(() => expect(onViewChange).toHaveBeenCalled());
+      let from = value.indexOf("Paragraph 30") + 3;
+      if (firstMode === "visual") {
+        const view = findVisual()!;
+        view.state.doc.descendants((node, position) => {
+          if (node.isText && node.text?.includes("Paragraph 30")) from = position + 3;
+        });
+        act(() =>
+          view.dispatch(
+            view.state.tr.setSelection(
+              TextSelection.create(view.state.doc, from, from + 6),
+            ),
+          ),
+        );
+      } else {
+        act(() => findSource()!.dispatch({ selection: { anchor: from, head: from + 6 } }));
+      }
+      const scroller =
+        firstMode === "source"
+          ? findSource()!.scrollDOM
+          : container.querySelector<HTMLElement>(".visual-markdown-editor")!;
+      scroller.scrollTop = 740;
+      fireEvent.scroll(scroller);
+      await waitFor(() =>
+        expect(onViewChange).toHaveBeenLastCalledWith(
+          expect.objectContaining({
+            scrollTop: 740,
+            selectionFrom: from,
+            selectionTo: from + 6,
+          }),
+        ),
+      );
+      const initialCount = onViewChange.mock.calls.length;
+      rerender(renderMode(firstMode === "visual" ? "source" : "visual"));
+      await waitFor(() =>
+        expect(onViewChange.mock.calls.length).toBeGreaterThan(initialCount),
+      );
+      rerender(renderMode(firstMode));
+      await waitFor(() => {
+        const view = firstMode === "source" ? findSource() : findVisual();
+        expect(view).toBeTruthy();
+        const selection =
+          view instanceof EditorView ? view.state.selection.main : view!.state.selection;
+        expect(selection).toMatchObject({ from, to: from + 6 });
+        const restoredScroll =
+          view instanceof EditorView
+            ? view.scrollDOM
+            : container.querySelector<HTMLElement>(".visual-markdown-editor")!;
+        expect(restoredScroll.scrollTop).toBe(740);
+      });
+      expect(onChange).not.toHaveBeenCalled();
+      const source = findSource();
+      if (source) act(() => expect(undo(source)).toBe(false));
+      else {
+        const visual = findVisual()!;
+        act(() => expect(undoVisual(visual.state, visual.dispatch)).toBe(false));
+      }
+    },
+    20_000,
+  );
+
+  it.each([
+    { strict: false, destinationReady: false },
+    { strict: false, destinationReady: true },
+    { strict: true, destinationReady: false },
+    { strict: true, destinationReady: true },
+  ])(
+    "captures the last visual scroll and range before an immediate mode switch (Strict Mode: $strict, destination ready: $destinationReady)",
+    async ({ strict, destinationReady }) => {
+      const value = "# Start\n\nfirst\n\n## Destination\n\ncontinue reading here\n";
+      const visual: { current?: VisualEditorView } = {};
+      const updateState = VisualEditorView.prototype.updateState;
+      vi.spyOn(VisualEditorView.prototype, "updateState").mockImplementation(function (
+        this: VisualEditorView,
+        state,
+      ) {
+        updateState.call(this, state);
+        visual.current = this;
+      });
+      const onChange = vi.fn();
+      const onViewChange = vi.fn();
+      const renderMode = (presentationMode: "visual" | "source") => (
+        <MarkdownEditor
+          autofocus={false}
+          documentId="/fixtures/rapid-mode-switch.md"
+          mode="normal"
+          onChange={onChange}
+          onViewChange={onViewChange}
+          presentationMode={presentationMode}
+          value={value}
+        />
+      );
+      const { container, rerender } = render(renderMode("visual"), {
+        wrapper: strict ? StrictMode : undefined,
+      });
+      await waitFor(() => expect(onViewChange).toHaveBeenCalled());
+      const from = visual.current!.state.doc.content.size - "continue reading here".length;
+      const frames = new Map<number, FrameRequestCallback>();
+      let frameId = 0;
+      vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+        frames.set(++frameId, callback);
+        return frameId;
+      });
+      vi.spyOn(window, "cancelAnimationFrame").mockImplementation((id) =>
+        frames.delete(id),
+      );
+      const scroller = container.querySelector<HTMLElement>(".visual-markdown-editor")!;
+      act(() => {
+        visual.current!.dispatch(
+          visual.current!.state.tr.setSelection(
+            TextSelection.create(visual.current!.state.doc, from, from + 4),
+          ),
+        );
+        scroller.scrollTop = 915;
+        scroller.dispatchEvent(new Event("scroll"));
+      });
+      // No animation frame has run: a toolbar click may unmount this view now.
+      expect(onViewChange).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          scrollTop: 915,
+          selectionFrom: from,
+          selectionTo: from + 4,
+        }),
+      );
+      rerender(renderMode("source"));
+      const source = EditorView.findFromDOM(
+        container.querySelector<HTMLElement>(".cm-editor")!,
+      )!;
+      expect(source.state.selection.main.from).toBeGreaterThan(
+        value.indexOf("## Destination"),
+      );
+      if (destinationReady) {
+        act(() => {
+          for (const [id, callback] of [...frames]) {
+            frames.delete(id);
+            callback(performance.now());
+          }
+        });
+      }
+      rerender(renderMode("visual"));
+      await waitFor(() => expect(container.querySelector(".ProseMirror")).toBeTruthy());
+      act(() => {
+        for (const [id, callback] of [...frames]) {
+          frames.delete(id);
+          callback(performance.now());
+        }
+      });
+      expect(visual.current!.state.selection).toMatchObject({ from, to: from + 4 });
+      expect(
+        container.querySelector<HTMLElement>(".visual-markdown-editor")!.scrollTop,
+      ).toBe(915);
+      expect(onChange).not.toHaveBeenCalled();
+    },
+  );
+
+  it("invalidates old surface positions after the Markdown changes in the other mode", async () => {
+    const original =
+      "# Beginning\n\nold position\n\n## Destination\n\nnew reading location\n";
+    const onChange = vi.fn();
+    const onViewChange = vi.fn();
+    const visual: { current?: VisualEditorView } = {};
+    const updateState = VisualEditorView.prototype.updateState;
+    vi.spyOn(VisualEditorView.prototype, "updateState").mockImplementation(function (
+      this: VisualEditorView,
+      state,
+    ) {
+      updateState.call(this, state);
+      visual.current = this;
+    });
+    function ControlledEditor({ mode }: { mode: "visual" | "source" }) {
+      const [value, setValue] = useState(original);
+      return (
+        <MarkdownEditor
+          autofocus={false}
+          documentId="/fixtures/changed-mode-position.md"
+          initialView={{ scrollTop: 0, selectionFrom: 1, selectionTo: 1 }}
+          mode="normal"
+          presentationMode={mode}
+          onChange={(next) => {
+            onChange(next);
+            setValue(next);
+          }}
+          onViewChange={onViewChange}
+          value={value}
+        />
+      );
+    }
+    const { container, rerender } = render(<ControlledEditor mode="visual" />);
+    await waitFor(() => expect(onViewChange).toHaveBeenCalled());
+    rerender(<ControlledEditor mode="source" />);
+    const source = EditorView.findFromDOM(
+      container.querySelector<HTMLElement>(".cm-editor")!,
+    )!;
+    await waitFor(() => expect(onViewChange).toHaveBeenCalledTimes(2));
+    const prefix = "A newly added paragraph before the existing content.\n\n";
+    const position = original.indexOf("new reading location") + prefix.length;
+    act(() =>
+      source.dispatch({
+        changes: { from: 0, insert: prefix },
+        selection: { anchor: position },
+      }),
+    );
+    expect(onChange).toHaveBeenCalledOnce();
+    const count = onViewChange.mock.calls.length;
+    rerender(<ControlledEditor mode="visual" />);
+    await waitFor(() => expect(onViewChange.mock.calls.length).toBeGreaterThan(count));
+    expect(visual.current!.state.selection.$from.parent.textContent).toBe(
+      "new reading location",
+    );
+    expect(onViewChange.mock.calls.at(-1)?.[0].semanticPosition.headingText).toBe(
+      "Destination",
+    );
+    expect(onChange).toHaveBeenCalledOnce();
+    act(() =>
+      expect(undoVisual(visual.current!.state, visual.current!.dispatch)).toBe(false),
+    );
+  });
+
+  it("uses the visible source reading point rather than CodeMirror's overscan midpoint", async () => {
+    const value = Array.from(
+      { length: 50 },
+      (_, index) => `## Section ${index}\n\nParagraph ${index}.`,
+    ).join("\n\n");
+    const onViewChange = vi.fn();
+    const onChange = vi.fn();
+    const { container } = render(
+      <MarkdownEditor
+        autofocus={false}
+        documentId="/fixtures/source-viewport.md"
+        mode="normal"
+        presentationMode="source"
+        onChange={onChange}
+        onViewChange={onViewChange}
+        value={value}
+      />,
+    );
+    const view = EditorView.findFromDOM(
+      container.querySelector<HTMLElement>(".cm-editor")!,
+    )!;
+    await waitFor(() => expect(onViewChange).toHaveBeenCalled());
+    act(() => view.dispatch({ selection: { anchor: 3, head: 6 } }));
+    vi.spyOn(view.scrollDOM, "getBoundingClientRect").mockReturnValue(
+      new DOMRect(40, 80, 700, 500),
+    );
+    const position = value.indexOf("Paragraph 35");
+    const coordinates = vi.spyOn(view, "posAtCoords").mockReturnValue(position);
+    view.scrollDOM.scrollTop = 950;
+    fireEvent.scroll(view.scrollDOM);
+    expect(coordinates).toHaveBeenCalledWith({ x: 390, y: 260 });
+    expect(onViewChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        scrollTop: 950,
+        selectionFrom: 3,
+        selectionTo: 6,
+        semanticPosition: expect.objectContaining({ headingText: "Section 35" }),
+      }),
+    );
+    expect(onChange).not.toHaveBeenCalled();
+    act(() => expect(undo(view)).toBe(false));
+  });
 });

@@ -1,0 +1,164 @@
+.workspace-image-settings-layer {
+  position: fixed;
+  z-index: 1200;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgb(27 33 45 / 24%);
+}
+
+.workspace-image-settings {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  box-sizing: border-box;
+  width: min(560px, 100%);
+  min-width: 0;
+  max-height: calc(100dvh - 48px);
+  overflow: hidden;
+  color: var(--ink-950);
+  background: var(--paper-0);
+  border: 1px solid var(--line-300);
+  border-radius: 14px;
+  box-shadow: 0 18px 60px rgb(25 32 45 / 24%);
+  font:
+    14px/1.5 -apple-system,
+    BlinkMacSystemFont,
+    "PingFang SC",
+    sans-serif;
+}
+
+.workspace-image-settings header {
+  min-width: 0;
+  padding: 20px 24px 16px;
+  border-bottom: 1px solid var(--line-200);
+}
+
+.workspace-image-settings h2 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.workspace-image-settings p {
+  margin: 0 0 16px;
+  color: var(--ink-500);
+  overflow-wrap: anywhere;
+}
+
+.workspace-image-settings .workspace-image-settings__workspace {
+  margin: 4px 0 0;
+  font-size: 13px;
+}
+
+.workspace-image-settings__body {
+  min-width: 0;
+  min-height: 0;
+  padding: 20px 24px;
+  overflow: auto;
+}
+
+.workspace-image-settings fieldset {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  padding: 0;
+  margin: 0;
+  border: 0;
+}
+
+.workspace-image-settings__option {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  cursor: pointer;
+}
+
+.workspace-image-settings__option input {
+  flex: 0 0 auto;
+  margin: 4px 0 0;
+  accent-color: var(--accent-600);
+}
+
+.workspace-image-settings__option span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.workspace-image-settings__option strong {
+  font-weight: 600;
+}
+
+.workspace-image-settings__option small {
+  color: var(--ink-500);
+  font-size: 12px;
+}
+
+.workspace-image-settings__destination {
+  display: grid;
+  justify-items: start;
+  gap: 10px;
+  min-width: 0;
+  margin-top: 20px;
+}
+
+.workspace-image-settings__destination label {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  width: 100%;
+}
+
+.workspace-image-settings textarea {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  padding: 9px 10px;
+  border: 1px solid var(--line-300);
+  border-radius: 6px;
+  background: var(--paper-1);
+  color: inherit;
+  font: inherit;
+  overflow-wrap: anywhere;
+  resize: vertical;
+}
+
+.workspace-image-settings footer {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 16px 24px;
+  border-top: 1px solid var(--line-200);
+}
+
+.workspace-image-settings button {
+  padding: 7px 16px;
+  border: 1px solid var(--line-300);
+  border-radius: 7px;
+  background: var(--paper-0);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.workspace-image-settings .workspace-image-settings__save {
+  border-color: var(--accent-600);
+  background: var(--accent-600);
+  color: white;
+}
+
+.workspace-image-settings button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.workspace-image-settings :is(input, textarea, button):focus-visible {
+  outline: 2px solid var(--accent-600);
+  outline-offset: 2px;
+}
+
+.workspace-image-settings .workspace-image-settings__error {
+  margin: 12px 0 0;
+  color: #b03838;
+}

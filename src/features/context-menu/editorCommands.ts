@@ -293,6 +293,7 @@ async function cut(target: HTMLElement): Promise<boolean> {
 }
 
 function insertContentEditableText(target: HTMLElement, text: string): boolean {
+  if (!text) return false;
   target.focus();
   if (execCommand("insertText", text)) return true;
   if (isCodeMirrorContent(target)) return false;
@@ -320,22 +321,139 @@ function insertContentEditableText(target: HTMLElement, text: string): boolean {
   return true;
 }
 
+function clipboardPasteEvent(text: string | null): ClipboardEvent {
+  let clipboardData: DataTransfer;
+  try {
+    clipboardData = new DataTransfer();
+    if (text) clipboardData.setData("text/plain", text);
+  } catch {
+    // Older WebKit builds do not expose a constructible DataTransfer. Editors
+    // only need these read-only fields to handle the same paste transaction.
+    clipboardData = {
+      types: text ? ["text/plain"] : [],
+      items: [],
+      files: [],
+      getData: (type: string) =>
+        ["text", "text/plain"].includes(type.toLowerCase()) ? (text ?? "") : "",
+    } as unknown as DataTransfer;
+  }
+
+  try {
+    const event = new ClipboardEvent("paste", {
+      bubbles: true,
+      cancelable: true,
+      clipboardData,
+    });
+    if (event.clipboardData) return event;
+  } catch {
+    // ClipboardEvent may also be unavailable/non-constructible in the WebView.
+  }
+  const event = new Event("paste", { bubbles: true, cancelable: true });
+  Object.defineProperty(event, "clipboardData", { value: clipboardData });
+  return event as ClipboardEvent;
+}
+
+function dispatchPaste(target: HTMLElement, text: string | null): boolean {
+  const event = clipboardPasteEvent(text);
+  target.dispatchEvent(event);
+  return event.defaultPrevented;
+}
+
+function nativePaste(target: HTMLElement): boolean {
+  let observed = false;
+  const onPaste = (event: Event) => {
+    if (event.target instanceof Node && target.contains(event.target)) observed = true;
+  };
+  // Observe before an editor's capture handler stops the event. Some WebViews
+  // return false from execCommand even though the editor consumed its paste.
+  const owner = target.ownerDocument;
+  owner.addEventListener("paste", onPaste, true);
+  try {
+    return execCommand("paste") || observed;
+  } finally {
+    owner.removeEventListener("paste", onPaste, true);
+  }
+}
+
 async function paste(target: HTMLElement): Promise<boolean> {
+  if (!target.isConnected || !isWritableEditorTarget(target)) return false;
+  const originalText = isTextControl(target) ? target.value : target.textContent;
+  const originalSelection = isTextControl(target) ? textControlSelection(target) : null;
+  const originalRange = isTextControl(target)
+    ? null
+    : selectionInside(target)?.getRangeAt(0).cloneRange();
+  const documentSurface = target.closest("[data-document-id]");
+  const documentId = documentSurface?.getAttribute("data-document-id");
+  const originalFocus = target.ownerDocument.activeElement;
+  let mutated = false;
+  const observer = new MutationObserver(() => {
+    mutated = true;
+  });
+  observer.observe(target, {
+    subtree: true,
+    childList: true,
+    characterData: true,
+    attributes: true,
+  });
   const text = await readClipboard();
-  if (text === null) {
-    target.focus();
-    return execCommand("paste");
+  mutated ||= observer.takeRecords().length > 0;
+  observer.disconnect();
+  const currentFocus = target.ownerDocument.activeElement;
+  if (
+    mutated ||
+    !target.isConnected ||
+    !isWritableEditorTarget(target) ||
+    (isTextControl(target) ? target.value : target.textContent) !== originalText ||
+    target.closest("[data-document-id]") !== documentSurface ||
+    documentSurface?.getAttribute("data-document-id") !== documentId ||
+    (currentFocus !== originalFocus &&
+      currentFocus instanceof HTMLElement &&
+      isTextSurface(currentFocus) &&
+      !target.contains(currentFocus))
+  ) {
+    return false;
   }
 
   if (isTextControl(target)) {
     const selection = textControlSelection(target);
-    if (!selection) return false;
+    if (
+      !selection ||
+      !originalSelection ||
+      selection.start !== originalSelection.start ||
+      selection.end !== originalSelection.end
+    ) {
+      return false;
+    }
+    // An image-only/empty clipboard must never delete the selected text.
+    if (text === "") return false;
     target.focus();
+    if (text === null) return nativePaste(target);
     target.setRangeText(text, selection.start, selection.end, "end");
     dispatchInput(target, "insertFromPaste", text);
     return true;
   }
 
+  target.focus();
+  if (!target.isConnected || target.textContent !== originalText) return false;
+  if (originalRange && target.contains(originalRange.commonAncestorContainer)) {
+    // Focusing a contenteditable after a menu click can collapse its DOM range.
+    // Restore the still-valid source selection before its paste handler runs.
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(originalRange);
+  }
+  if (!text) {
+    if (nativePaste(target)) return true;
+    if (!target.isConnected || target.textContent !== originalText) return false;
+    // Empty payloads let Markdown's native image handler inspect the clipboard.
+    // There is deliberately no insertText("") or DOM deletion fallback.
+    return dispatchPaste(target, null);
+  }
+  if (dispatchPaste(target, text)) return true;
+  // PM/CM own parsing, guards and Undo. Never bypass an unhandled/failed paste
+  // by mutating their DOM or issuing an insertText command directly.
+  if (target.matches(".ProseMirror, .cm-content")) return false;
+  if (!target.isConnected || target.textContent !== originalText) return false;
   return insertContentEditableText(target, text);
 }
 

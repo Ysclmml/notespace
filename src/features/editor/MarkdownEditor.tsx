@@ -16,6 +16,11 @@ import {
   type LinkDisposition,
 } from "./linkTarget";
 import { isOversizedInlineImagePaste } from "./pasteGuard";
+import {
+  clipboardImagePasteKind,
+  type ClipboardImagePasteKind,
+  type EditorImageInsertRequest,
+} from "./clipboardImage";
 import { mergeCompositionChange, sharedTextChange } from "./sharedTextChange";
 import {
   markdownPositionFromSemantic,
@@ -66,23 +71,18 @@ export interface MarkdownEditorProps {
   readonly showCodeLineNumbers?: boolean;
   readonly showTypingHints?: boolean;
   readonly onChange: (value: string) => void;
-  readonly onImagePaste?: (selection: SelectionRange) => Promise<string>;
+  readonly onImagePaste?: (
+    selection: SelectionRange,
+    kind?: ClipboardImagePasteKind,
+  ) => Promise<string>;
+  readonly imageInsertRequest?: EditorImageInsertRequest;
+  readonly onImageInsertConsumed?: (id: number) => void;
   readonly onInternalLink?: (target: string, disposition: LinkDisposition) => void;
   readonly onPasteRejected?: (message: string) => void;
   readonly onPasteError?: (message: string) => void;
   readonly onOpenVisual?: (visual: PreviewVisual) => void;
   readonly onRevealConsumed?: (requestId: number) => void;
   readonly onViewChange?: (view: EditorViewSnapshot) => void;
-}
-
-function firstClipboardImage(data: DataTransfer | null): File | null {
-  if (!data) return null;
-  for (const item of Array.from(data.items)) {
-    if (!item.type.startsWith("image/")) continue;
-    const file = item.getAsFile();
-    if (file) return file;
-  }
-  return null;
 }
 
 /**
@@ -99,9 +99,25 @@ function viewForSemanticModeSwitch(current: EditorViewSnapshot): EditorViewSnaps
   };
 }
 
+function insertSourceImage(view: EditorView, selection: SelectionRange, markdown: string) {
+  view.dispatch({
+    changes: { from: selection.from, to: selection.to, insert: markdown },
+    selection: { anchor: selection.from + markdown.length },
+    annotations: Transaction.userEvent.of("input.paste"),
+  });
+}
+
 function sourceViewportPosition(view: EditorView): number {
-  const midpoint = Math.round((view.viewport.from + view.viewport.to) / 2);
-  return view.state.doc.lineAt(Math.max(0, Math.min(midpoint, view.state.doc.length))).from;
+  const bounds = view.scrollDOM.getBoundingClientRect();
+  // CM's viewport includes an overscan margin. Its offset midpoint is not the
+  // reading position (and can remain unchanged while a short document scrolls).
+  if (bounds.width <= 0 || bounds.height <= 0) return view.state.selection.main.from;
+  return (
+    view.posAtCoords({
+      x: bounds.left + bounds.width / 2,
+      y: bounds.top + Math.min(bounds.height / 2, 180),
+    }) ?? view.state.selection.main.from
+  );
 }
 
 const paperHighlightStyle = HighlightStyle.define([
@@ -167,11 +183,13 @@ const paperEditorTheme = EditorView.theme({
 
 function editorExtensions(
   onChange: MarkdownEditorProps["onChange"],
-  onImagePaste: MarkdownEditorProps["onImagePaste"],
+  getImagePaste: () => MarkdownEditorProps["onImagePaste"],
   onInternalLink: MarkdownEditorProps["onInternalLink"],
   onPasteRejected: MarkdownEditorProps["onPasteRejected"],
   onPasteError: MarkdownEditorProps["onPasteError"],
   reportView: (view: EditorView, preferViewport?: boolean) => void,
+  isCurrentView: (view: EditorView) => boolean,
+  locale: MarkdownEditorLocale,
 ) {
   const openMarkdownLink = (event: MouseEvent, view: EditorView): boolean => {
     if (!onInternalLink || (event.button !== 0 && event.button !== 1)) return false;
@@ -217,26 +235,46 @@ function editorExtensions(
       },
       paste(event, view) {
         const text = event.clipboardData?.getData("text/plain") ?? "";
-        if (isOversizedInlineImagePaste(text)) {
+        if (
+          isOversizedInlineImagePaste(text) ||
+          isOversizedInlineImagePaste(event.clipboardData?.getData("text/html") ?? "")
+        ) {
           event.preventDefault();
-          onPasteRejected?.("这段粘贴内容包含很大的内嵌图片数据，已阻止以避免编辑器卡死。");
+          onPasteRejected?.(
+            locale === "zh-CN"
+              ? "这段粘贴内容包含很大的内嵌图片数据，已阻止以避免编辑器卡死。"
+              : "This paste contains a very large embedded image and was blocked.",
+          );
           return true;
         }
 
-        const file = firstClipboardImage(event.clipboardData);
-        if (!file || !onImagePaste) return false;
+        const pasteImage = getImagePaste();
+        const pasteKind = clipboardImagePasteKind(event.clipboardData);
+        if (!pasteImage || !pasteKind) return false;
 
         event.preventDefault();
         const selection = view.state.selection.main;
-        void onImagePaste({ from: selection.from, to: selection.to })
+        const originalDocument = view.state.doc;
+        void pasteImage({ from: selection.from, to: selection.to }, pasteKind)
           .then((markdown) => {
-            view.dispatch({
-              changes: { from: selection.from, to: selection.to, insert: markdown },
-              selection: { anchor: selection.from + markdown.length },
-            });
+            if (!isCurrentView(view) || !markdown.trim()) return;
+            if (view.state.doc !== originalDocument) {
+              throw new Error(
+                locale === "zh-CN"
+                  ? "图片已保存，但文档在等待期间发生了变化，未插入旧位置。请重新粘贴。"
+                  : "The image was saved, but the document changed while waiting. Paste again to insert it.",
+              );
+            }
+            insertSourceImage(view, selection, markdown);
           })
           .catch((error: unknown) => {
-            const message = error instanceof Error ? error.message : "图片没有保存";
+            if (!isCurrentView(view)) return;
+            const message =
+              error instanceof Error
+                ? error.message
+                : locale === "zh-CN"
+                  ? "图片没有保存"
+                  : "The image was not saved";
             onPasteError?.(message);
           });
         return true;
@@ -255,6 +293,8 @@ function SourceMarkdownEditorInstance({
   onFindRequestConsumed,
   onChange,
   onImagePaste,
+  imageInsertRequest,
+  onImageInsertConsumed,
   onInternalLink,
   onPasteRejected,
   onPasteError,
@@ -274,7 +314,17 @@ function SourceMarkdownEditorInstance({
   const onRevealConsumedRef = useRef(onRevealConsumed);
   const onViewChangeRef = useRef(onViewChange);
   const consumedRevealRef = useRef<number | null>(null);
-  const initialConfigRef = useRef({ autofocus, documentId, initialView, mode, value });
+  const consumedImageInsertRef = useRef<number | null>(null);
+  const initialViewRestoredRef = useRef(false);
+  const applyImageInsertRequestRef = useRef<() => void>(() => {});
+  const initialConfigRef = useRef({
+    autofocus,
+    documentId,
+    initialView,
+    locale,
+    mode,
+    value,
+  });
   const find = usePageFind(findRequest, onFindRequestConsumed);
   const { targetRef: findTargetRef, refresh: refreshFind } = find;
 
@@ -299,6 +349,7 @@ function SourceMarkdownEditorInstance({
   useLayoutEffect(() => {
     const host = hostRef.current;
     if (!host) return;
+    initialViewRestoredRef.current = false;
     const initial = initialConfigRef.current;
     let applyingExternalValue = false;
     let composing = false;
@@ -323,6 +374,7 @@ function SourceMarkdownEditorInstance({
     );
 
     const reportView = (view: EditorView, preferViewport = false) => {
+      if (!initialViewRestoredRef.current) return;
       const selection = view.state.selection.main;
       const semanticPosition = preferViewport
         ? sourceViewportPosition(view)
@@ -348,14 +400,13 @@ function SourceMarkdownEditorInstance({
             onChangeRef.current(nextValue);
           }
         },
-        async (selection) => {
-          if (!onImagePasteRef.current) throw new Error("图片粘贴尚未启用");
-          return onImagePasteRef.current(selection);
-        },
+        () => onImagePasteRef.current,
         (target, disposition) => onInternalLinkRef.current?.(target, disposition),
         (message) => onPasteRejectedRef.current?.(message),
         (message) => onPasteErrorRef.current?.(message),
         reportView,
+        (candidate) => viewRef.current === candidate,
+        initial.locale,
       ),
     });
     const view = new EditorView({ state, parent: host });
@@ -429,12 +480,15 @@ function SourceMarkdownEditorInstance({
           }),
         });
       }
+      initialViewRestoredRef.current = true;
       reportView(view);
+      applyImageInsertRequestRef.current();
     });
     if (initial.autofocus) view.focus();
 
     return () => {
       window.cancelAnimationFrame(restoreFrame);
+      initialViewRestoredRef.current = false;
       window.cancelAnimationFrame(compositionFrame);
       host.removeEventListener("compositionstart", onCompositionStart, true);
       host.removeEventListener("compositionend", onCompositionEnd);
@@ -449,6 +503,40 @@ function SourceMarkdownEditorInstance({
   useEffect(() => {
     syncValueRef.current(value);
   }, [value]);
+
+  useEffect(() => {
+    applyImageInsertRequestRef.current = () => {
+      const request = imageInsertRequest;
+      const view = viewRef.current;
+      if (
+        !request ||
+        !view ||
+        !initialViewRestoredRef.current ||
+        consumedImageInsertRef.current === request.id
+      )
+        return;
+      consumedImageInsertRef.current = request.id;
+      try {
+        if (
+          request.documentId !== documentId ||
+          request.editorMode !== "source" ||
+          request.expectedText !== view.state.doc.toString() ||
+          !request.markdown.trim()
+        ) {
+          return;
+        }
+        insertSourceImage(view, request.selection, request.markdown);
+      } catch (error: unknown) {
+        if (error instanceof Error) onPasteErrorRef.current?.(error.message);
+      } finally {
+        onImageInsertConsumed?.(request.id);
+      }
+    };
+    applyImageInsertRequestRef.current();
+    return () => {
+      applyImageInsertRequestRef.current = () => {};
+    };
+  }, [documentId, imageInsertRequest, onImageInsertConsumed]);
 
   useEffect(() => {
     const view = viewRef.current;
@@ -487,7 +575,12 @@ function SourceMarkdownEditorInstance({
 
 interface SurfaceCoordinatorState {
   readonly activeMode: "visual" | "source";
-  readonly snapshots: Partial<Record<"visual" | "source", EditorViewSnapshot>>;
+  readonly snapshots: Partial<
+    Record<
+      "visual" | "source",
+      { readonly value: string; readonly view: EditorViewSnapshot }
+    >
+  >;
 }
 
 function CoordinatedMarkdownEditor(props: MarkdownEditorProps) {
@@ -499,21 +592,33 @@ function CoordinatedMarkdownEditor(props: MarkdownEditorProps) {
     snapshots: {},
   }));
   const switchedSurface = coordinator.activeMode !== presentationMode;
-  const previousSnapshot = coordinator.snapshots[coordinator.activeMode];
+  const previousSnapshot = coordinator.snapshots[coordinator.activeMode]?.view;
+  const savedTarget = coordinator.snapshots[presentationMode];
   let initialView = props.initialView;
-  if (switchedSurface && previousSnapshot?.semanticPosition && !props.reveal) {
-    initialView = viewForSemanticModeSwitch(previousSnapshot);
+  if (!props.reveal) {
+    if (savedTarget?.value === props.value) {
+      // Offsets and pixels only have meaning in their original surface. A
+      // no-edit round trip restores that surface's exact range and scroll,
+      // rather than resolving its viewport again as a collapsed caret.
+      const { scrollTop, selectionFrom, selectionTo } = savedTarget.view;
+      initialView = { scrollTop, selectionFrom, selectionTo };
+    } else if (switchedSurface && previousSnapshot?.semanticPosition) {
+      initialView = viewForSemanticModeSwitch(previousSnapshot);
+    }
   }
 
   const onViewChange = useCallback(
     (view: EditorViewSnapshot) => {
       setCoordinator((current) => ({
         activeMode: presentationMode,
-        snapshots: { ...current.snapshots, [presentationMode]: view },
+        snapshots: {
+          ...current.snapshots,
+          [presentationMode]: { value: props.value, view },
+        },
       }));
       notifyViewChange?.(view);
     },
-    [notifyViewChange, presentationMode],
+    [notifyViewChange, presentationMode, props.value],
   );
 
   const surfaceProps = { ...props, initialView, onViewChange };

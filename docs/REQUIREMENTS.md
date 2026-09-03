@@ -1,6 +1,6 @@
 # NoteSpace（笔记空间）需求基线
 
-状态：Approved baseline 1.1（ADR-0014）
+状态：Approved baseline 1.2（ADR-0015）
 
 日期：2026-09-03
 
@@ -8,7 +8,7 @@
 
 当前基线：Markdown 默认真可视、显式源码；代码/文本 Tab 可编辑，右侧引用复用普通编辑组而不叠加辅助栏；向右分屏移动原 Tab，可保留空左组继续打开。启动默认恢复路径/标签/分组/数值阅读位置，也可空白启动；正文重新读磁盘，不恢复未命名页、正文快照或导航历史。当前页查找覆盖可视/源码/代码；每根隐藏项偏好默认关闭，根层级标识明确，代码失焦选区与长链接多行编辑保持清晰。树单击预览/双击固定、焦点路由、图片查看器、手动/可选 autosave、dirty 关闭、新建/Save As、多根/最近项、废纸篓、可视表格和双语菜单继续保留。最终自动门禁与桌面验收状态以 `PROJECT_STATE.md` 为准。
 
-ADR-0013 明确取代 ADR-0007/0011 的独立只读辅助栏、分屏复制标签和不恢复浏览元数据限制；ADR-0014 接受外部文件新增/修改/删除的轻量监听、干净正文重载及草稿冲突处理，外部修改不再后置。相关旧需求 ID 保留用于追踪，但验收语义以本基线为准。
+ADR-0013 明确取代 ADR-0007/0011 的独立只读辅助栏、分屏复制标签和不恢复浏览元数据限制；ADR-0014 接受外部文件新增/修改/删除的轻量监听、干净正文重载及草稿冲突处理，外部修改不再后置；ADR-0015 接受每工作区截图位置、原生剪贴板兼容和图片单文件访问准备，取代固定相邻 assets 及范围外图片不可见的限制。相关旧需求 ID 保留用于追踪，但验收语义以本基线为准。
 
 ## 1. 当前产品需求
 
@@ -66,12 +66,15 @@ ADR-0013 明确取代 ADR-0007/0011 的独立只读辅助栏、分屏复制标�
 | `OUTLINE-001`               | Done | 当前 Markdown 可显示标题大纲                     | 点击滚动并聚焦标题；文本文件不显示 Markdown Outline                                        |
 | `ASSET-PASTE-001`           | Done | 粘贴截图自动落盘并插入链接                       | 写入成功后才修改正文；未命名文档先 Save As；失败正文不变                                   |
 | `ASSET-ALT-001`             | Done | 图片 Markdown 语义往返不丢失                     | 可视编辑后保留原始 `src`、`alt` 和 `title`                                                 |
-| `ASSET-BASE64-001`          | Done | 产品不主动生成内嵌 Base64 图片                   | 保存结果使用相对文件 URI                                                                   |
+| `ASSET-BASE64-001`          | Done | 产品不主动生成内嵌 Base64 图片                   | 保存结果使用相对文件 URI，跨卷时使用文件 URI                                               |
+| `WORKSPACE-IMAGE-DIR-001`   | Done | 每个工作区独立设置截图目录                       | 根右键双语入口；默认文档同目录或指定现存目录，最长根归属、取消不变、不移动已有图片         |
 | `DIAGRAM-MERMAID-001`       | Done | Mermaid 可文内预览                               | production CSP 下清晰可读；失败不切换整个文档                                              |
 | `DIAGRAM-VIEWER-001`        | Done | Mermaid/大图可放大、平移、Fit                    | Esc 返回原块；SVG 保持矢量                                                                 |
 | `IMAGE-LINK-001`            | Done | 图片链接无需行号即可打开专门查看器               | 本地/file/HTTP(S) 图片地址，缩放/平移/Fit/100%；失败可关闭，不改变Tab或dirty               |
 | `IMAGE-CONTEXT-001`         | Done | 图片使用专属右键，支持预览/复制/本地定位         | 不显示通用段落菜单或整图蓝色选择；查看器只读；Mermaid 只提供图表动作                       |
 | `IMAGE-REFERENCE-EDIT-001`  | Done | 可视修改图片地址、替代文字及标题                 | 多行模态框、单次可撤销事务；取消/相同值不 dirty，不移动或修改原图片                        |
+| `IMAGE-MISSING-001`        | Done | 失效图片在可视正文保留可操作占位                 | 无 alt 也显示失败和完整路径；可编辑或撤销式删除引用，占位本身不改正文，原文件不变          |
+| `ABOUT-REPOSITORY-001`     | Done | 关于软件显示产品 GitHub 仓库                    | 应用内/原生入口一致，点击完整仓库地址交给系统浏览器；失败双语提示，不后台访问或改正文      |
 | `FILE-PREFLIGHT-001`        | Done | Rust 在正文进入 WebView 前轻量预检               | 固定缓冲统计 size/UTF-8/最长行/data-image                                                  |
 | `FILE-LARGE-001`            | Done | 约 10 MiB 普通多行 Markdown 可编辑               | `sourceOnly`，不运行昂贵投影                                                               |
 | `SAFE-DATAURI-001`          | Done | 大型 data-image/病态长行不得卡死编辑器           | 文件正文不返回 JS；大粘贴不创建 transaction                                                |
@@ -85,7 +88,7 @@ ADR-0013 明确取代 ADR-0007/0011 的独立只读辅助栏、分屏复制标�
 | `FILE-TRASH-001`            | Done | 工作区内文件/目录可经确认移到系统废纸篓          | 根/根外/不存在拒绝；取消或失败保持；成功刷新树并清理对应 session/history                   |
 | `OPS-OFFLINE-001`           | Done | 本地功能离线可用、无账户、无遥测                 | 没有文档上传；图片链接不做悬浮网络探测，点击查看时才加载该目标                             |
 | `OPS-BUILD-001`             | Done | macOS 可运行 Tauri 桌面应用                      | 自动门禁、debug `.app`/DMG、ad-hoc 签名验证和隔离核心 UI smoke 通过                        |
-| `OPS-CONTEXT-001`           | Done | 新代理不依赖聊天恢复项目                         | 先读 AGENTS、PROJECT_STATE、DESIGN、REQUIREMENTS、ADR-0005～0014                           |
+| `OPS-CONTEXT-001`           | Done | 新代理不依赖聊天恢复项目                         | 先读 AGENTS、PROJECT_STATE、DESIGN、REQUIREMENTS、ADR-0005～0015                           |
 | `I18N-UI-001`               | Done | 界面默认 `zh-CN`，可即时切换 `en-US`             | Shell、设置、代码控件、viewer、自定义菜单和原生菜单同步切换                                |
 | `MENU-CONTEXT-001`          | Done | 编辑/表格/工作区/标签使用本地化自定义右键菜单    | 按目标裁剪并保留选择；默认禁用浏览器菜单，仅顶部工具栏例外                                 |
 | `MENU-DEVTOOLS-001`         | Done | debug 顶部原生视图菜单可打开开发者工具           | 中英文；release 隐藏；不新增 invoke，确认期间页面默认菜单仍禁止                            |
@@ -99,7 +102,7 @@ ADR-0013 明确取代 ADR-0007/0011 的独立只读辅助栏、分屏复制标�
 - 同一 `DocumentSession` 的正文和 dirty 由多个 Tab 共享；每个 Tab 独立保存浏览历史和每个编辑表面的选择/滚动。
 - 编辑区使用扁平横向组，默认仅左侧一个活动组。文件树单击替换该组干净临时标签；双击、编辑、拖动、分屏或“保持打开”固定。“向右分屏”移动同一 Tab 到右邻组，不存在时创建，不复制 Tab/session/history；移动唯一标签时可保留可激活的空左组继续打开。其他无保留标记空组收起，最后空组显示欢迎页。跨组移动保留 Tab/history/EditorView，工具栏/保存/大纲跟随聚焦组。
 - 共享文档的被动同步使用最小差异，不进接收表面 Undo、不回传新编辑、不抢焦点/滚动；IME 期间推迟外部更新，不相交修改合并，重叠范围以当前草稿优先。最后引用确认放弃后不得留下可复活的孤立 dirty session。
-- 可视/源码即时切换使用 `progress + nearest heading + nearby text/textOffset` 计算一次 best-effort 语义位置：先找靠近期望进度的正文片段，再找标题，最后按进度回退。它不是持久化语义锚点，不保证两个编辑模型的 offset 一致。
+- 可视/源码无编辑往返优先恢复该表面原有的滚动位置和完整选区；正文变化后不复用旧快照。首次进入另一表面使用 `progress + nearest heading + nearby text/textOffset` 尽力映射，处理普通行内格式和连续空白；先找靠近期望进度的正文片段，再找标题，最后按进度回退。快速滚动后立即切换也须保留最后位置；它不是持久化语义锚点，不保证两个编辑模型的 offset 一致。
 - 新可视 view 的首次位置恢复必须先于待执行的 anchor/reveal；在这段异步初始化窗口收到的导航只消费最新请求，不能先跳转后又复位至旧滚动位置。等待初始位置恢复不阻断正文同步。
 - 打开、导航、选择、滚动和模式切换不是正文编辑。Markdown 在第一次正文 transaction 前保存必须零差异；首次可视编辑后 serializer 可以规范化等价 Markdown，但不得破坏图片、链接、代码、表格或 Mermaid 语义。
 - 新建 `.md/.txt` 使用内存 session。首次保存或 Save As 成功后，必须迁移 session ID/path，以及所有 Tab `current/back/forward` 中的旧引用；保存期间若又有编辑，仍保持 dirty。
@@ -141,7 +144,7 @@ ADR-0013 明确取代 ADR-0007/0011 的独立只读辅助栏、分屏复制标�
 - 浮层只读且有界；“在右侧打开”复用普通右邻编辑组，仅一个组时创建右组，不再增加独立辅助栏。已有右组时新代码引用直接进入该组，干净临时页可替换，固定/dirty 页保留；来源已在最右组时复用本组并保留来源 Markdown，不附加第三辅助栏。快速连续点击 latest-wins，完整文本进入普通可编辑 Tab，双击/编辑固定，可保存、拖动及按 dirty 规则关闭。分隔线由统一编辑组布局管理，不建立任意 pane 树。
 - 受支持代码/配置/文本在各编辑组与只读浮层均使用 CodeMirror：已注册语言显示清晰可见且正确的本地语法高亮、真实行号、可读 selection 对比度和独立滚动；替换文件路径后必须为新 view 装载对应语言支持，新旧文件同语言时也不得退化为纯文本。未知语言按纯文本显示，任何非 Markdown 正文都不得进入可视 Markdown renderer。
 - 单个独立文件或最后一个 Tab 必须保留可用的关闭按钮；dirty 文档仍经过既有可取消确认，成功关闭后显示 Welcome。
-- 图片链接支持常见扩展名、本地相对/绝对路径与 `file://`，以及 HTTP(S) 查询串/fragment；不预抓取，不转换成文本 Tab。点击才创建查看器图片，使用 no-referrer；关闭回原分屏，失败提示可关闭。保持现有 `$HOME/**` 本地资源 scope，HOME 外及 Unix 隐藏路径段可能被拒绝并显示加载失败，不静默扩大权限。
+- 图片链接支持常见扩展名、本地相对/绝对路径与 `file://`，以及 HTTP(S) 查询串/fragment；不预抓取，不转换成文本 Tab。点击才创建查看器图片，使用 no-referrer；关闭回原分屏，失败提示可关闭。静态 `$HOME/**` 本地资源 scope 不变；实际显示本地图前仅为规范化的支持图片文件补充访问，覆盖 HOME 外及 Unix 隐藏目录的图片，不扩大整个目录权限。
 
 ### 1.4 国际化、菜单与设置
 
@@ -185,9 +188,11 @@ ADR-0013 明确取代 ADR-0007/0011 的独立只读辅助栏、分屏复制标�
 
 ### `ASSET-PASTE-001`
 
-- Rust 直接读取系统剪贴板像素并编码 PNG；IPC 不传图片 bytes、MIME 或 Base64。
-- 已保存文档写入相邻 `assets/`；未保存文档先 Save As。
-- 文件名避免覆盖已有资源；成功后前端才插入相对 URI。Undo 只移除 Markdown 链接，图片保留。
+- 可视/源码与右键入口识别 PNG/TIFF 等图片，支持 WebKit `items/files/types` 和原生 fallback；普通文字与 HTML 不被吞掉，巨大内嵌 Base64 在事务前阻断。
+- PNG 等图片同时附带单图 HTML/空白占位符时不误判为正文；空 item MIME 不否决明确图片信号。真正的混合正文、富文本、多图和非图片文件仍走正常粘贴，不能只为兼容截图吞掉文字。
+- Rust 直接读取系统剪贴板像素并在后台编码 PNG，限制 3200 万像素；IPC 不传图片 bytes、MIME 或 Base64。
+- 已保存文档默认写入 Markdown 父目录，每工作区可指定现存绝对目录；不存在/不可写时报错，不回退到别的位置。未保存文档先检查有图，再 Save As，取消不写图。
+- 文件名避免覆盖已有资源；成功后前端才以正常事务插入相对 URI，跨卷使用文件 URI。Save As 重挂载后仍可 Undo；来源切换/正文变化/关闭后的迟到结果不污染新页。Undo 只移除 Markdown 链接，图片保留。
 
 ### `FILE-SAVE-001`
 
@@ -237,11 +242,12 @@ ADR-0013 明确取代 ADR-0007/0011 的独立只读辅助栏、分屏复制标�
 
 ## 4. 当前 Tauri 接口
 
-当前只存在下列 16 个命令：
+当前只存在下列 19 个命令：
 
 ```text
 pick_workspace()
 pick_document()
+pick_image_directory(locale?)
 list_workspace(rootPath, showHidden?)
 open_document(path)
 inspect_documents(paths)
@@ -254,7 +260,9 @@ move_workspace_entry_to_trash(workspaceRoot, path)
 preview_local_file(reference, documentPath)
 save_document(path, content, expectedRevision?)
 save_document_as(suggestedFileName, content, excludedPaths)
-save_clipboard_image(documentPath)
+clipboard_has_image()
+save_clipboard_image(documentPath, directoryPath?)
+prepare_local_image(path)
 set_native_menu_locale(locale)
 ```
 
@@ -272,7 +280,7 @@ set_native_menu_locale(locale)
 | `IPC-TRASH-001`         | trash 接收 `workspaceRoot + path`；只允许根的严格后代且目标存在为文件/目录，调用系统废纸篓；根/根外/不存在拒绝                                         |
 | `IPC-PREVIEW-001`       | preview 接收原始 reference 与当前文档路径，固定缓冲读取局部 UTF-8 行，返回 path/language/startLine/targetLine/content                                  |
 | `IPC-SAVE-001`          | 原生 save/Save As 返回 path/bytesWritten/diskRevision；save 检查 expectedRevision；Save As 取消 null，excludedPaths 写前拒绝已打开目标；同目录原子保存 |
-| `IPC-ASSET-001`         | Rust 直接读系统剪贴板；只接收 `documentPath`，返回路径/相对 URI/尺寸，不传 bytes/Base64                                                                |
+| `IPC-ASSET-001`         | Rust 直接读系统剪贴板；只接收 `documentPath/directoryPath?`，返回路径/URI/尺寸；另有图片存在检查、目录选择和单文件访问准备，不传 bytes/Base64          |
 | `IPC-MENU-001`          | locale 仅为 `zh-CN/en-US`；Rust 重建原生菜单，13 个小型 action ID（含 file.reveal、edit.find 和自定义 close/quit）通知前端                             |
 | `IPC-LEAN-001`          | 不预生成未来命令、错误码全集、巨型 schema 或通用事件总线                                                                                               |
 
@@ -358,14 +366,17 @@ ADR-0010 补充验收：根/目录/文件同级与外部空白菜单的位置语
 | `AC-LONG-LINK-001`         | 长 URL 在链接编辑浮层完整换行显示/编辑；保存链接、复制与打开语义不变，不被窄字段截断                                           |
 | `AC-IMAGE-CONTEXT-001`     | 文内图片/只读查看器/Mermaid 右键按目标裁剪，复制地址/Markdown 保留原语义，本地定位作用于图片，失败提示不越窗且不 dirty         |
 | `AC-IMAGE-EDIT-001`        | 图片长地址、alt/title 修改可 Undo/Redo，取消/原值不改正文，失效目标拒绝旧提交；模态阻止后台命令，关闭后可正常退出应用          |
+| `AC-IMAGE-MISSING-001`     | 本地准备失败/加载失败均显示占位，空 alt 与行内图片可操作；删除只作用目标并可 Undo/Redo，长路径换行，旧加载结果不覆盖新地址      |
+| `AC-ABOUT-REPOSITORY-001`  | 中英文关于对话框展示完整 GitHub URL，点击与中键调用系统浏览器，失败保留弹窗可重试；模态不触发后台命令，关闭恢复焦点           |
 | `AC-DOC-STATISTICS-001`    | 中文逐字/连续英文数字计词；切页、编辑、Undo/Redo、干净外部重载更新，含字符与行数详情；分片/缓存不额外读盘或 dirty              |
 | `AC-FIND-PAGE-001`         | Cmd/Ctrl+F 与原生编辑菜单定位当前可视/源码/代码页；中文、无匹配、循环、Enter/Shift-Enter/Esc，不改变正文/dirty/Undo            |
 | `AC-FENCE-LIST-001`        | 输入三个反引号加 `pyt` 出现 python 等候选；上下键 + Enter/Tab 创建并可 Undo，Esc/关闭设置隐藏；列表 marker 对齐                |
 | `AC-I18N-SETTINGS-001`     | 默认中文，新增查找/隐藏项/启动设置双语同步；九项持久化，恢复默认回到中文/16/920/三项开启/manual/5 秒/restore                   |
-| `AC-ASSET-001`             | 粘贴截图后文件存在且链接相对；模拟失败时正文不变；未命名文档先 Save As                                                         |
+| `AC-ASSET-001`             | 键盘/右键粘贴后文件存在并正确引用；失败/取消/过期时正文不变；未命名文档先 Save As，迁移插入可 Undo；空剪贴板不删除选区         |
+| `AC-WORKSPACE-IMAGE-001`   | 默认 Markdown 同级目录，每根可选现存目录并记忆；嵌套根独立、失效目录报错、不迁移旧图；隐藏/外部目录实际图片先授权再加载        |
 | `AC-BASE64-001`            | 约 10 MiB data-image 粘贴/文件均不进入 editor transaction                                                                      |
 | `AC-LARGE-001`             | 约 10 MiB 普通多行 Markdown 以 `sourceOnly` 编辑并保存                                                                         |
 | `AC-DIAGRAM-001`           | production CSP 下 Mermaid 清晰；缩放/平移/Fit/Esc 正常                                                                         |
 | `AC-OFFLINE-001`           | 断网状态下核心工作流完整可用                                                                                                   |
 
-历史 ADR-0007 等验收记录只说明当时基线，不代表当前 ADR-0014 的交付结果。本轮新增能力的总测试数、全局 format/lint/typecheck/build、Rust fmt/clippy/test、UI smoke 与最终 `.app`/DMG 由集成者统一确认，准确结果只写 `PROJECT_STATE.md`。
+历史 ADR-0007 等验收记录只说明当时基线，不代表当前 ADR-0015 的交付结果。本轮新增能力的总测试数、全局 format/lint/typecheck/build、Rust fmt/clippy/test、UI smoke 与最终桌面产物由集成者统一确认，准确结果只写 `PROJECT_STATE.md`。

@@ -1,0 +1,105 @@
+.about-dialog-layer {
+  position: fixed;
+  z-index: 1200;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgb(27 33 45 / 24%);
+}
+
+.about-dialog {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  box-sizing: border-box;
+  width: min(460px, 100%);
+  min-width: 0;
+  max-height: calc(100dvh - 48px);
+  overflow: hidden;
+  color: var(--ink-950);
+  background: var(--paper-0);
+  border: 1px solid var(--line-300);
+  border-radius: 14px;
+  box-shadow: 0 18px 60px rgb(25 32 45 / 24%);
+  font: 14px/1.6 var(--font-ui, -apple-system, BlinkMacSystemFont, sans-serif);
+}
+
+.about-dialog header {
+  padding: 18px 24px;
+  border-bottom: 1px solid var(--line-200);
+}
+
+.about-dialog h2 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.about-dialog__body {
+  min-height: 0;
+  padding: 22px 24px;
+  overflow: auto;
+}
+
+.about-dialog p {
+  margin: 0 0 16px;
+  overflow-wrap: anywhere;
+}
+
+.about-dialog .about-dialog__name {
+  margin-bottom: 4px;
+  font-size: 26px;
+  font-weight: 700;
+}
+
+.about-dialog__repository {
+  display: grid;
+  gap: 4px;
+  margin-top: 22px;
+}
+
+.about-dialog__repository a {
+  color: var(--accent-700);
+  overflow-wrap: anywhere;
+  text-underline-offset: 3px;
+}
+
+.about-dialog__repository a:hover {
+  color: var(--accent-600);
+}
+
+.about-dialog__repository small {
+  color: var(--ink-500);
+  font-size: 12px;
+}
+
+.about-dialog .about-dialog__error {
+  margin: 16px 0 0;
+  color: var(--danger-600, #a13d35);
+}
+
+.about-dialog footer {
+  display: flex;
+  justify-content: flex-end;
+  padding: 14px 24px;
+  border-top: 1px solid var(--line-200);
+}
+
+.about-dialog button {
+  min-width: 72px;
+  padding: 7px 16px;
+  color: var(--ink-950);
+  background: var(--paper-1);
+  border: 1px solid var(--line-300);
+  border-radius: 7px;
+  font: inherit;
+  cursor: pointer;
+}
+
+.about-dialog button:hover {
+  background: var(--paper-3);
+}
+
+.about-dialog :is(button, a):focus-visible {
+  outline: 2px solid var(--accent-600);
+  outline-offset: 3px;
+}

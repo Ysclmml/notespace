@@ -52,7 +52,12 @@ import {
   type Tab,
 } from "../state";
 import type { LinkDisposition } from "../../features/editor/linkTarget";
+import type {
+  ClipboardImagePasteKind,
+  EditorImageInsertRequest,
+} from "../../features/editor/clipboardImage";
 import { DocumentStatisticsStatus } from "./DocumentStatisticsStatus";
+import { AboutDialog } from "../../features/about/AboutDialog";
 import { CodeFilePreview } from "../../features/code-preview/CodeFilePreview";
 import { ExternalChangeBanner } from "../../features/external-changes/ExternalChangeBanner";
 import { useFileSystemChanges } from "../../features/external-changes/useFileSystemChanges";
@@ -72,6 +77,7 @@ import { localFileReferenceFromText } from "../../features/navigation/localFileR
 import { imageReferenceFromLink } from "../../features/navigation/imageReference";
 import { resolveWorkspaceLink } from "../../features/navigation/resolveWorkspaceLink";
 import { SettingsDialog } from "../../features/settings";
+import { WorkspaceImageSettingsDialog } from "../../features/settings/WorkspaceImageSettingsDialog";
 import {
   buildSessionSnapshot,
   loadSessionSnapshot,
@@ -92,6 +98,8 @@ import {
   saveWorkspaceHistory,
   getWorkspaceShowHidden,
   setWorkspaceShowHidden,
+  getWorkspaceImageDirectory,
+  setWorkspaceImageDirectory,
   type WorkspaceHistoryState,
 } from "../../features/workspace/workspaceHistory";
 import {
@@ -163,6 +171,10 @@ interface QuickOpenCandidate {
 interface SaveFailure {
   readonly documentId: string;
   readonly error: string;
+}
+
+interface ImagePasteFailure extends SaveFailure {
+  readonly tabId: string;
 }
 
 interface AutoSaveSchedule {
@@ -321,6 +333,33 @@ function readableError(error: unknown): string {
     return String(error.message);
   }
   return String(error);
+}
+
+function clipboardImageError(error: unknown, t: ReturnType<typeof useI18n>["t"]): string {
+  const code =
+    typeof error === "object" && error !== null && "code" in error
+      ? String(error.code)
+      : "";
+  switch (code) {
+    case "clipboardNoImage":
+    case "clipboardUnavailable":
+    case "imageDecodeFailed":
+    case "imageTooLarge":
+    case "imageDirectoryUnavailable":
+    case "imageEncodeFailed":
+    case "imagePreviewUnavailable":
+    case "desktopOnly":
+    case "io":
+      return t(`imagePaste.${code}`);
+    case "invalidImage":
+      return t("imagePaste.imageDecodeFailed");
+    case "invalidPath":
+      return t("imagePaste.imageDirectoryUnavailable");
+    case "documentNotSaved":
+      return t("status.saveBeforeScreenshot");
+    default:
+      return readableError(error);
+  }
 }
 
 function toOpenDocument(
@@ -741,16 +780,61 @@ export function AppShell({
   const status =
     localizedStatus.locale === locale ? localizedStatus.message : t("status.ready");
   const [saveFailure, setSaveFailure] = useState<SaveFailure | null>(null);
+  const [imagePasteFailure, setImagePasteFailure] = useState<ImagePasteFailure | null>(
+    null,
+  );
   const [quickOpenVisible, setQuickOpenVisible] = useState(false);
   const [quickOpenQuery, setQuickOpenQuery] = useState("");
   const [visual, setVisual] = useState<PreviewVisual | null>(null);
   const [settingsVisible, setSettingsVisible] = useState(false);
+  const [aboutVisible, setAboutVisible] = useState(false);
+  const [imageSettingsWorkspace, setImageSettingsWorkspace] =
+    useState<WorkspaceSelection | null>(null);
+  const [imageInsertRequests, setImageInsertRequests] = useState<
+    Readonly<Record<string, EditorImageInsertRequest>>
+  >({});
+  const imagePasteCounterRef = useRef(0);
+  const imagePasteRequestsRef = useRef(new Map<string, number>());
+  const imageSaveAsPendingRef = useRef(false);
+  const imagePasteMountedRef = useRef(true);
+  const validImageInsertEntries = Object.entries(imageInsertRequests).filter(
+    ([tabId, request]) => {
+      const tab = appState.tabs[tabId];
+      const session = appState.sessions[request.documentId];
+      return (
+        tab?.current.documentId === request.documentId &&
+        (session?.mode === "sourceOnly" ? "source" : tab.current.view.editorMode) ===
+          request.editorMode &&
+        session?.text === request.expectedText
+      );
+    },
+  );
+  if (validImageInsertEntries.length !== Object.keys(imageInsertRequests).length) {
+    // Drop stale requests before committing a different editor surface. Returning
+    // to an earlier mode or document must not resurrect a cancelled insertion.
+    setImageInsertRequests(Object.fromEntries(validImageInsertEntries));
+  }
+  useEffect(() => {
+    const requests = imagePasteRequestsRef.current;
+    imagePasteMountedRef.current = true;
+    return () => {
+      imagePasteMountedRef.current = false;
+      requests.clear();
+    };
+  }, []);
   const [moreMenuVisible, setMoreMenuVisible] = useState(false);
   const [pendingCloseRequest, setPendingCloseRequest] =
     useState<PendingCloseRequest | null>(null);
   const [pendingWorkspaceDelete, setPendingWorkspaceDelete] =
     useState<PendingWorkspaceDelete | null>(null);
-  useNativeContextMenuPolicy(Boolean(pendingCloseRequest || pendingWorkspaceDelete));
+  useNativeContextMenuPolicy(
+    Boolean(
+      pendingCloseRequest ||
+      pendingWorkspaceDelete ||
+      imageSettingsWorkspace ||
+      aboutVisible,
+    ),
+  );
   const [localPreview, setLocalPreview] = useState<LocalPreviewOverlay | null>(null);
   const [codeTargetLines, setCodeTargetLines] = useState<Readonly<Record<string, number>>>(
     {},
@@ -769,11 +853,22 @@ export function AppShell({
     localPreviewRequestRef.current += 1;
     setLocalPreview(null);
   }, [clearLocalPreviewTimer]);
+  const openAbout = useCallback(() => {
+    setMoreMenuVisible(false);
+    setWorkspaceMenuVisible(false);
+    setQuickOpenVisible(false);
+    setSettingsVisible(false);
+    closeContextMenu();
+    closeLocalPreview();
+    setAboutVisible(true);
+  }, [closeContextMenu, closeLocalPreview]);
   const [findRequests, setFindRequests] = useState<Readonly<Record<string, number>>>({});
   const findRequestCounter = useRef(1);
   const findInActivePage = useCallback(() => {
     if (
       settingsVisible ||
+      aboutVisible ||
+      imageSettingsWorkspace ||
       quickOpenVisible ||
       visual ||
       pendingCloseRequest ||
@@ -787,6 +882,8 @@ export function AppShell({
     }
   }, [
     settingsVisible,
+    aboutVisible,
+    imageSettingsWorkspace,
     quickOpenVisible,
     visual,
     pendingCloseRequest,
@@ -808,8 +905,13 @@ export function AppShell({
   const confirmationPendingRef = useRef(false);
 
   useLayoutEffect(() => {
-    confirmationPendingRef.current = Boolean(pendingCloseRequest || pendingWorkspaceDelete);
-  }, [pendingCloseRequest, pendingWorkspaceDelete]);
+    confirmationPendingRef.current = Boolean(
+      pendingCloseRequest ||
+      pendingWorkspaceDelete ||
+      imageSettingsWorkspace ||
+      aboutVisible,
+    );
+  }, [pendingCloseRequest, pendingWorkspaceDelete, imageSettingsWorkspace, aboutVisible]);
 
   useLayoutEffect(() => {
     appStateRef.current = appState;
@@ -894,6 +996,7 @@ export function AppShell({
       adapter.kind !== "tauri" ||
       nativeCloseCommittedRef.current ||
       confirmationPendingRef.current ||
+      imageSaveAsPendingRef.current ||
       hasImageReferenceDialog()
     ) {
       return;
@@ -1943,7 +2046,8 @@ export function AppShell({
             setStatus(t("status.saveCancelled"));
             return;
           }
-          if (stillOwned(appStateRef.current))
+          const owned = stillOwned(appStateRef.current);
+          if (owned)
             commitAction(relocateDocument(session.id, saveAsResult.relocated, savedText));
           setSaveFailure(null);
           setWorkspaceHistory((current) =>
@@ -1954,7 +2058,7 @@ export function AppShell({
           );
           await refreshWorkspaceContaining(saveAsResult.saved.path);
           setStatus(t("status.saved", { name: fileName(saveAsResult.saved.path) }));
-          return;
+          return owned ? saveAsResult.saved.path : undefined;
         }
 
         const savedText = session.text;
@@ -2194,7 +2298,11 @@ export function AppShell({
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (confirmationPendingRef.current || hasImageReferenceDialog()) {
+      if (
+        confirmationPendingRef.current ||
+        imageSaveAsPendingRef.current ||
+        hasImageReferenceDialog()
+      ) {
         if (
           (event.metaKey || event.ctrlKey) &&
           ["s", "n", "o", "k", "f", ",", "/", "w", "q"].includes(event.key.toLowerCase())
@@ -2303,7 +2411,12 @@ export function AppShell({
     let dispose: (() => void) | undefined;
     void adapter
       .listenNativeMenuAction((actionId) => {
-        if (confirmationPendingRef.current || hasImageReferenceDialog()) return;
+        if (
+          confirmationPendingRef.current ||
+          imageSaveAsPendingRef.current ||
+          hasImageReferenceDialog()
+        )
+          return;
         switch (actionId) {
           case "file.new":
             newDocument("markdown");
@@ -2351,7 +2464,7 @@ export function AppShell({
             requestNativeWindowClose();
             break;
           case "help.open":
-            setStatus(t("status.ready"));
+            openAbout();
             break;
           case "edit.find":
             findInActivePage();
@@ -2374,6 +2487,7 @@ export function AppShell({
     openSingleFile,
     openWorkspace,
     requestNativeWindowClose,
+    openAbout,
     revealInFileManager,
     saveActiveDocument,
     switchEditorMode,
@@ -2719,24 +2833,122 @@ export function AppShell({
   };
 
   const pasteClipboardImage = useCallback(
-    async (tabId: string): Promise<string> => {
+    async (
+      tabId: string,
+      selection: { readonly from: number; readonly to: number },
+      kind: ClipboardImagePasteKind = "image",
+    ): Promise<string> => {
       const state = appStateRef.current;
       const tab = state.tabs[tabId];
       const session = tab ? selectCurrentSession(state, tab.id) : undefined;
-      if (!session || isUntitledPath(session.path)) {
-        throw new Error(t("status.saveBeforeScreenshot"));
+      if (!tab || !session || session.kind !== "markdown" || imageSaveAsPendingRef.current)
+        return "";
+
+      setImagePasteFailure(null);
+      const request = ++imagePasteCounterRef.current;
+      imagePasteRequestsRef.current.set(tabId, request);
+      const originalText = session.text;
+      const originalMode = tab.current.view.editorMode;
+      let documentPath = session.path;
+      const needsSaveAs = isUntitledPath(documentPath);
+      const stillCurrent = () => {
+        const latest = appStateRef.current;
+        const latestTab = latest.tabs[tabId];
+        const latestSession = latest.sessions[documentPath];
+        return (
+          imagePasteMountedRef.current &&
+          imagePasteRequestsRef.current.get(tabId) === request &&
+          !nativeCloseCommittedRef.current &&
+          latestTab?.current.documentId === documentPath &&
+          latestTab.current.view.editorMode === originalMode &&
+          latestSession?.kind === "markdown" &&
+          latestSession.text === originalText &&
+          !latestSession.externalChange
+        );
+      };
+
+      try {
+        if (needsSaveAs) {
+          imageSaveAsPendingRef.current = true;
+          let savedPath: string | undefined;
+          try {
+            if (adapter.hasClipboardImage && !(await adapter.hasClipboardImage())) {
+              if (kind === "native-fallback") return "";
+              throw { code: "clipboardNoImage" };
+            }
+            if (!stillCurrent()) return "";
+            savedPath = await saveActiveDocument(false, session.id);
+          } finally {
+            imageSaveAsPendingRef.current = false;
+          }
+          if (!savedPath) return "";
+          documentPath = savedPath;
+        }
+        if (!stillCurrent()) return "";
+        const owner = workspacesRef.current
+          .filter((item) => pathIsAtOrBelow(documentPath, item.selection.path))
+          .sort(
+            (left, right) => right.selection.path.length - left.selection.path.length,
+          )[0];
+        const directoryPath = owner
+          ? getWorkspaceImageDirectory(workspaceHistoryRef.current, owner.selection.path)
+          : null;
+        const saved = directoryPath
+          ? await adapter.saveClipboardImage(documentPath, directoryPath)
+          : await adapter.saveClipboardImage(documentPath);
+        if (!stillCurrent()) return "";
+        const markdown = `![](${saved.markdownUri})`;
+        setStatus(t("status.screenshotSaved", { path: saved.path }));
+        if (needsSaveAs) {
+          // Save As remounts the editor with its new path. Let that surface apply
+          // the insertion as a normal undoable transaction, never edit raw text here.
+          setImageInsertRequests((current) => ({
+            ...current,
+            [tabId]: {
+              id: request,
+              documentId: documentPath,
+              markdown,
+              expectedText: originalText,
+              editorMode: originalMode,
+              selection,
+            },
+          }));
+          return "";
+        }
+        return markdown;
+      } catch (error) {
+        if (
+          kind === "native-fallback" &&
+          typeof error === "object" &&
+          error !== null &&
+          "code" in error &&
+          error.code === "clipboardNoImage"
+        )
+          return "";
+        if (!stillCurrent()) return "";
+        const message = clipboardImageError(error, t);
+        // The original untitled surface no longer exists after Save As.
+        if (needsSaveAs) {
+          setImagePasteFailure({ tabId, documentId: documentPath, error: message });
+          return "";
+        }
+        throw new Error(message);
       }
-      const saved = await adapter.saveClipboardImage(session.path);
-      setStatus(t("status.screenshotSaved", { path: saved.markdownUri }));
-      return `![](${saved.markdownUri})`;
     },
-    [adapter, t],
+    [adapter, saveActiveDocument, t],
   );
 
   const activeSaveFailure =
     activeSession && saveFailure?.documentId === activeSession.id
       ? t("status.saveFailed", { error: saveFailure.error })
       : null;
+  const activeImagePasteFailure =
+    imagePasteFailure &&
+    activeTab?.id === imagePasteFailure.tabId &&
+    activeSession?.id === imagePasteFailure.documentId
+      ? t("status.imageSaveFailed", { error: imagePasteFailure.error })
+      : null;
+  const activeStatusFailure = activeSaveFailure ?? activeImagePasteFailure;
 
   const navigateHistory = (direction: "back" | "forward") => {
     const state = appStateRef.current;
@@ -2885,12 +3097,30 @@ export function AppShell({
           showCodeLineNumbers={settings.showCodeLineNumbers}
           showTypingHints={settings.showTypingHints}
           onChange={(text) => editSessionDocument(session.id, text)}
-          onImagePaste={() => pasteClipboardImage(tab.id)}
+          onImagePaste={(selection, kind) => pasteClipboardImage(tab.id, selection, kind)}
+          imageInsertRequest={
+            imageInsertRequests[tab.id]?.documentId === session.id &&
+            imageInsertRequests[tab.id]?.editorMode === mode
+              ? imageInsertRequests[tab.id]
+              : undefined
+          }
+          onImageInsertConsumed={(id) =>
+            setImageInsertRequests((current) => {
+              if (current[tab.id]?.id !== id) return current;
+              const next = { ...current };
+              delete next[tab.id];
+              return next;
+            })
+          }
           onInternalLink={(target, disposition) =>
             handleInternalLink(target, disposition, tab.id)
           }
           onPasteError={(message) =>
-            setStatus(t("status.imageSaveFailed", { error: message }))
+            setImagePasteFailure({
+              tabId: tab.id,
+              documentId: session.id,
+              error: message,
+            })
           }
           onPasteRejected={setStatus}
           onOpenVisual={setVisual}
@@ -3246,6 +3476,9 @@ export function AppShell({
                   <span>{t("menu.preferences")}</span>
                   <kbd>⌘,</kbd>
                 </button>
+                <button onClick={openAbout} role="menuitem" type="button">
+                  <span>{t("about.title")}</span>
+                </button>
               </div>
             )}
           </div>
@@ -3321,6 +3554,7 @@ export function AppShell({
                           onShowHiddenChange={(path, visible) =>
                             void changeWorkspaceHiddenFiles(path, visible)
                           }
+                          onImageSettings={() => setImageSettingsWorkspace(item.selection)}
                           actionLabels={{
                             collapseWorkspace: t("workspace.collapse"),
                             expandWorkspace: t("workspace.expand"),
@@ -3676,6 +3910,55 @@ export function AppShell({
       </main>
 
       <SettingsDialog open={settingsVisible} onClose={() => setSettingsVisible(false)} />
+      {aboutVisible && (
+        <AboutDialog
+          onClose={() => setAboutVisible(false)}
+          onOpenExternalUrl={adapter.openExternalUrl?.bind(adapter)}
+        />
+      )}
+      {imageSettingsWorkspace && (
+        <WorkspaceImageSettingsDialog
+          key={imageSettingsWorkspace.path}
+          workspaceName={imageSettingsWorkspace.name}
+          imageDirectoryPath={getWorkspaceImageDirectory(
+            workspaceHistory,
+            imageSettingsWorkspace.path,
+          )}
+          labels={{
+            title: t("workspaceImages.title"),
+            description: t("workspaceImages.description"),
+            sameDirectory: t("workspaceImages.sameDirectory"),
+            sameDirectoryDescription: t("workspaceImages.sameDirectoryDescription"),
+            customDirectory: t("workspaceImages.customDirectory"),
+            customDirectoryDescription: t("workspaceImages.customDirectoryDescription"),
+            directoryPath: t("workspaceImages.directoryPath"),
+            chooseDirectory: t("workspaceImages.chooseDirectory"),
+            chooseDirectoryHint: t("workspaceImages.chooseDirectoryHint"),
+            chooseDirectoryError: t("workspaceImages.chooseDirectoryError"),
+            cancel: t("workspaceImages.cancel"),
+            save: t("workspaceImages.save"),
+          }}
+          onChooseDirectory={() =>
+            adapter.pickImageDirectory
+              ? adapter.pickImageDirectory(locale)
+              : Promise.reject(new Error("Directory chooser unavailable"))
+          }
+          onSave={(directoryPath) => {
+            const nextHistory = setWorkspaceImageDirectory(
+              workspaceHistoryRef.current,
+              imageSettingsWorkspace.path,
+              directoryPath,
+            );
+            workspaceHistoryRef.current = nextHistory;
+            setWorkspaceHistory(nextHistory);
+            setStatus(
+              t("status.workspaceImagesSaved", { name: imageSettingsWorkspace.name }),
+            );
+            setImageSettingsWorkspace(null);
+          }}
+          onClose={() => setImageSettingsWorkspace(null)}
+        />
+      )}
       {pendingCloseRequest && (
         <UnsavedCloseDialog
           dirtyPaths={pendingCloseRequest.dirtyPaths}
@@ -3707,14 +3990,14 @@ export function AppShell({
       <footer className="status-bar" role="status" aria-live="polite">
         <span
           className={
-            activeSaveFailure
+            activeStatusFailure
               ? "status-bar__state status-bar__state--error"
               : "status-bar__state"
           }
-          title={activeSaveFailure ?? (activeSession?.dirty ? t("tabs.unsaved") : status)}
+          title={activeStatusFailure ?? (activeSession?.dirty ? t("tabs.unsaved") : status)}
         >
           <span className="status-bar__dot" aria-hidden="true" />
-          {activeSaveFailure ?? (activeSession?.dirty ? t("tabs.unsaved") : status)}
+          {activeStatusFailure ?? (activeSession?.dirty ? t("tabs.unsaved") : status)}
         </span>
         {activeSession ? (
           <DocumentStatisticsStatus

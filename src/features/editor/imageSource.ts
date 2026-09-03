@@ -1,4 +1,4 @@
-import { convertFileSrc, isTauri } from "@tauri-apps/api/core";
+import { convertFileSrc, invoke, isTauri } from "@tauri-apps/api/core";
 
 const SCHEME = /^[a-z][a-z\d+.-]*:/iu;
 const WINDOWS_ABSOLUTE_PATH = /^[a-z]:[\\/]/iu;
@@ -55,4 +55,17 @@ export function resolveMarkdownImageSource(documentPath: string, target: string)
   const localPath = markdownImagePath(documentPath, target);
   if (!localPath) return target;
   return isTauri() ? convertFileSrc(localPath) : localPath;
+}
+
+export async function prepareMarkdownImageSource(
+  documentPath: string,
+  target: string,
+): Promise<string> {
+  const localPath = markdownImagePath(documentPath, target);
+  if (!localPath) return target;
+  if (!isTauri()) return localPath;
+  // The host validates and grants access to this one existing image only. This
+  // also restores access to a workspace's custom image directory after restart.
+  const preparedPath = await invoke<string>("prepare_local_image", { path: localPath });
+  return convertFileSrc(preparedPath);
 }

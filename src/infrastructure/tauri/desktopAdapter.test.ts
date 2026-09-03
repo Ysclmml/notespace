@@ -198,6 +198,37 @@ describe("browser demo adapter", () => {
 });
 
 describe("Tauri desktop adapter", () => {
+  it("passes image location preferences and native clipboard checks without image bytes", async () => {
+    const adapter = new TauriDesktopAdapter();
+    invokeMock.mockResolvedValueOnce(true).mockResolvedValueOnce("/images/截图");
+    expect(await adapter.hasClipboardImage()).toBe(true);
+    expect(await adapter.pickImageDirectory("zh-CN")).toBe("/images/截图");
+    const saved = {
+      path: "/notes/paste.png",
+      markdownUri: "./paste.png",
+      width: 8,
+      height: 8,
+    };
+    invokeMock.mockResolvedValue(saved);
+    expect(await adapter.saveClipboardImage("/notes/note.md")).toEqual(saved);
+    await adapter.saveClipboardImage("/notes/note.md", "/images/截图");
+    expect(invokeMock.mock.calls).toEqual([
+      ["clipboard_has_image"],
+      ["pick_image_directory", { locale: "zh-CN" }],
+      ["save_clipboard_image", { documentPath: "/notes/note.md" }],
+      [
+        "save_clipboard_image",
+        { documentPath: "/notes/note.md", directoryPath: "/images/截图" },
+      ],
+    ]);
+    invokeMock.mockResolvedValueOnce(null);
+    expect(await adapter.pickImageDirectory("en-US")).toBeNull();
+    invokeMock.mockRejectedValueOnce({ code: "imageDirectoryUnavailable" });
+    await expect(adapter.saveClipboardImage("/notes/note.md", "/gone")).rejects.toEqual({
+      code: "imageDirectoryUnavailable",
+    });
+  });
+
   it("inspects disk metadata without opening bodies and forwards watch replacements", async () => {
     const adapter = new TauriDesktopAdapter();
     const inspection = [

@@ -11,6 +11,7 @@ import { EditorView as CodeMirrorView } from "@codemirror/view";
 import { tags } from "@lezer/highlight";
 import { editorViewCtx, parserCtx, serializerCtx } from "@milkdown/kit/core";
 import type { Node as ProseMirrorNode } from "@milkdown/kit/prose/model";
+import { closeHistory } from "@milkdown/kit/prose/history";
 import { Plugin, TextSelection } from "@milkdown/kit/prose/state";
 import {
   TableView,
@@ -24,7 +25,6 @@ import {
   createCodeBlockCommand,
   imageSchema,
   insertHrCommand,
-  insertImageCommand,
   toggleEmphasisCommand,
   toggleInlineCodeCommand,
   toggleStrongCommand,
@@ -50,10 +50,15 @@ import {
   matchingCodeFenceLanguages,
   type CodeFenceLanguage,
 } from "./codeFenceCompletion";
-import { resolveMarkdownImageSource } from "./imageSource";
+import { prepareMarkdownImageSource, resolveMarkdownImageSource } from "./imageSource";
 import { linkDispositionFromPointer, type LinkDisposition } from "./linkTarget";
 import { createMermaidPreviewController } from "./mermaidPreview";
 import { isOversizedInlineImagePaste } from "./pasteGuard";
+import {
+  clipboardImagePasteKind,
+  type ClipboardImagePasteKind,
+  type EditorImageInsertRequest,
+} from "./clipboardImage";
 import { mergeCompositionChange } from "./sharedTextChange";
 import {
   semanticPositionFromVisualDocument,
@@ -154,7 +159,12 @@ export interface VisualMarkdownEditorProps {
   readonly showCodeLineNumbers?: boolean;
   readonly showTypingHints?: boolean;
   readonly onChange: (value: string) => void;
-  readonly onImagePaste?: (selection: VisualEditorSelectionRange) => Promise<string>;
+  readonly onImagePaste?: (
+    selection: VisualEditorSelectionRange,
+    kind?: ClipboardImagePasteKind,
+  ) => Promise<string>;
+  readonly imageInsertRequest?: EditorImageInsertRequest;
+  readonly onImageInsertConsumed?: (id: number) => void;
   readonly onInternalLink?: (target: string, disposition: LinkDisposition) => void;
   readonly onPasteRejected?: (message: string) => void;
   readonly onPasteError?: (message: string) => void;
@@ -177,6 +187,9 @@ interface EditorMessages {
   readonly codePlainText: string;
   readonly image: string;
   readonly imageZoom: (title: string) => string;
+  readonly imageUnavailable: string;
+  readonly imageEditReference: string;
+  readonly imageRemoveReference: string;
   readonly imagePasteUnavailable: string;
   readonly imagePasteFailed: string;
   readonly mermaidTitle: string;
@@ -219,6 +232,9 @@ const EDITOR_MESSAGES: Record<MarkdownEditorLocale, EditorMessages> = {
     codePlainText: "纯文本",
     image: "图片",
     imageZoom: (title) => `放大查看：${title}`,
+    imageUnavailable: "图片不存在或无法加载",
+    imageEditReference: "编辑引用…",
+    imageRemoveReference: "删除引用",
     imagePasteUnavailable: "图片粘贴尚未启用",
     imagePasteFailed: "图片没有保存",
     mermaidTitle: "Mermaid 图表",
@@ -259,6 +275,9 @@ const EDITOR_MESSAGES: Record<MarkdownEditorLocale, EditorMessages> = {
     codePlainText: "Plain text",
     image: "Image",
     imageZoom: (title) => `Zoom image: ${title}`,
+    imageUnavailable: "Image missing or unavailable",
+    imageEditReference: "Edit reference…",
+    imageRemoveReference: "Remove reference",
     imagePasteUnavailable: "Image paste is not enabled",
     imagePasteFailed: "The image was not saved",
     mermaidTitle: "Mermaid diagram",
@@ -536,11 +555,6 @@ function imagePayloadFromUploadResult(
   throw new Error(invalidMessage);
 }
 
-function clipboardHasImage(data: DataTransfer | null): boolean {
-  if (!data) return false;
-  return Array.from(data.items).some((item) => item.type.startsWith("image/"));
-}
-
 async function copyCodeText(value: string): Promise<void> {
   try {
     if (!navigator.clipboard?.writeText) throw new Error("Clipboard API unavailable");
@@ -571,35 +585,140 @@ async function copyCodeText(value: string): Promise<void> {
   }
 }
 
-function visualImageView(documentPath: string, messages: EditorMessages) {
+function visualImageView(
+  documentPath: string,
+  messages: EditorMessages,
+  isDisposed: () => boolean,
+  onEditReference: (target: ImageEditTarget) => void,
+) {
   return $view(imageSchema.node, () => (initialNode, view, getPos) => {
     const dom = document.createElement("span");
     dom.className = "visual-markdown-image";
     dom.contentEditable = "false";
 
-    const image = document.createElement("img");
-    image.className = "visual-markdown-image__content";
-    image.decoding = "async";
-    image.loading = "lazy";
-    image.draggable = false;
-    image.tabIndex = 0;
-    image.setAttribute("role", "button");
-    dom.append(image);
+    const placeholder = document.createElement("span");
+    placeholder.className = "visual-markdown-image__placeholder";
+    placeholder.hidden = true;
+    placeholder.setAttribute("role", "group");
+    placeholder.setAttribute("aria-label", messages.imageUnavailable);
+    const status = document.createElement("span");
+    status.className = "visual-markdown-image__status";
+    status.textContent = messages.imageUnavailable;
+    const path = document.createElement("span");
+    path.className = "visual-markdown-image__path";
+    const actions = document.createElement("span");
+    actions.className = "visual-markdown-image__actions";
+    const edit = document.createElement("button");
+    edit.type = "button";
+    edit.textContent = messages.imageEditReference;
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.textContent = messages.imageRemoveReference;
+    actions.append(edit, remove);
+    placeholder.append(status, path, actions);
+    dom.append(placeholder);
+
+    let sourceRevision = 0;
+    let destroyed = false;
+    let image: HTMLImageElement | null = null;
+    let previousSource: string | null = null;
+    let currentNode = initialNode;
+    let unregister = () => {};
+
+    const currentTarget = () =>
+      !destroyed && !isDisposed() && image && view.editable
+        ? imageEditTarget(image, view)
+        : null;
+    edit.addEventListener("click", () => {
+      const target = currentTarget();
+      if (target && target.node.eq(currentNode)) onEditReference(target);
+    });
+    remove.addEventListener("click", () => {
+      const target = currentTarget();
+      const position = target?.getPos();
+      if (!target || !target.node.eq(currentNode) || typeof position !== "number") return;
+      const transaction = closeHistory(
+        view.state.tr.delete(position, position + target.node.nodeSize),
+      );
+      transaction.setSelection(
+        TextSelection.near(
+          transaction.doc.resolve(Math.min(position, transaction.doc.content.size)),
+        ),
+      );
+      view.dispatch(transaction);
+      view.focus();
+    });
+    placeholder.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+    });
+
+    const showUnavailable = (unavailable: boolean) => {
+      placeholder.hidden = !unavailable;
+      if (image) image.hidden = unavailable;
+      dom.classList.toggle("visual-markdown-image--unavailable", unavailable);
+    };
 
     const bind = (node: typeof initialNode) => {
+      currentNode = node;
       const source = String(node.attrs.src ?? "");
       const alt = String(node.attrs.alt ?? "");
       const title = String(node.attrs.title ?? "");
-      const resolvedSource = resolveMarkdownImageSource(documentPath, source);
+      path.textContent = source;
+      edit.disabled = remove.disabled = !view.editable;
 
-      if (isAssetImageSource(resolvedSource)) image.crossOrigin = "anonymous";
-      else image.removeAttribute("crossorigin");
-      if (resolvedSource) image.setAttribute("src", resolvedSource);
-      else image.removeAttribute("src");
+      if (source !== previousSource || !image) {
+        previousSource = source;
+        const revision = ++sourceRevision;
+        unregister();
+        if (image) {
+          image.onload = image.onerror = null;
+          image.remove();
+        }
+        // Keep each request on its own element: a late load/error for an old
+        // source must never change the next reference's placeholder state.
+        const loadingImage = document.createElement("img");
+        image = loadingImage;
+        image.className = "visual-markdown-image__content";
+        image.decoding = "async";
+        image.loading = "lazy";
+        image.draggable = false;
+        image.tabIndex = 0;
+        image.setAttribute("role", "button");
+        dom.insertBefore(image, placeholder);
+        unregister = registerImageNode(image, { view, getPos });
+        showUnavailable(false);
+        const isCurrent = () => !destroyed && !isDisposed() && revision === sourceRevision;
+        image.onload = () => {
+          if (isCurrent()) showUnavailable(false);
+        };
+        image.onerror = () => {
+          if (isCurrent()) showUnavailable(true);
+        };
+        const resolvedSource = resolveMarkdownImageSource(documentPath, source);
+        image.dataset.visualImageSource = resolvedSource;
+        if (isAssetImageSource(resolvedSource)) {
+          image.crossOrigin = "anonymous";
+          // Restore this individual Tauri asset's scope before its first request.
+          void prepareMarkdownImageSource(documentPath, source)
+            .then((preparedSource) => {
+              if (!isCurrent()) return;
+              if (!preparedSource) {
+                showUnavailable(true);
+                return;
+              }
+              loadingImage.dataset.visualImageSource = preparedSource;
+              loadingImage.setAttribute("src", preparedSource);
+            })
+            .catch(() => {
+              if (isCurrent()) showUnavailable(true);
+            });
+        } else if (resolvedSource) image.setAttribute("src", resolvedSource);
+        else showUnavailable(true);
+      }
       image.alt = alt;
       if (title) image.title = title;
       else image.removeAttribute("title");
-      image.dataset.visualImageSource = resolvedSource;
       image.dataset.visualImageReference = source;
       image.dataset.visualImageDocument = documentPath;
       const imageTitle = alt || title || messages.image;
@@ -608,18 +727,27 @@ function visualImageView(documentPath: string, messages: EditorMessages) {
     };
 
     bind(initialNode);
-    const unregister = registerImageNode(image, { view, getPos });
     return {
       dom,
+      ignoreMutation(mutation) {
+        // This leaf's loading UI is a projection, never editable document text.
+        return mutation.type !== "selection";
+      },
       stopEvent(event) {
         return (
+          (event.target instanceof Node && placeholder.contains(event.target)) ||
           event.type === "contextmenu" ||
           (event instanceof MouseEvent &&
             event.type === "mousedown" &&
             (event.button === 2 || (event.button === 0 && event.ctrlKey)))
         );
       },
-      destroy: unregister,
+      destroy() {
+        destroyed = true;
+        sourceRevision++;
+        if (image) image.onload = image.onerror = null;
+        unregister();
+      },
       update(updatedNode) {
         if (updatedNode.type !== initialNode.type) return false;
         bind(updatedNode);
@@ -1170,6 +1298,8 @@ function VisualMarkdownEditorInstance({
   showTypingHints = true,
   onChange,
   onImagePaste,
+  imageInsertRequest,
+  onImageInsertConsumed,
   onInternalLink,
   onPasteRejected,
   onPasteError,
@@ -1192,6 +1322,10 @@ function VisualMarkdownEditorInstance({
   const latestRevealRef = useRef(reveal);
   const onChangeRef = useRef(onChange);
   const onImagePasteRef = useRef(onImagePaste);
+  const imageInsertRequestRef = useRef(imageInsertRequest);
+  const onImageInsertConsumedRef = useRef(onImageInsertConsumed);
+  const consumedImageInsertRef = useRef<number | null>(null);
+  const applyImageInsertRequestRef = useRef<() => void>(() => {});
   const onInternalLinkRef = useRef(onInternalLink);
   const onPasteRejectedRef = useRef(onPasteRejected);
   const onPasteErrorRef = useRef(onPasteError);
@@ -1304,7 +1438,9 @@ function VisualMarkdownEditorInstance({
     latestAutofocusRef.current = autofocus;
     latestValueRef.current = value;
     latestRevealRef.current = reveal;
-  }, [autofocus, reveal, value]);
+    imageInsertRequestRef.current = imageInsertRequest;
+    onImageInsertConsumedRef.current = onImageInsertConsumed;
+  }, [autofocus, imageInsertRequest, onImageInsertConsumed, reveal, value]);
 
   useEffect(() => {
     onChangeRef.current = onChange;
@@ -1334,7 +1470,6 @@ function VisualMarkdownEditorInstance({
     initialViewRestoredRef.current = false;
     const initial = initialConfigRef.current;
     let cancelled = false;
-    let reportFrame = 0;
     let restoreFrame = 0;
     let compositionFrame = 0;
     let composing = false;
@@ -1439,21 +1574,21 @@ function VisualMarkdownEditorInstance({
     );
 
     const reportView = (view: EditorView, preferViewport = false) => {
-      window.cancelAnimationFrame(reportFrame);
-      reportFrame = window.requestAnimationFrame(() => {
-        const selection = view.state.selection;
-        const semanticPosition = preferViewport
-          ? visualViewportPosition(view, scroller)
-          : selection.from;
-        onViewChangeRef.current?.({
-          scrollTop: scroller.scrollTop,
-          selectionFrom: selection.from,
-          selectionTo: selection.to,
-          semanticPosition: semanticPositionFromVisualDocument(
-            view.state.doc,
-            semanticPosition,
-          ),
-        });
+      if (cancelled || !initialViewRestoredRef.current) return;
+      // Record the position in the event's turn. Deferring it to an animation
+      // frame loses the last scroll/selection when a mode switch unmounts us.
+      const selection = view.state.selection;
+      const semanticPosition = preferViewport
+        ? visualViewportPosition(view, scroller)
+        : selection.from;
+      onViewChangeRef.current?.({
+        scrollTop: scroller.scrollTop,
+        selectionFrom: selection.from,
+        selectionTo: selection.to,
+        semanticPosition: semanticPositionFromVisualDocument(
+          view.state.doc,
+          semanticPosition,
+        ),
       });
     };
 
@@ -1509,7 +1644,14 @@ function VisualMarkdownEditorInstance({
     // Crepe's ImageBlock changes CommonMark image alt text into its caption
     // model. Keep the standard image node so Markdown round-trips losslessly,
     // and only customize its DOM URL and viewer affordance.
-    crepe.editor.use(visualImageView(initial.documentId, initial.messages));
+    crepe.editor.use(
+      visualImageView(
+        initial.documentId,
+        initial.messages,
+        () => cancelled,
+        setEditingImage,
+      ),
+    );
     // The stock table NodeView squeezes wide tables into the prose width and
     // cannot expose ProseMirror's column-resize handles. Keep the GFM schema
     // and serializer, but use the official resizable TableView. Its `colwidth`
@@ -1633,45 +1775,117 @@ function VisualMarkdownEditorInstance({
       const view = editorViewRef.current;
       if (view) reportView(view, true);
     };
+    const insertSavedImage = (
+      view: EditorView,
+      selection: VisualEditorSelectionRange,
+      markdown: string,
+    ) => {
+      const image = imagePayloadFromUploadResult(
+        markdown,
+        initial.locale === "zh-CN"
+          ? "图片已经保存，但返回的图片链接格式无法识别"
+          : "The image was saved, but its returned link could not be understood",
+      );
+      const node = crepe.editor.action((ctx) => imageSchema.type(ctx).create(image));
+      view.dispatch(
+        closeHistory(
+          view.state.tr
+            .setSelection(selectionFor(view, selection.from, selection.to))
+            .replaceSelectionWith(node)
+            .setMeta("uiEvent", "paste")
+            .scrollIntoView(),
+        ),
+      );
+    };
+    applyImageInsertRequestRef.current = () => {
+      const request = imageInsertRequestRef.current;
+      const view = editorViewRef.current;
+      if (
+        !request ||
+        !view ||
+        cancelled ||
+        !readyRef.current ||
+        !initialViewRestoredRef.current ||
+        consumedImageInsertRef.current === request.id
+      ) {
+        return;
+      }
+      consumedImageInsertRef.current = request.id;
+      try {
+        if (
+          request.documentId !== initial.documentId ||
+          request.editorMode !== "visual" ||
+          request.expectedText !== editorValueRef.current ||
+          !request.markdown.trim()
+        ) {
+          return;
+        }
+        insertSavedImage(view, request.selection, request.markdown);
+      } catch (error: unknown) {
+        if (error instanceof Error) onPasteErrorRef.current?.(error.message);
+      } finally {
+        onImageInsertConsumedRef.current?.(request.id);
+      }
+    };
     const onPaste = (event: ClipboardEvent) => {
       const text = event.clipboardData?.getData("text/plain") ?? "";
-      if (isOversizedInlineImagePaste(text)) {
+      if (
+        isOversizedInlineImagePaste(text) ||
+        isOversizedInlineImagePaste(event.clipboardData?.getData("text/html") ?? "")
+      ) {
         event.preventDefault();
         event.stopImmediatePropagation();
         onPasteRejectedRef.current?.(initial.messages.oversizedPaste);
         return;
       }
-      if (!clipboardHasImage(event.clipboardData)) return;
+      const paste = onImagePasteRef.current;
+      const pasteKind = clipboardImagePasteKind(event.clipboardData);
+      if (!paste || !pasteKind) return;
+
+      const element = event.target instanceof Element ? event.target : null;
+      if (element?.closest(".cm-editor")) {
+        // A fenced-code CodeMirror selection uses offsets unrelated to the
+        // outer ProseMirror selection. Never replace a code block by accident.
+        // CodeMirror also replaces its selection with empty text for Files-only
+        // payloads, so leave those selections untouched without reading native data.
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        if (pasteKind === "image") {
+          onPasteErrorRef.current?.(
+            initial.locale === "zh-CN"
+              ? "请将光标移到代码块外的正文后粘贴图片。"
+              : "Move the cursor outside the code block to paste an image.",
+          );
+        }
+        return;
+      }
 
       event.preventDefault();
       event.stopImmediatePropagation();
-      const paste = onImagePasteRef.current;
       const view = editorViewRef.current;
-      if (!paste || !view) {
+      if (!view) {
         onPasteErrorRef.current?.(initial.messages.imagePasteUnavailable);
         return;
       }
 
       const selection = { from: view.state.selection.from, to: view.state.selection.to };
-      void paste(selection)
+      const originalDocument = view.state.doc;
+      void paste(selection, pasteKind)
         .then((markdown) => {
-          if (cancelled) return;
+          if (cancelled || !markdown.trim()) return;
           const currentView = editorViewRef.current;
-          if (!currentView) return;
-          const image = imagePayloadFromUploadResult(
-            markdown,
-            initial.locale === "zh-CN"
-              ? "图片已经保存，但返回的图片链接格式无法识别"
-              : "The image was saved, but its returned link could not be understood",
-          );
-          currentView.dispatch(
-            currentView.state.tr.setSelection(
-              selectionFor(currentView, selection.from, selection.to),
-            ),
-          );
-          crepe.editor.action(callCommand(insertImageCommand.key, image));
+          if (currentView !== view) return;
+          if (currentView.state.doc !== originalDocument) {
+            throw new Error(
+              initial.locale === "zh-CN"
+                ? "图片已保存，但文档在等待期间发生了变化，未插入旧位置。请重新粘贴。"
+                : "The image was saved, but the document changed while waiting. Paste again to insert it.",
+            );
+          }
+          insertSavedImage(currentView, selection, markdown);
         })
         .catch((error: unknown) => {
+          if (cancelled || editorViewRef.current !== view) return;
           const message =
             error instanceof Error ? error.message : initial.messages.imagePasteFailed;
           onPasteErrorRef.current?.(message);
@@ -1697,6 +1911,11 @@ function VisualMarkdownEditorInstance({
     const onPointerLink = (event: MouseEvent) => {
       if (event.button !== 0 && event.button !== 1) return;
       const element = event.target instanceof Element ? event.target : null;
+      if (element?.closest(".visual-markdown-image__placeholder")) {
+        // Failed images can themselves be links; their actions must not navigate.
+        event.preventDefault();
+        return;
+      }
       const copyButton = element?.closest<HTMLButtonElement>(
         ".milkdown-code-block .copy-button",
       );
@@ -1753,6 +1972,11 @@ function VisualMarkdownEditorInstance({
     };
 
     const onEditorKeyDown = (event: KeyboardEvent) => {
+      if (
+        event.target instanceof Element &&
+        event.target.closest(".visual-markdown-image__placeholder")
+      )
+        return;
       const completion = typingCompletionRef.current;
       if (completion && !event.isComposing) {
         if (event.key === "ArrowDown" || event.key === "ArrowUp") {
@@ -1882,6 +2106,7 @@ function VisualMarkdownEditorInstance({
           reportView(nextView);
           refreshFind();
           updateTypingCompletion(nextView);
+          applyImageInsertRequestRef.current();
         });
       })
       .catch((error: unknown) => {
@@ -1894,7 +2119,6 @@ function VisualMarkdownEditorInstance({
       cancelled = true;
       readyRef.current = false;
       initialViewRestoredRef.current = false;
-      window.cancelAnimationFrame(reportFrame);
       window.cancelAnimationFrame(restoreFrame);
       window.cancelAnimationFrame(compositionFrame);
       mermaidPreview.dispose();
@@ -1911,6 +2135,7 @@ function VisualMarkdownEditorInstance({
       editorViewRef.current = null;
       findTargetRef.current = null;
       syncValueRef.current = () => {};
+      applyImageInsertRequestRef.current = () => {};
       crepeRef.current = null;
       if (crepe.editor.status === "Created") void crepe.destroy();
     };
@@ -1919,6 +2144,10 @@ function VisualMarkdownEditorInstance({
   useEffect(() => {
     syncValueRef.current(value);
   }, [value]);
+
+  useEffect(() => {
+    applyImageInsertRequestRef.current();
+  }, [imageInsertRequest]);
 
   useEffect(() => {
     const editorRoot = editorRootRef.current;

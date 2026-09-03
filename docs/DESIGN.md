@@ -2,15 +2,15 @@
 
 | 字段     | 值                                                                               |
 | -------- | -------------------------------------------------------------------------------- |
-| 状态     | Approved baseline 1.1（ADR-0014）                                                |
+| 状态     | Approved baseline 1.2（ADR-0015）                                                |
 | 日期     | 2026-09-03                                                                       |
 | 首发平台 | macOS                                                                            |
 | 技术栈   | React 19 + TypeScript + Milkdown/ProseMirror + CodeMirror 6 + Tauri 2 + Rust     |
-| 数据原则 | 本地 Markdown、文本与相邻资源文件是唯一持久化真相；UI 投影和本机便利状态均可重建 |
+| 数据原则 | 本地 Markdown、文本与图片资源文件是唯一持久化真相；UI 投影和本机便利状态均可重建 |
 
 本文是实现、评审和上下文压缩后的首要产品规范。若历史设计与本文冲突，以 [ADR-0005](decisions/0005-lean-local-editor-boundary.md)、[ADR-0006](decisions/0006-visual-editor-explicit-source-mode.md)、[ADR-0007](decisions/0007-local-files-multiple-workspaces-and-split-preview.md)、[ADR-0008](decisions/0008-save-workspace-files-and-visual-tables.md)、[ADR-0009](decisions/0009-recoverable-workspace-delete-and-dirty-close.md)、[ADR-0010](decisions/0010-workspace-context-actions-and-folder-creation.md)、[ADR-0011](decisions/0011-editor-groups-preview-tabs-and-image-links.md) 和本文为准。
 
-导航规则由 [ADR-0012](decisions/0012-markdown-link-policy-and-window-navigation.md) 更新：普通 Markdown 链接按当前标签是否固定选择新页/原位，工具栏前进/后退使用窗口级跨标签访问轨迹。[ADR-0013](decisions/0013-browsing-restore-and-unified-editor-panes.md) 进一步取代旧的独立右侧只读栏、分屏复制标签和不恢复浏览元数据边界。[ADR-0014](decisions/0014-external-filesystem-changes.md) 接受轻量外部文件监听、重载与版本检查，取代“外部修改后置”；冲突时以最新适用 ADR 和当前 baseline 1.1 为准。
+导航规则由 [ADR-0012](decisions/0012-markdown-link-policy-and-window-navigation.md) 更新：普通 Markdown 链接按当前标签是否固定选择新页/原位，工具栏前进/后退使用窗口级跨标签访问轨迹。[ADR-0013](decisions/0013-browsing-restore-and-unified-editor-panes.md) 进一步取代旧的独立右侧只读栏、分屏复制标签和不恢复浏览元数据边界。[ADR-0014](decisions/0014-external-filesystem-changes.md) 接受轻量外部文件监听、重载与版本检查，取代“外部修改后置”。[ADR-0015](decisions/0015-workspace-clipboard-images.md) 接受每工作区截图位置、剪贴板兼容和本地图片单文件授权；冲突时以最新适用 ADR 和当前 baseline 1.2 为准。
 
 ## 1. 产品定义
 
@@ -19,7 +19,7 @@ NoteSpace（笔记空间）是一个“像 Typora 一样编辑、像浏览器一
 首版集中解决这些真实摩擦：
 
 1. 普通 Markdown 默认直接编辑渲染结果，只有用户明确选择时显示源码。
-2. 系统截图一次粘贴即可写入相邻 `assets/` 并插入相对链接。
+2. 系统截图一次粘贴即可写入 Markdown 所在目录或工作区指定目录，并插入图片链接。
 3. 本地 Markdown 链接支持原地、后台 Tab、前台 Tab、前进/后退和 heading anchor。
 4. Mermaid 与大图可进入查看器缩放、平移和 Fit。
 5. 代码/文本无需另开 IDE 即可做普通文本修改和原子保存。
@@ -134,6 +134,7 @@ NoteSpace（笔记空间）是一个“像 Typora 一样编辑、像浏览器一
 - 首次启动 `zh-CN`，可即时切换 `en-US`。Shell、设置、代码控件、viewer、应用内/右键菜单随 React locale 更新；Rust 通过 `set_native_menu_locale(locale)` 重建原生菜单。
 - 原生菜单包含应用、文件、编辑、显示、窗口和帮助。13 个固定小型 action ID 送给前端，含 `file.reveal` 和当前页查找 `edit.find`；Undo/Redo/Cut/Copy/Paste/Select All 使用 Tauri 预定义命令。`window.close` / `app.quit` 使用自定义 menu item，并与原生红色关闭统一进入前端 dirty 检查：按全部 Tab 的 current/back/forward 聚合后显示应用内非阻塞对话框；取消保持窗口与进程，确认或无 dirty 时只提交一次窗口销毁，macOS 主窗口实际销毁后应用进程必须退出。Rust 不复制文档状态。
 - 应用内“更多”菜单暴露新建 Markdown/文本、打开文件/工作区、Quick Open、保存/另存为、显示当前文件和设置等当前动作；工作区树另有根/目录新建、独立折叠、复制路径、关闭工作区、文件/目录 reveal 与移到废纸篓。
+- “更多 → 关于笔记空间”与原生关于/帮助入口复用同一双语对话框，显示产品简介及完整 GitHub 仓库地址 `https://github.com/Ysclmml/notespace`。用户点击后通过既有系统浏览器入口打开，不后台请求仓库、不改变正文或导航；打开失败在对话框内提示并允许重试。
 - 自定义右键在编辑器、链接、只读代码、标签和工作区树目标上处理右键/Control-click。可视 Markdown 除 Undo/Redo/Cut/Copy/Paste/Select All 外，提供正文/标题、引用、列表、常用格式、代码块、分割线和表格；表格内再提供行列增删与删除表格。根、文件和目录菜单保持已有动作；标签增加保持打开、向右分屏、移到其他组与关闭。
 - 页面 capture 层默认阻止 WebView 平台菜单，但不停止事件传播，因此应用自定义菜单仍正常。只有显式标记的顶部工具栏放行平台菜单；菜单/对话框和确认期间不放行。debug 原生“显示 → 开发者工具”直接由 Rust 打开 DevTools，release 隐藏，不增加 invoke 或前端 action ID。
 - `markdown-workspace.settings.v1` 存储九项 UI/保存/启动偏好；`markdown-workspace.workspaces.v1` 存储打开/最近工作区、最近文件、活动根和每根隐藏项偏好；`markdown-workspace.session.v1` 存储有界的路径、分组/标签和数值阅读位置。三者都是可丢弃的本机便利状态，损坏或不可用时回退，不影响正文编辑。
@@ -171,8 +172,9 @@ NoteSpace（笔记空间）是一个“像 Typora 一样编辑、像浏览器一
 - 打开时在 `DocumentSession` 保留原始文本。导航、选择、滚动、模式切换或关闭未编辑文档不序列化；未编辑 Markdown 保存必须字节级零差异。
 - 第一次可视正文 transaction 后，serializer 可规范化等价 Markdown；正文 transaction 必须同步更新保存读取的 latest-text ref，禁止以 200 ms debounce 延迟权威正文。
 - 同一 session 在多个组同时显示时，各表面以最小差异被动更新，不回传 `onChange`、不加入本地 Undo、不抢焦点或滚动（含可视内嵌代码块）。IME 期间暂存远端视图更新，结束后合并不相交修改；同范围冲突以当前输入草稿优先，不提供协同编辑协议。
-- 同一表面把精确滚动/选择保存在 Tab `ViewState`。即时可视/源码切换额外生成一次 `EditorSemanticPosition`：文档进度、最近标题、附近约 64 字符文本和其中的 caret offset。
-- 目标表面按“靠近期望进度的文本 → 同名标题 → 文档进度”解析并 `scrollIntoView`。这是当前编辑器实例内的 best-effort 映射，不写入正文，也不是可跨重启恢复的语义锚点。
+- 同一表面把精确滚动/选择保存在 Tab `ViewState`。编辑器实例分别缓存两表面的正文值与视图快照；正文未变时返回已访问表面，直接恢复其滚动值和完整选区。正文改变使旧表面快照失效；明确 anchor/reveal 优先。
+- 首次进入另一表面或旧快照失效时，按文档进度、最近标题、附近约 64 字符文本和 caret offset 尽力映射。匹配顺序为“靠近期望进度的文本 → 同名标题 → 文档进度”；支持普通行内格式和连续空白的显示文本投影，并映射回原始 offset。捕获只投影当前有界单行，最多缓存四行；不在滚动时解析整篇 Markdown。
+- 可视滚动/选择在当前事件内记录，避免立即切换模式时取消待执行帧而丢失最后位置；未完成初始恢复的表面不报告默认页首快照。源码阅读位置取真实可见坐标，不使用 CodeMirror 包含预渲染区域的 viewport 中点。上述视图状态不写正文、不进 Undo，也不是跨重启的语义锚点。
 - 可视编辑器初始化时，先完成旧视图的位置恢复，再消费初始化期间收到的最新 anchor/reveal；不得先确认跳转完成、随后被初始滚动值覆盖。正文同步的 ready 状态独立于该位置恢复，不因等待布局而丢弃输入。
 
 ### 4.4 粘贴前护栏
@@ -374,9 +376,11 @@ interface WorkspaceHistoryState {
 
 ### 6.3 图片链接查看器
 
-图片链接和内联图片路径不要求行号，支持 PNG/JPEG/GIF/WebP/AVIF/BMP/SVG/ICO 的本地相对/绝对路径、`file://` 与 HTTP(S) URL。解析包含百分号路径、查询串和 fragment；拒绝 data/javascript 等不支持协议，不做网络探测。图片链接查看器只在用户点击后以 `<img>` 加载目标，SVG 不作为原文 HTML 执行；该查看器的远程请求使用 `no-referrer`，不上传文档。CSP 仅给 `img-src` 增加 HTTP(S)，其他网络、脚本与框架策略不放宽；本地 asset scope 保持 `$HOME/**`，范围外图片显示加载失败。Tauri 的 Unix glob 默认不匹配隐藏路径段，因此 HOME 内的隐藏目录也可能被现有 scope 拒绝。
+图片链接和内联图片路径不要求行号，支持 PNG/JPEG/GIF/WebP/AVIF/BMP/SVG/ICO 的本地相对/绝对路径、`file://` 与 HTTP(S) URL。解析包含百分号路径、查询串和 fragment；拒绝 data/javascript 等不支持协议，不做网络探测。图片链接查看器只在用户点击后以 `<img>` 加载目标，SVG 不作为原文 HTML 执行；该查看器的远程请求使用 `no-referrer`，不上传文档。CSP 仅给 `img-src` 增加 HTTP(S)，其他网络、脚本与框架策略不放宽。静态 asset scope 保持 `$HOME/**`；实际显示本地图片前通过 `prepare_local_image(path)` 规范化存在的支持图片并仅授权该文件，保证隐藏目录及外部卷图片重启后可显示，不扩大目录权限。图片来源更新或卸载后忽略旧准备结果，失败使用既有可关闭提示。
 
 复用图片查看器的缩放、拖拽平移、Fit、100% 与 Esc 返回。失败显示双语错误，始终可关闭；不修改正文、Tab、分组或其中已打开的代码。文内嵌入图片继续沿现有图片节点预览链路，不改变保存语义。
+
+文内图片加载失败或本地文件不存在时，原位置显示“图片不存在或无法加载”占位、可换行的完整原始路径及“编辑引用…”/“删除引用”按钮，包括没有替代文字的图片。占位只是 NodeView 投影，不替换 `src/alt/title`、不 dirty、不进入 Undo；其他正文编辑或替代文字修改不清除失败状态。地址改变时重新加载，过期加载事件不影响新图片。删除只移除对应 Markdown 图片节点，和当前光标位置无关，支持正常 Undo/Redo；不删除任何磁盘文件。
 
 图片右键优先于通用段落/格式菜单，不为右键建立整张图片的蓝色文本选择。文内图片提供预览、复制已加载图片、复制原始地址/Markdown、编辑引用，以及本地文件管理器定位；只读查看器保留复制和可用的本地定位，不提供正文编辑。地址解析使用实际来源文档，不把资源显示 URL 当成 Markdown 路径；远程图片没有本地定位动作。Mermaid 是生成图表，只提供预览/编辑图表源码，不伪造原图片路径。
 
@@ -388,11 +392,12 @@ interface WorkspaceHistoryState {
 
 Rust 负责原生 chooser、目录枚举、轻量文件监听/元数据检查、工作区内文件创建、系统文件管理器定位、受边界约束的系统废纸篓移动、文件预检/读取、局部预览、原子保存、截图写入和原生菜单。前端不使用浏览器文件系统 API，也不把图片或文件正文编码成巨型 Base64 IPC。
 
-当前只有 16 个命令：
+当前只有 19 个命令：
 
 ```text
 pick_workspace() -> WorkspaceSelection | null
 pick_document() -> DocumentSelection | null
+pick_image_directory(locale?) -> string | null
 list_workspace(rootPath, showHidden?) -> WorkspaceNode[]
 open_document(path) -> DocumentOpenResult
 inspect_documents(paths) -> DocumentInspection[]
@@ -405,11 +410,13 @@ move_workspace_entry_to_trash(workspaceRoot, path) -> void
 preview_local_file(reference, documentPath) -> LocalFilePreview
 save_document(path, content, expectedRevision?) -> SaveDocumentResult
 save_document_as(suggestedFileName, content, excludedPaths) -> SaveDocumentResult | null
-save_clipboard_image(documentPath) -> SavedClipboardImage
+clipboard_has_image() -> boolean
+save_clipboard_image(documentPath, directoryPath?) -> SavedClipboardImage
+prepare_local_image(path) -> string
 set_native_menu_locale(locale) -> void
 ```
 
-参数名按 Tauri `camelCase` 边界表示。`save_clipboard_image` 由 Rust 直接读取系统剪贴板，只接收 `documentPath`。`set_native_menu_locale` 只接受 `zh-CN/en-US` 并重建菜单。新增功能时再新增类型和测试，不建设全仓库 schema 生成器。
+参数名按 Tauri `camelCase` 边界表示。`save_clipboard_image` 由 Rust 直接读取系统剪贴板，只接收文档路径和可选图片目录，不传图片 bytes/Base64。`clipboard_has_image` 用于未命名粘贴的 Save As 前置检查；`prepare_local_image` 仅准备实际显示文件的 asset 访问。`set_native_menu_locale` 只接受 `zh-CN/en-US` 并重建菜单。新增功能时再新增类型和测试，不建设全仓库 schema 生成器。
 
 `open_external_url` 只接受带有效主机的 HTTP/HTTPS URL，通过平台默认浏览器入口打开；拒绝其它 scheme，不拼接 shell 命令，不建立内置网络客户端，也不读取目标网页或上传文档。
 
@@ -453,7 +460,12 @@ interface DesktopAdapter {
     content: string,
     excludedPaths: readonly string[],
   ): Promise<SaveDocumentResult | null>;
-  saveClipboardImage(documentPath: string): Promise<SavedClipboardImage>;
+  pickImageDirectory?(locale: "zh-CN" | "en-US"): Promise<string | null>;
+  hasClipboardImage?(): Promise<boolean>;
+  saveClipboardImage(
+    documentPath: string,
+    directoryPath?: string,
+  ): Promise<SavedClipboardImage>;
   setNativeMenuLocale?(locale: "zh-CN" | "en-US"): Promise<void>;
   listenNativeMenuAction?(listener: (id: NativeMenuActionId) => void): Promise<Unlisten>;
 }
@@ -485,10 +497,15 @@ interface DesktopAdapter {
 
 ### 7.3 截图粘贴
 
-- 前端只识别粘贴中存在图片；调用 `save_clipboard_image(documentPath)`，不传 bytes/MIME/Base64。
-- 未保存文档先走 Save As；Rust 直接读取剪贴板 RGBA，统一编码 PNG 到文档相邻 `assets/`。
-- 名称 `paste-<timestamp>-<counter>.png` 且不覆盖；写入成功后返回相对 URI，前端才插入 Markdown。
-- 写入失败/取消不改变正文；Undo 只撤销链接，不删除文件。
+- 前端统一检查 `items/files/types`，不依赖 `getAsFile()`；Files-only/空载荷可使用原生 fallback，普通文字/HTML/URI 与非图片文件保持正常粘贴。右键入口同样走编辑器 paste 事件和前置大 Base64 阻断。
+- 明确图片信号同时带有单图 HTML 包装或空白/对象占位符时仍按图片处理；空 item MIME 不否决其他明确图片信号，空 MIME 文件只接受已知图片后缀。HTML 检查使用惰性模板，不加载地址；真正的正文、富文本、多图与复制的路径不被接管。大型内嵌图片护栏先于该检查执行。
+- 在可视代码块内粘贴明确图片时提示将光标移到正文，不读取/写入图片或改变代码；空载荷只保留选择，不让 CodeMirror 用空文字删除已选代码。
+- 图片位置由实际来源文档的最长匹配工作区决定：默认 Markdown 父目录，可在根右键选择指定目录。每根 `imageDirectoryPath` 为 null 或有界绝对路径，保存到现有工作区便利状态，不修改正文或移动旧图片。
+- 未保存文档先用 `clipboard_has_image` 确认有图，再走 Save As；成功迁移后向新表面发送有界插图请求，以正常事务插入并支持 Undo，取消不写图。迟到结果必须仍属于原 Tab/文档/正文/表面。
+- Rust 直接读取系统剪贴板；macOS 从同一个 NSPasteboard 优先读取 PNG，TIFF 使用 AppKit `NSBitmapImageRep` 转 PNG 后进入现有受限解码流程，其他平台保留 arboard。原生编码载荷先限制 128 MiB，TIFF 转码前检查 3200 万像素；这不是 AppKit 内部内存用量的绝对上限。统一生成 PNG，图片 bytes/MIME/Base64 不经过 IPC。
+- PNG/TIFF 解码失败保留各阶段原因，但不记录图片内容；前端图片错误独立于 dirty 状态，绑定来源 Tab/文档，下次图片粘贴开始清除，不被“未保存”提示遮住。
+- 名称 `paste-<timestamp>-<counter>.png` 且 `create_new` 不覆盖；默认/自定义目录必须有效。写入成功后返回百分号编码的相对 URI，跨卷无法相对引用时返回文件 URI，前端才插入 Markdown。
+- 写入失败/取消不改变正文；Undo 只撤销链接，不删除文件。每次实际加载本地图先做单文件 asset 准备，旧图片无需移动也可继续显示。
 
 ### 7.4 工作区创建、reveal 与废纸篓
 
@@ -515,6 +532,7 @@ interface DesktopAdapter {
 - 查看器只消费渲染结果，不修改 Markdown；SVG 保持矢量，支持滚轮/触控板缩放、拖拽、双击 Fit、`+/-/0` 和 Esc。
 - 图片使用同一 viewer shell，支持 100%、Fit、缩放和平移。
 - production CSP 允许 Mermaid 生成的内联样式，但不开放远程脚本或文档上传。
+- standalone Debug 与 Release 使用的 `font-src` 和开发模式一致，仅允许 `'self' data:`，兼容 Vite 内嵌的 KaTeX 小字体；不开放远程字体、脚本或连接。字体加载策略与原生截图读取/保存是不同链路。
 
 ## 9. 前端架构
 
@@ -537,7 +555,7 @@ src/
 │  ├─ settings/            # 设置对话框
 │  ├─ viewer/              # Mermaid/图片 zoom、pan、Fit
 │  └─ workspace/           # 文件树、Outline、workspace history
-└─ infrastructure/tauri/   # 16 命令 adapter、原生菜单/文件路径事件 listener
+└─ infrastructure/tauri/   # 19 命令 adapter、原生菜单/文件路径事件 listener
 ```
 
 Shell 当前是小型编排层；第二个真实消费者出现前不抽取通用 command bus、pane registry 或资产框架。应用状态使用 React reducer/context，不引入 Redux。
@@ -553,9 +571,10 @@ src-tauri/src/
 ├─ application/mod.rs    # 当前空命名空间；不承载产品逻辑
 ├─ commands/mod.rs       # 文件命令与可单测文件逻辑
 ├─ commands/filesystem.rs # notify watcher、版本元数据与外部变化检查
+├─ commands/clipboard_image.rs # 原生剪贴板读取、图片写入、路径与单文件准备
 ├─ infrastructure/mod.rs # 当前空命名空间；不承载通用 adapter 框架
 ├─ native_menu.rs        # zh-CN/en-US 菜单、13 个 action ID、custom close/quit
-└─ lib.rs                # 精确注册 16 个 invoke command 与 menu/filesystem event
+└─ lib.rs                # 精确注册 19 个 invoke command 与 menu/filesystem event
 ```
 
 命令保持薄；文件预检、局部读取、原子保存和资产写入用临时目录单测。不要引入 Ruby、服务端或巨型 IPC schema。
@@ -656,3 +675,4 @@ ADR-0011 接受扁平水平编辑分组；ADR-0013 将右侧引用统一为普�
 - [ADR-0012：Markdown 固定标签策略与跨标签导航](decisions/0012-markdown-link-policy-and-window-navigation.md)
 - [ADR-0013：浏览恢复与统一编辑分屏](decisions/0013-browsing-restore-and-unified-editor-panes.md)
 - [ADR-0014：外部文件变化与受保护的重载/保存](decisions/0014-external-filesystem-changes.md)
+- [ADR-0015：可靠截图粘贴与每工作区图片位置](decisions/0015-workspace-clipboard-images.md)

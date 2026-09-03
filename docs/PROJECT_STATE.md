@@ -2,15 +2,22 @@
 
 最后更新：2026-09-03
 
-状态版本：30
+状态版本：35
 
-设计基线：Approved baseline 1.1（ADR-0014）
+设计基线：Approved baseline 1.2（ADR-0015）
 
-这是上下文压缩、换代理和中断后的唯一状态入口。先读根 `AGENTS.md`，再读本文件、`DESIGN.md`、`REQUIREMENTS.md` 与 `ADR-0005`～`ADR-0014`。
+这是上下文压缩、换代理和中断后的唯一状态入口。先读根 `AGENTS.md`，再读本文件、`DESIGN.md`、`REQUIREMENTS.md` 与 `ADR-0005`～`ADR-0015`。
 
 ## 1. 当前结论
 
+- 失效图片在可视正文原位置显示双语占位、完整可换行的原始地址，以及“编辑引用…”/“删除引用”。空 alt 与行内图片均可操作；占位不改正文或原始属性，删除仅移除目标 Markdown 图片引用并可 Undo/Redo，不操作磁盘文件。普通正文/alt/title 修改不重复加载，换地址才重试并隔离迟到结果。合成浏览器页面已验证占位、长路径、删除/撤销及修复引用后重新显示图片。
+- “更多 → 关于笔记空间”和原生关于/帮助入口共用双语对话框，显示 `https://github.com/Ysclmml/notespace`；点击或中键使用既有系统默认浏览器入口，不后台访问、上传或改变文档导航。失败在对话框内提示、允许重试；模态阻止后台命令，关闭后恢复操作。未新增依赖或 Tauri 命令。
+- 用户授权使用合成图片后，已实际复现跨应用粘贴失败：NoteSpace 自己复制的 PNG 可以粘贴，隔离浏览器生成的 PNG 在旧版原生窗口报 `imageDecodeFailed`，底层为 arboard TIFF 转换失败。macOS 改为同一 NSPasteboard 的 PNG 优先、AppKit TIFF 转码回退；同一张 520×220 合成图在新版 dirty 空段落及源码表面均可粘贴，图片落盘和 Undo 保留图片文件已实测。没有读取或提交真实截图；尚未覆盖用户所用截图软件及所有平台。
+- 修复可视/源码切换丢失阅读位置：每个编辑器分别缓存两表面的正文值、滚动与选区；正文未变时往返恢复原快照，正文变化后重新语义映射，明确导航优先。可视事件同步记录，初始化默认位置不覆盖有效快照；源码使用真实可见坐标，格式文本/空白投影不再错误退回页首。合成长文档实测可视第 23 节和源码第 31 节分别往返恢复。
+- 状态 33 的图片错误可见性与监听修复保留：dirty 文档不再遮住图片错误，错误绑定来源 Tab/文档并在重试时清除；普通/StrictMode 空段落监听回归通过，没有额外快捷键或 beforeinput 绕过。状态 32 的图片元数据兼容及 KaTeX 字体 CSP 修复同样保留；字体告警不是本次 TIFF 解码失败的根因。
 - 产品名称：英文 `NoteSpace`，中文“笔记空间”。产品定位是普通单用户、本地优先 Markdown/文本编辑器；Typora 风格主画布 + 浏览器式 Tab/历史 + 统一水平可编辑分屏 + 可关闭的只读浮层。
+- 截图粘贴和每工作区图片目录已接通：键盘与右键粘贴都进入编辑器正常事务；默认写 Markdown 同级目录，也可通过根右键“图片保存位置…”选择现有目录。按实际来源文档的最长匹配根读取设置，独立文件使用同级目录；成功落盘后才插链接。未命名 Markdown 先 Save As，取消不写图片；迁移后的插入校验原 Tab、正文和编辑表面，支持 Undo。
+- README 只保留产品能力、合成软件截图、技术栈与开发/构建用法。三张 JPEG 使用隔离的浏览器演示模式和合成写作、代码、Mermaid 文档实拍，没有真实用户文档、路径或剪贴板内容。本轮源码与 README 修改尚未提交/推送，不代表 GitHub 上的当前版本。
 - 源码已托管至公开仓库 [Ysclmml/notespace](https://github.com/Ysclmml/notespace)，`origin` 使用 SSH，`main` 已首次推送并跟踪 `origin/main`；保留原有 82 个提交，当前功能汇总提交为 `24f9efd`。只上传源码与开发文档，不上传依赖、构建产物、本机数据或签名材料。既有 Actions 会执行质量门禁并生成保留 7 天的 Debug ZIP；当前未发布正式 Release 或 Homebrew tap。
 - 侧栏“离线”已改成中性“本地文件”及说明：它只表示直接读写本地文件，不是网络故障或保存成功指示。底部字数跟随活动文档和正文修改/撤销/外部干净重载，点击可看字符（含/不含空白）及行数；CJK 逐字、其他连续字母数字计词，明确采用源码口径，包含代码和链接地址。120 ms 防抖、32 Ki UTF-16 分片与最多 32 个弱引用缓存，不额外读盘、不持久化正文、不 dirty。
 - 图片右键优先使用图片专属菜单，不再出现通用段落菜单和整图蓝色选择；支持预览、复制已加载像素/原地址/Markdown、编辑引用及本地图片定位。Markdown 图片多行编辑框可改 `src/alt/title`，单次事务支持 Undo，取消/相同值不修改；不移动/修改原图片。只读查看器没有正文编辑，Mermaid 只提供预览/编辑源码。菜单/弹窗双语，模态期间后台应用命令暂停、关闭弹窗后正常恢复。
@@ -34,16 +41,17 @@
 - 文件树单击使用当前分屏的斜体预览标签；后续单击可替换干净的预览标签。双击文件、双击标签、右键“保持打开”或正文编辑会固定为普通字体。未保存正文（包括该 Tab 历史中的正文）不会被预览替换；新文件和显式新 Tab 保持固定。文件树打开目标由最近点击或获得光标焦点的编辑分屏决定，默认左侧；异步读取不会抢回用户之后激活的分屏，来源 Tab 已关闭/移走或历史已跳转时丢弃过期结果。
 - 活动文件在所属工作区树中高亮，导航到折叠目录中的文件会展开祖先并最小滚动定位；相同文件内编辑不会不断重开用户手动折叠的目录。嵌套工作区按最长匹配根归属。文件、标签的活动/悬浮色加深，活动编辑分屏与非活动分屏的标签状态可区分。
 - 分屏中的同文档编辑用最小正文差异同步，远端同步不进入当前编辑器的 Undo，不抢焦点或滚动，并映射本地选择；可视结构、fenced code 与 IME composition 有回归。每个 Tab 独立保存模式和阅读位置；移动标签保留真实编辑器实例。关闭一个仍有其他 Tab 引用的 dirty 副本不重复提示，最后一个引用关闭才确认；放弃后删除无主 dirty 缓存，再打开从磁盘重读。
-- 同一编辑表面的滚动与选区按 Tab 保存；可视/源码切换使用标题、附近文本和文档进度组成的语义位置尽力落到同一内容区域，不承诺像素或 offset 一一对应。
+- 同一编辑表面的滚动与选区按 Tab 保存；同一编辑器正文未变时，可视/源码往返分别恢复已访问表面的精确快照。首次进入或正文变更后使用标题、附近显示文本和文档进度尽力映射，不承诺两种布局间像素或 offset 一一对应；被动滚动不解析整篇 Markdown。
 - 本地代码/文本引用（行号可选）保留有界只读浮层。“在右侧打开”改为普通可编辑预览 Tab：有右邻组时复用，没有分屏时新增右组；来自最右组时复用该组并保留源页，不增加第三辅助栏。固定/dirty Tab 不被替换，相同目标复用 Tab/共享正文；代码可编辑、查找、保存、拖动和关闭。连续点击 latest-wins；来源/目标组关闭、切页或新打开文件后，迟到读取不得复活或覆盖。浮层仍为目标行前后各 20 行或前 80 行、每行最多 600 字符。
 - 代码/文本引用自动识别排除 `handlers/**/urls.py`、`run_<app>.py` 等非具体路径：去包装/拆行号后拒绝 `*`、`?`、残留尖括号、`${...}`、`{{...}}` 与逗号式 brace expansion。内联代码悬浮/点击不会为这些示例排程/读取预览、报不存在或覆盖右栏；不做 glob 搜索。中文/空格、Windows 盘符/UNC/长路径前缀、file URL 和 `[slug]` 等真实字面路径保留，具体文件读取失败仍有提示；图片/显式 Markdown/HTTP 先行路由不变。
-- 普通 Markdown 图片链接和可点击的行内图片路径可直接进入专门图片查看器，不要求 `:line`。支持 PNG/JPEG/GIF/WebP/AVIF/BMP/SVG/ICO、相对/绝对/file URL 与 HTTP(S) 图片后缀（含查询参数/锚点）；相对路径基于实际来源 Tab 的文档。仅点击链接才加载该链接图片，不在悬浮时探测；远程查看器图片不发送 referrer，SVG 只作 `<img>` 展示。Fit、100%、缩放、拖动与关闭保留，失败显示可关闭的中英文提示，不改变文档/dirty/Tab/右侧代码栏。CSP 只增加 `img-src` 的 HTTP(S)，其他网络与脚本策略不放宽；本地 asset scope 仍为 `$HOME/**`。现有 Tauri Unix glob 默认不匹配隐藏路径段，HOME 外或隐藏目录中的图片可能被拒绝并显示加载失败，不承诺任意磁盘位置。
+- 普通 Markdown 图片链接和可点击的行内图片路径可直接进入专门图片查看器，不要求 `:line`。支持 PNG/JPEG/GIF/WebP/AVIF/BMP/SVG/ICO、相对/绝对/file URL 与 HTTP(S) 图片后缀（含查询参数/锚点）；相对路径基于实际来源 Tab 的文档。仅点击链接才加载该链接图片，不在悬浮时探测；远程查看器图片不发送 referrer，SVG 只作 `<img>` 展示。Fit、100%、缩放、拖动与关闭保留，失败显示可关闭的中英文提示，不改变文档/dirty/Tab/右侧代码栏。CSP 保留既有图片 HTTP(S) 策略；本地图片在设置 `src` 前经 `prepare_local_image` 校验并授权该规范化文件，支持隐藏目录和 HOME 外的自选目录，不开放整个磁盘或父目录。卸载和路径切换后丢弃迟到授权结果。
 - 可视代码块采用浅色纸面、正常行号、常显 Copy 和语言选择器；代码/配置主 Tab、浮层和右栏共享明确的浅色语法配色，JSON、Shell、Python、JavaScript/TypeScript、CSS、Rust、Java 和 C# 等支持对应高亮；即使右栏从一个文件替换为另一个相同语言文件，也会为新 EditorView 重新装载语言支持。源码、主 Tab、浮层、右栏和可视 fenced code 使用高对比度蓝灰选区，选中文本不会再被活动行或语法色吞没。输入三个反引号加语言前缀时出现本地语言自动补全，可用方向键选择并以 Enter/Tab 创建代码块，Esc 关闭。提示/补全浮层不进入 Markdown 或历史；列表 marker 已与首行对齐。
 - GFM 表格保持真可视单元格编辑；宽表格在自身容器横向滚动，列宽可拖动但只属于 view、不写 Markdown。尺寸网格只在用户明确选择“插入表格”后临时出现；已有表格可直接修改行列数、增删行列并设置整列左/中/右对齐，均使用单次正文事务且支持 Undo。
 - 默认 `zh-CN`，可切换 `en-US`；应用内菜单、自定义右键菜单和 macOS 原生菜单同步本地化。右键菜单采用紧凑的 Typora/macOS 纸面样式，支持编辑、链接、普通结构、表格、工作区和标签动作，并保持右键前的编辑选择和触控板右键语义。浏览器默认 Reload/Inspect 菜单只允许在顶部工具栏的非弹层区域出现；其他区域只阻止原生默认行为，不阻断应用自定义右键。debug 原生“显示”菜单可打开开发者工具，release 不显示该入口。
 - 原生红色关闭、`window.close` 与 `app.quit` 共用同一个可取消的 dirty 检查和一次性 `destroy()` 路径；dirty 汇总覆盖每个 Tab 的 `current/back/forward` 全历史，并使用应用内中英文关闭对话框。用户取消时窗口与进程都保留，确认或 clean 时销毁主窗口。Tauri capability 明确只增加 `allow-close`、`allow-destroy`；销毁失败会记录错误、复位状态并允许重试。Rust 在主窗口 `Destroyed` 后调用 `app_handle.exit(0)`，因此 macOS 不再留下无窗口驻留进程。
-- locale、字号、正文宽度、代码行号、代码换行、输入提示、保存模式、自动保存延迟和启动行为使用 `markdown-workspace.settings.v1`。工作区/最近项与每根 `showHidden` 使用 `markdown-workspace.workspaces.v1`。新增 `markdown-workspace.session.v1` 只记路径、标签分组和阅读位置。macOS 实机存储位于 `~/Library/WebKit/app.markdownworkspace.desktop/WebsiteData/Default/` 下按来源散列的 `LocalStorage/localstorage.sqlite3`；不在仓库，不上传。文档仍在原文件路径，粘贴图片在相邻 `assets/`。
-- 截图粘贴链路已实现：Rust 直接读取系统剪贴板，先写文档相邻 `assets/`，成功后才插入相对链接。自动化覆盖成功/失败与“成功后才插链接”；物理剪贴板回归留作用户验收。
+- locale、字号、正文宽度、代码行号、代码换行、输入提示、保存模式、自动保存延迟和启动行为使用 `markdown-workspace.settings.v1`。工作区/最近项、每根 `showHidden` 与 `imageDirectoryPath` 使用 `markdown-workspace.workspaces.v1`，后者缺失或 null 表示 Markdown 同级目录。`markdown-workspace.session.v1` 只记路径、标签分组和阅读位置。macOS 实机存储位于 `~/Library/WebKit/app.markdownworkspace.desktop/WebsiteData/Default/` 下按来源散列的 `LocalStorage/localstorage.sqlite3`；不在仓库，不上传。文档仍在原文件路径，图片是同级或自选目录中的独立 PNG，不放进设置数据库。
+- Rust 在后台线程读取剪贴板，macOS 优先读取 PNG，兼容 TIFF/原生图像表示；图片上限为 3200 万像素，以唯一名称和 `create_new` 写入且不覆盖。相同卷写编码后的相对链接，Windows 跨卷使用 file URI；不迁移既有 `assets/` 图片，Undo 只撤销链接。前端兼容 files/items/types 和空载荷原生回退，空剪贴板不删除选区；有文本时保留普通文本粘贴。可视代码块中的截图提示移到正文再粘贴，空载荷静默保留代码选择，不把正文图片误插进代码。
+- 原生自动化回归使用合成临时文件和独立命名 NSPasteboard，不接触系统一般剪贴板。状态 34 的跨应用实测另经用户授权使用合成图，已复现该来源的 TIFF 转换问题；不能据此断言所有截图软件故障均同源，具体截图软件仍需用户验收。
 - 只保留三项实用护栏：大 Base64/data-image 预检、截图先落盘后插链接、同目录原子保存。不得恢复通用安全平台、巨型 IPC、通用 feature flag 或 Ruby 工具链。
 
 - 启动设置默认“恢复上次浏览”，可选“打开空白窗口”。恢复重新读取原文件，重建固定/预览 Tab、分组、活动页/组、模式和数值滚动/选择；保留显式空左组，缺失或预检拒绝文件跳过。限制 8 组/100 页/32 根/4 MiB 元数据，不保存正文、未命名文档、选中文本、Undo 或前进后退轨迹；不恢复分隔线比例。新操作可取消迟到的 Tab 恢复，旧快照不会覆盖正在使用的窗口。
@@ -55,7 +63,7 @@
 
 | 能力                                    | 状态             | 证据/说明                                                                                                                                                                                                 |
 | --------------------------------------- | ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Tauri 2 + React/Vite/Rust desktop shell | DONE             | `NoteSpace.app`/DMG 已重建；ad-hoc runtime 签名、DMG 校验、ARM64 架构和兼容 bundle identifier 均通过                                                                                                      |
+| Tauri 2 + React/Vite/Rust desktop shell | DONE             | 本轮 `NoteSpace.app` 已重建，ad-hoc 签名、ARM64 架构和兼容 bundle identifier 校验通过；DMG 保持历史版本，本轮未重建                                                                                       |
 | Markdown 可视/源码双表面                | DONE             | Milkdown/ProseMirror 默认可视；CodeMirror 显式源码或 `sourceOnly`；同步 serializer、表格和 IME 有回归                                                                                                     |
 | 代码/文本主 Tab 编辑                    | DONE             | JSON/Shell/Python 等受支持 UTF-8 文件用 CodeMirror 明确浅色语法高亮、真实行号、滚动、dirty、`⌘S` 与 Save As；同语言换文件也会重装 parser；源码、主 Tab 和只读预览的选区对比度有 DOM 回归；不进入 Milkdown |
 | 保存策略与 Save As                      | DONE             | 默认手动与全历史 dirty 关闭对话框；可选 1–300 秒 inactivity autosave；Save As 路径冲突与历史迁移保持不变                                                                                                  |
@@ -75,14 +83,15 @@
 | 当前页查找                              | DONE             | 可视/源码/代码三表面支持中文、计数、前后匹配和 Esc；独立布局行不遮正文，不 dirty，跨组请求隔离                                                                                                            |
 | 文档统计与本地文件标识                  | DONE             | 字数/字符/行数随活动正文变化；分片弱缓存不读盘，中文逐字；“本地文件”不冒充网络或保存状态                                                                                                                  |
 | 图片右键与引用编辑                      | DONE             | 文内/查看器按目标给出图片动作，src/alt/title 可撤销修改，原文件不变；失效目标拒绝提交，模态关闭后恢复应用操作                                                                                             |
+| 失效图片占位与关于仓库                  | DONE             | 空 alt/行内缺失图片可编辑或删除引用并撤销；关于对话框展示 GitHub，点击交给系统浏览器，无后台请求                                                                                                          |
 | 隐藏项与编辑可读性                      | DONE             | 每根隐藏项偏好递归应用，根标题和首级缩进明确；失焦代码块隐藏陈旧选区，链接地址多行完整编辑                                                                                                                |
 | 大文件预检与 `sourceOnly`               | DONE             | 64 KiB 固定缓冲；约 10 MiB 普通多行文档可降级打开；blocked 不返回正文                                                                                                                                     |
-| 截图落盘后插入相对链接                  | DONE (automated) | Rust 直接读取系统剪贴板并生成 PNG；成功/失败前端行为有测试；物理剪贴板留作用户验收                                                                                                                        |
+| 截图落盘与每工作区图片目录              | DONE (automated) | 默认 Markdown 同级目录/各根自选目录；键盘和右键粘贴、Save As 迁移、Undo、错误/取消/迟到保护、隐藏/外部目录图片授权有回归；实际截图软件联调待验收                                                          |
 | Mermaid/图片查看器                      | DONE             | 既有 Mermaid/嵌入图片查看器保留；新增无行号图片链接/行内路径、来源 Tab 相对路径解析、加载失败回退、不影响代码栏和 dirty；zoom/pan/Fit/100% 均有回归                                                       |
 
 ## 3. 当前 Tauri 命令
 
-只定义当前实现使用的 16 个命令：
+只定义当前实现使用的 19 个命令：
 
 ```text
 pick_workspace()
@@ -99,11 +108,14 @@ move_workspace_entry_to_trash(workspaceRoot, path)
 preview_local_file(reference, documentPath)
 save_document(path, content, expectedRevision?)
 save_document_as(suggestedFileName, content, excludedPaths)
-save_clipboard_image(documentPath)
+pick_image_directory(locale?)
+clipboard_has_image()
+save_clipboard_image(documentPath, directoryPath?)
+prepare_local_image(path)
 set_native_menu_locale(locale)
 ```
 
-`create_workspace_text_file` 只创建受支持的空 UTF-8 文本且使用 `create_new`；`create_workspace_folder` 只在规范化后的根内现有父目录下以 `create_dir` 新建一个空目录，拒绝同名、非法名称、根外父目录和根外符号链接；`reveal_in_file_manager` 不经 shell。`move_workspace_entry_to_trash` 只接受规范化后的工作区根后代，拒绝根本身和根外路径，并调用系统废纸篓而非永久删除。`save_clipboard_image(documentPath)` 由 Rust 直接读取系统剪贴板，不接收 bytes、MIME 或 Base64。不要恢复预生成 37 命令、巨型 schema 或通用 IPC 层。
+`create_workspace_text_file` 只创建受支持的空 UTF-8 文本且使用 `create_new`；`create_workspace_folder` 只在规范化后的根内现有父目录下以 `create_dir` 新建一个空目录，拒绝同名、非法名称、根外父目录和根外符号链接；`reveal_in_file_manager` 不经 shell。`move_workspace_entry_to_trash` 只接受规范化后的工作区根后代，拒绝根本身和根外路径，并调用系统废纸篓而非永久删除。`save_clipboard_image(documentPath, directoryPath?)` 由 Rust 直接读取系统剪贴板，不接收 bytes、MIME 或 Base64；`clipboard_has_image` 仅用于未命名文档弹出 Save As 前判断有无图片，不写盘或缓存像素。`prepare_local_image` 只授权实际加载的支持图片文件。不要恢复预生成 37 命令、巨型 schema 或通用 IPC 层。
 
 原生菜单当前固定 13 个前端应用 action ID；ADR-0007 的 11 项基础上新增 `file.reveal` 与 `edit.find`。debug 的 `view.openDevtools` 由原生层直接执行，不增加 IPC 命令或前端 action。Undo/Redo/Cut/Copy/Paste/Select All 仍使用平台预定义菜单命令，不计入应用 action ID。
 
@@ -118,7 +130,7 @@ set_native_menu_locale(locale)
 7. Markdown 链接解析优先于本地代码引用；多个工作区有包含关系时，用最长匹配根解析归属。
 8. 代码右侧打开与普通 Tab 共用扁平 EditorGroup；不再保留额外只读辅助栏。仅浮层只读；右移原 Tab、复用右组、dirty 不被替换和迟到关闭保护必须保持。
 9. 同表面恢复精确的本表面位置；跨可视/源码只承诺语义相近位置，使用标题、附近文本和进度回退。
-10. 截图先写相邻 `assets/`，成功后才插链接；产品不生成 Base64 Markdown。未命名文档先 Save As。
+10. 截图先写 Markdown 同级目录或其归属工作区指定目录，成功后才插链接；产品不生成 Base64 Markdown。未命名文档先 Save As；取消、过期 Tab/正文/编辑模式不插入，Undo 只撤销链接，不删除图片。
 11. 大 data-image/病态长行在进入 EditorView 前阻止；约 10 MiB 普通多行文档走 `sourceOnly`。
 12. 保存使用同目录临时文件 + flush/sync + rename；失败保留旧文件。
 13. 最近项和设置只是本机便利状态；不保存正文、不复制历史正文、不建设项目数据库或正文快照系统；允许可丢失的有界浏览元数据。
@@ -149,39 +161,46 @@ set_native_menu_locale(locale)
 
 ## 6. 当前工作包
 
-| 工作包                         | 状态    | 说明                                                                                                                          |
-| ------------------------------ | ------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| 精简边界与 Node tooling        | DONE    | baseline 0.8；仅新增用户明确要求的水平编辑分屏、预览标签与图片链接查看；无 Ruby 工具链或重型框架                              |
-| Rust 本地文件纵向切片          | DONE    | 16 个当前命令；新增原生监听与元数据检查；保留系统浏览器、文件/空目录创建、定位、废纸篓和原子保存；新增轻量版本前提保护        |
-| Markdown 双表面与代码/文本编辑 | DONE    | 主 Tab 可编辑/保存；新建、Save As 与路径迁移已接通                                                                            |
-| 多工作区与本地最近项           | DONE    | 多根文件树同时显示、独立折叠、活动根、复制路径/关闭根、打开集合和最近工作区/文件尽力恢复                                      |
-| 浏览器式导航与统一右组         | DONE    | 当前组/右组共享 Tab 状态；有界浮层只读；右组代码直接编辑和定位，固定/dirty 保留                                               |
-| 水平编辑分屏与预览标签         | DONE    | 每组 Tab/焦点、共享正文、独立视图、移动保留编辑器、in-flight 导航隔离、预览双击/编辑固定、内部标签拖放与分隔线调整            |
-| 图片链接、活动文件与菜单策略   | DONE    | 无行号图片链接专用查看器/错误回退；工作区树跟随与对比度；浏览器默认右键限顶部，debug 原生 DevTools                            |
-| 文件动作、自动保存与表格工具   | DONE    | 根/子目录新建、reveal/复制路径、确认后移入废纸篓、manual/afterDelay、view-only 列宽、临时插入网格、已有表格行列数与对齐已接通 |
-| 中英文菜单、右键与设置         | DONE    | 中文“笔记空间”/英文 `NoteSpace`；新增文件/表格/自动保存表面双语；紧凑 Typora/macOS 右键样式；九项持久设置已接通               |
-| 保存、关闭与恢复完整性收尾     | DONE    | 写前 Save As 冲突、持久错误、全历史 dirty、`00 → 01 → close/quit`、删除取消/确认、恢复竞态/失效项和菜单作用域有自动回归       |
-| 外部磁盘变化                   | DONE    | 真实 macOS 监听、元数据比较、树刷新、干净重载、dirty/缺失保护、保存版本检查与迟到所有权均有自动回归                           |
-| 文档统计、图片右键与引用编辑   | DONE    | 活动正文统计与缓存；图片专用动作、多行引用编辑、Undo、模态退出保护；无新 IPC 或文件写入                                       |
-| 本轮自动化门禁                 | DONE    | `pnpm verify` 完整通过：51 个前端测试文件、616 项测试，Rust 52 项；格式/类型/lint、Web 与 debug no-bundle 构建通过            |
-| 本轮界面回归                   | DONE    | 1280×720 合成 Demo 验证字数编辑/撤销更新、图片菜单/长地址编辑/取消/Undo、真实剪贴板 PNG/地址、只读查看器和 Mermaid 源码焦点   |
-| 本轮最终桌面验收               | PENDING | debug `.app`/DMG 已重建并校验；不自动安装/重启正常实例；原生图片复制/定位及退出/恢复留作新版实机验收                          |
+| 工作包                         | 状态    | 说明                                                                                                                                 |
+| ------------------------------ | ------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| 精简边界与 Node tooling        | DONE    | baseline 0.8；仅新增用户明确要求的水平编辑分屏、预览标签与图片链接查看；无 Ruby 工具链或重型框架                                     |
+| Rust 本地文件纵向切片          | DONE    | 19 个当前命令；原生监听、元数据检查、图片选择目录/可用性判断/逐文件授权；系统浏览器、工作区文件动作和带版本前提的原子保存保持        |
+| Markdown 双表面与代码/文本编辑 | DONE    | 主 Tab 可编辑/保存；新建、Save As 与路径迁移已接通                                                                                   |
+| 多工作区与本地最近项           | DONE    | 多根文件树同时显示、独立折叠、活动根、复制路径/关闭根、打开集合和最近工作区/文件尽力恢复                                             |
+| 浏览器式导航与统一右组         | DONE    | 当前组/右组共享 Tab 状态；有界浮层只读；右组代码直接编辑和定位，固定/dirty 保留                                                      |
+| 水平编辑分屏与预览标签         | DONE    | 每组 Tab/焦点、共享正文、独立视图、移动保留编辑器、in-flight 导航隔离、预览双击/编辑固定、内部标签拖放与分隔线调整                   |
+| 图片链接、活动文件与菜单策略   | DONE    | 无行号图片链接专用查看器/错误回退；工作区树跟随与对比度；浏览器默认右键限顶部，debug 原生 DevTools                                   |
+| 文件动作、自动保存与表格工具   | DONE    | 根/子目录新建、reveal/复制路径、确认后移入废纸篓、manual/afterDelay、view-only 列宽、临时插入网格、已有表格行列数与对齐已接通        |
+| 中英文菜单、右键与设置         | DONE    | 中文“笔记空间”/英文 `NoteSpace`；新增文件/表格/自动保存表面双语；紧凑 Typora/macOS 右键样式；九项持久设置已接通                      |
+| 保存、关闭与恢复完整性收尾     | DONE    | 写前 Save As 冲突、持久错误、全历史 dirty、`00 → 01 → close/quit`、删除取消/确认、恢复竞态/失效项和菜单作用域有自动回归              |
+| 外部磁盘变化                   | DONE    | 真实 macOS 监听、元数据比较、树刷新、干净重载、dirty/缺失保护、保存版本检查与迟到所有权均有自动回归                                  |
+| 文档统计、图片右键与引用编辑   | DONE    | 活动正文统计与缓存；图片专用动作、多行引用编辑、Undo、模态退出保护；无新 IPC 或文件写入                                              |
+| 失效图片占位与关于仓库         | DONE    | 失效提示/路径/直接编辑或删除引用、Undo；关于双语入口与 GitHub 浏览器打开，定向和合成 UI 已通过                                      |
+| 每根图片目录与截图粘贴         | DONE    | 同级/自选目录持久化；Save As 后排队的可撤销插入、原生兼容读取、右键粘贴、错误与迟到保护有定向测试                                    |
+| README 产品表述与截图          | DONE    | 产品/技术栈/开发构建说明；三张隔离合成文档实拍，不含真实工作内容、路径或对话约束                                                     |
+| 本轮自动化门禁                 | DONE    | 状态 35 的 `pnpm verify` 完整通过：59 个前端文件、797 项测试；Rust 64 项；格式/lint/类型及 Web、默认 Debug 构建通过                   |
+| 本轮界面回归                   | DONE    | 隔离 Browser 合成文档验证失效占位、长路径、删除/撤销、修改有效图地址恢复显示及关于仓库入口；未操作用户文档                          |
+| 本轮最终桌面验收               | PARTIAL | 独立 `src-tauri/target/debug/bundle/missing-image-fix.GBqp2J/NoteSpace.app` 已签名校验，本轮交互使用 Browser 验证；原生新包待用户验收 |
 
 ## 7. 唯一下一步
 
-核对 GitHub 最新 `main` 推送对应的 Actions 质量门禁与 Debug ZIP 产物。首次推送已进入队列，本地完整门禁通过不代表托管 CI 已通过；本轮不自动发布 Release、创建 Homebrew tap、安装或重启用户应用。
+请用户保存并退出旧版，再打开 `src-tauri/target/debug/bundle/missing-image-fix.GBqp2J/NoteSpace.app` 验收缺失图片占位、编辑/删除引用与关于仓库入口；新包也保留状态 34 的剪贴板和模式位置修复。特定截图软件若仍失败，记录名称与新版可见错误后继续。不自动安装/重启正常实例、提交/推送源码、发布 Release 或创建 Homebrew tap。
 
 ### 已知边界
 
-- 新版 standalone debug `.app` 的原生图片复制/定位、退出/重启恢复和完整桌面联调仍需用户以测试文件验收；此前 Browser UI、自动门禁及产物校验不能替代该项。当前只有 ad-hoc 签名，没有 Apple Developer ID 签名/公证。
+- 状态 34 在隔离原生窗口完成合成跨应用粘贴、正常退出和双表面位置恢复；本轮失效图片/关于交互采用 Browser 实测及自动回归，没有启动用户正常应用或默认浏览器。特定截图软件、图片系统定位、重启恢复及 Windows/Linux 剪贴板仍未全部实机验收。当前只有 ad-hoc 签名，没有 Apple Developer ID 签名/公证。
+- 失效图片占位响应图片准备/加载错误，不新增图片资源独立监听；已缓存的图片外部删除不保证即时显示失效，重新打开文档后再次加载。占位保留准确原地址，统一提示不存在或无法加载，不把所有加载错误误称为磁盘删除。
 - 字数统一采用源码口径，不是移除 Markdown 语法/链接地址/代码后的排版字数。缓存可被回收并重算，不写入设置目录。
-- 复制图片只复制已加载像素为 PNG；未加载、超过 3200 万像素、跨域画布或系统剪贴板限制会显示错误，可改用地址/Markdown 复制。没有额外网络下载或修改原图；本地 asset 范围仍保持既有限制。
+- 复制图片只复制已加载像素为 PNG；未加载、超过 3200 万像素、跨域画布或系统剪贴板限制会显示错误，可改用地址/Markdown 复制。没有额外网络下载或修改原图；本地图片加载仅增加逐文件授权，不开放父目录。自选保存目录必须已存在且可写，失效时保留设置并显示错误，不静默改写到别处。
 - 外部重命名目前按删除/新增显示，不自动移动已打开标签或修改文内链接。磁盘版本保护不是文件锁，检查与 rename 之间仍有极小竞争窗口。
 - 实际原生监听只在 macOS 合成临时目录验证，Windows/Linux 未实机验收。递归 OS watcher 可能覆盖重目录，应用层枚举/事件过滤不代表底层完全没有监听成本。
 - Save As 已关闭 clean 缓存路径的既有问题本轮已修复并通过 Shell 回归；实际仍被标签/历史引用的路径仍禁止冲突写入。
 
 ## 8. 最近主线决策
 
+- 2026-09-03 文内缺失图片显示可操作占位；“删除引用”只修改 Markdown 并可撤销，不复用磁盘废纸篓命令。关于软件公开展示用户 GitHub 仓库地址，点击复用已实现的外部浏览器能力，不增加网络抓取或上传。
+- `ADR-0015`：用户要求修复截图剪贴板粘贴并允许每工作区独立指定图片目录；默认改为 Markdown 同级目录，保留先落盘后插链接、Save As 与 Undo。键盘/右键入口、图像格式兼容、逐文件加载授权及错误/取消/过期保护作为同一纵向切片；不自动迁移旧图片或保存剪贴板快照。
+- 2026-09-03 README 采用隔离合成测试文档的软件截图；内容仅介绍最终产品、技术栈与使用/构建方式，不包含对话讨论或被排除技术的罗列。
 - 2026-09-03 用户创建 GitHub 仓库并要求直接上传：将现有源码和历史正常推送到 `Ysclmml/notespace` 的 `main`，不重写历史。沿用现有只读权限的 Actions 质量门禁与临时 Debug artifact；正式安装包发布、Homebrew tap 与签名/公证另行决定，不改变应用本地优先边界。
 - `ADR-0014`：轻量原生外部变化通知、元数据检查、干净自动重载、dirty/缺失保留与显式确认、保存前磁盘版本检查；不引入正文快照、自动合并、文件锁或网络同步。
 - `ADR-0013`：启动浏览元数据恢复/空白设置，代码右侧合并编辑分组，右分屏移动原 Tab，当前页查找、递归隐藏项偏好、根标题和编辑细节修复。
@@ -202,6 +221,62 @@ set_native_menu_locale(locale)
 - 2026-09-02 分屏集成收尾：保存和确认状态 ref 在提交时同步，避免保存后立即关闭仍读旧 dirty；移走/关闭来源 Tab 或后退时废弃迟到导航；最终放弃移除无主 dirty 缓存。关闭 Tauri 原生拖放接管以保留 WebKit HTML5 标签拖放；图片仅放宽 `img-src` 的 HTTP(S)，asset 范围保持不变。
 
 ## 9. 验证记录
+
+本轮状态版本 35：失效图片占位及关于仓库入口已集成，全量门禁与独立 Debug 包校验通过。
+
+- **PASS (full gate)** — `PATH="$HOME/.cargo/bin:$PATH" pnpm verify` 完整通过：59 个 Vitest 文件、797/797；Rust 64/64；repo check、Prettier、ESLint、TypeScript、Rust fmt/clippy、Web production 与默认配置 Debug no-bundle 构建。既有 Vite 大 chunk 警告保留，未放宽规则或测试时限；`git diff --check` 通过。
+- **PASS (focused)** — `VisualMarkdownEditor.images.dom.test.tsx` 7/7；覆盖双语空 alt、prepare/load 失败、行内目标删除与 Undo/Redo、改地址恢复、旧请求/卸载保护及普通编辑不清失败。AboutDialog 7/7、AppShell.about 3/3、i18n 4/4、Rust native_menu 4/4；新入口的系统浏览器转发、失败/重试、模态/焦点及关闭恢复已覆盖。
+- **PASS (browser UI)** — 隔离 Browser 合成文档，真实不存在的图片请求触发占位；完整长路径换行、行内前后文保留，删除首图再 Cmd+Z 恢复，编辑为仓库自带图标后正常显示。关于中文入口显示完整 GitHub URL 与关闭按钮；未读取用户文档或系统剪贴板，也未实际启动用户默认浏览器。
+- **PASS (separate bundle)** — 默认配置新二进制装入独立同版本 bundle 并重新 ad-hoc 签名：`src-tauri/target/debug/bundle/missing-image-fix.GBqp2J/NoteSpace.app`。`codesign --verify --deep --strict` 通过，ARM64、identifier `app.markdownworkspace.desktop`；可执行文件 SHA-256 `745083d54d533969b1a7d23a93675f60067902865aa1339d6e8ba5216441b797`。未覆盖旧包、正常应用或 DMG，未安装、启动新包或发布。合成 Browser 页面与开发服务已关闭；本轮源码未提交/推送。
+
+### 以下为状态版本 34 验证记录（非本轮交付证据）
+
+本轮状态版本 34：跨应用图片解码故障已复现修复；可视/源码位置恢复已实现并实测。
+
+- **PASS (full gate)** — `PATH="$HOME/.cargo/bin:$PATH" pnpm verify` 全部通过：56 个 Vitest 文件、Rust 全套测试、repo check、Prettier、ESLint、TypeScript、Rust fmt/clippy、Web production 与默认配置 Debug no-bundle 构建。保留既有 Vite 大 chunk 提醒，未放宽规则或测试时限。
+- **PASS (position regressions)** — `MarkdownEditor.dom.test.tsx` 34/34、`VisualMarkdownEditor.dom.test.tsx` 44/44、`semanticPosition.test.ts` 18/18；覆盖双向无编辑往返、完整选区、快速滚动立即切换、StrictMode、目标未 ready 返回、正文变化废弃快照、真实可见源码坐标和行内格式/空白映射。新增关键回归先失败后通过，模式切换不 dirty、不进入 Undo。
+- **PASS (native decoding)** — macOS 使用 PNG 优先和 AppKit TIFF 转码，其他平台保留 arboard；独立命名剪贴板测试覆盖 RGB/RGBA、未压缩/LZW/PackBits TIFF、PNG 优先及失败分支。解码前检查编码载荷和像素限制，不把 AppKit 内部内存用量宣称为硬上限，错误不含图片内容。
+- **PASS (real cross-app clipboard)** — 用户授权后只使用合成图片。隔离 localhost 页面通过浏览器 Clipboard API 生成 520×220 PNG；旧版原生窗口真实 `Cmd+V` 报 `imageDecodeFailed`/arboard 转换失败，新版对同一来源图片在 dirty 可视空段落和源码均成功。保存结果为相对 PNG 链接，磁盘尺寸检查一致；源码 Undo 后保存只移除链接，图片文件仍保留。NoteSpace 自身复制的 480×240 合成 PNG 也通过。没有把 DOM mock 或 named pasteboard 测试冒充这一跨应用结果。
+- **PASS (real position UI)** — 隔离原生窗口打开 35 节合成长文档，可视滚动至第 23 节后切源码并返回，原位置恢复；源码另滚动至第 31 节，再往返仍恢复该源码位置。全程未编辑、无 dirty；测试窗口正常退出，临时浏览器页和服务关闭，用户原实例保持运行。
+- **PASS (separate bundle)** — 默认配置完整门禁生成的二进制装入独立同版本 bundle 并重新 ad-hoc 签名：`src-tauri/target/debug/bundle/paste-position-fix.lsmSCj/NoteSpace.app`。`codesign --verify --deep --strict` 通过，identifier 为 `app.markdownworkspace.desktop`，可执行文件 SHA-256 为 `8cadc88fd52146f33998e472aebb827344e8b28bbdd9f6a45718c750202ad542`。原生 UI 使用同源码、独立 identifier/incognito 的测试包；正常应用、既有正式路径 bundle 与 DMG 未覆盖，未安装或发布。
+- **PENDING (specific screenshot apps)** — 用户实际截图软件尚未提供名称并在新包复验；不能将浏览器合成图成功扩大为所有截图工具和平台保证。本轮源码未提交/推送。
+
+### 以下为状态版本 33 验证记录（非本轮交付证据）
+
+本轮状态版本 33：继续处理用户在新版包中仍无法截图粘贴的反馈。
+
+- **PASS (full gate)** — `PATH="$HOME/.cargo/bin:$PATH" pnpm verify` 完整通过：56 个 Vitest 文件、754/754；Rust 62/62；repo check、Prettier、ESLint、TypeScript、Rust fmt/clippy、Web production 与 Debug no-bundle 构建全部通过。保留既有大 chunk 提醒。本轮尚未打包新的 `.app`、安装或发布，不覆盖用户正在运行的状态 32 修复包。
+- **PASS (confirmed defect)** — 真实 PM + Shell 回归先失败后通过：dirty 文档收到 `clipboardUnavailable` 时，原来只显示“未保存”，现显示双语图片错误且保留正文、选择与 dirty。重试开始清除错误，成功后正常插图；切换别页不显示旧页错误。`AppShell.clipboard.test.tsx` 与 `AppShell.clipboard.integration.test.tsx` 合计 13/13，格式、ESLint、app TypeScript 通过。
+- **PASS (listener audit)** — 普通与 StrictMode 新增空段落/dirty/受控重渲染回归；从段落发出的 paste 正常经过祖先 capture，原 EditorView 保持，后续可成功插图。原生系统菜单仍为平台预定义 `paste:`，没有证据说明缺少键盘 fallback 或监听被 Milkdown 吞掉，未新增此类运行时绕过。
+- **PARTIAL (desktop)** — 已确认正常实例运行状态 32 独立修复包；只操作独立 identifier 的 `NoteSpace Paste Test.app` 和合成临时 Markdown，准备 dirty 空段落及仅记录粘贴类型/处理阶段的临时控制台诊断。测试工具一度出现窗口截图错误，重开隔离实例后恢复；未重启用户实例、覆盖剪贴板、读取未知剪贴板内容或粘贴实际图片。等待明确许可后继续系统剪贴板端到端检查。
+
+### 以下为状态版本 32 验证记录（非本轮交付证据）
+
+本轮状态版本 32：图片元数据兼容与字体 CSP 修复已集成；合成回归和构建通过，真实截图链路仍待复验。
+
+- **PASS (regressions)** — 图片附带单图 HTML/空白占位符、空 MIME 元数据和图片后缀的 6 项分类回归先失败后通过；保留富文本/多图/普通文件及大型 Base64 阻断。编辑器等待落盘期间的纯选区变化仍可插入、Undo；正文变更仍拒绝迟到结果。定向 54 项通过。
+- **PASS (CSP)** — `contentSecurityPolicy.test.ts` 3/3；已确认 Vite 将 Crepe/KaTeX 的 3624 字节 `KaTeX_Size3-Regular.woff2` 内嵌，生产 `font-src` 现与 dev 保持 `'self' data:`。脚本与连接限制不变。独立生产前端 Debug 窗口打开可视文档后控制台没有此字体错误，不声称它是图片粘贴根因。
+- **PASS (full gate)** — `PATH="$HOME/.cargo/bin:$PATH" pnpm verify`：55 个 Vitest 文件、747/747；Rust 62/62；repo check、Prettier、ESLint、TypeScript、Rust fmt/clippy、Web production 与 debug no-bundle 构建全部通过。保留既有 Vite 大 chunk 提醒。
+- **PASS (real editor integration)** — 完整门禁启动后新增 `AppShell.clipboard.integration.test.tsx`，随后单独运行 3/3 通过：真实 PM 的 PNG/单图 HTML、真实 CM 源码，覆盖原生边界延迟返回、Shell 重渲染、单文件授权、图片节点/dirty、保存与 Undo 只移除链接。该文件格式/lint/typecheck 通过；测试总计 56 个文件、750 项前端测试。原生边界仍为合成 adapter，不冒充系统剪贴板端到端测试。
+- **PASS (isolated desktop, limited)** — 单独构建并打开 `NoteSpace Paste Test.app`（独立 identifier、incognito），只打开临时合成 Markdown。普通文字粘贴、Undo、保存及退出完成；临时文档仅保留原合成正文。检查时当前剪贴板已不是用户截图，因此未验证真实图片，未将剪贴板内容/用户附件加入仓库或落盘。独立窗口已关闭，原正常实例保持运行。
+- **PASS (separate fix bundle)** — 为避免替换运行中的 `.app`，将既有同版本 Tauri bundle 模板复制到新输出目录，仅替换为本轮默认配置 `pnpm verify` 构建的内嵌前端二进制并重新 ad-hoc 签名。产物：`src-tauri/target/debug/bundle/clipboard-fix.Odh4nq/NoteSpace.app`；`codesign --verify --deep --strict` 通过，identifier 仍为 `app.markdownworkspace.desktop`。可执行文件 SHA-256：`673fa313d3d777c4af2425f7c69f157a6222e13093a7e0db2622acb070241a9a`。常规 `bundle/macos/NoteSpace.app` 与 DMG 未覆盖，未安装、重启正常应用或发布。
+- **PENDING (native image)** — 需要当前确有测试图片的系统剪贴板；若仍失败，应观察 WebKit 实际 MIME、是否调用原生读取以及 macOS 通用剪贴板授权，不将字体告警或独立命名剪贴板测试当作故障证据。保持不读取/上传无关剪贴板内容、不保存正文快照。
+
+### 以下为状态版本 31 验证记录（非本轮交付证据）
+
+本轮状态版本 31：截图粘贴、工作区图片目录和 README 截图已集成；完整门禁、隔离浏览器检查和新版 Debug `.app` 构建校验均通过。
+
+- **PASS (focused)** — 工作区设置/目录状态/树菜单 64 项、图片解析/查看器 31 项、右键编辑命令 45 项通过；Shell/adapter 初次集成 24 项通过，追加模式切换回归纳入最终门禁。编辑器 Save As/模式隔离 8 项与代码块空粘贴选择保留定向回归通过。目标格式/lint/typecheck 通过。
+- **PASS (native, focused)** — `cargo test --manifest-path src-tauri/Cargo.toml --lib --locked` 62/62；fmt 与 all-targets/all-features clippy 通过。只使用合成临时图片及 unique named NSPasteboard，未读取/改写系统一般剪贴板，不声称替代实际截图软件联调。
+- **PASS (README assets)** — 三张 JPEG 均由真实 AppShell 的隔离合成浏览器页面捕获并逐张检查，分别呈现可视写作、Markdown/Python 分屏和 Mermaid；README 相对图片链接指向 `docs/screenshots/`。
+- **PASS (full gate)** — `PATH="$HOME/.cargo/bin:$PATH" pnpm verify`：54 个 Vitest 文件、730/730 tests；Rust all-targets/all-features 62/62；repository check、Prettier、ESLint、TypeScript、Rust fmt/clippy、Web production build 和 debug no-bundle build 全部通过。首次 lint 发现插图队列在 effect 内同步派生状态，已改为提交不同编辑表面前有条件清理失效请求，并通过新增模式切换回归；没有降低规则或放宽测试时限。保留既有 Vite 大 chunk 提醒。
+- **PASS (browser UI)** — 1280×720 合成工作区实际打开根右键及图片保存设置；默认同级、自选目录的完整地址框、未选目录禁用保存、选择失败提示、取消还原和保存均正常。浏览器演示模式不调用系统选择器，明确提示转桌面重试。未触碰用户文档/系统一般剪贴板，控制台没有 error；临时页面、夹具和开发服务器已清理。
+- **PASS (file audit)** — 对全部 275 个已跟踪/未跟踪非忽略文件中的 255 个文本做个人路径、私钥/常见 token、大 Base64 和合并标记检查，没有匹配；三张 JPEG 均为 1280×720 合成应用截图。没有为检查而暂存文件；README 及 ADR 相对链接、文档格式和 `git diff --check` 通过。
+- **PASS (bundle)** — `PATH="$HOME/.cargo/bin:$PATH" pnpm exec tauri build --debug --bundles app --config '{"bundle":{"macOS":{"signingIdentity":"-"}}}'` 生成 `src-tauri/target/debug/bundle/macos/NoteSpace.app`，内嵌前端无需 Vite。`codesign --verify --deep --strict`、ARM64 与 identifier 检查通过；可执行文件 SHA-256：`b51a4e6eb9d133e43f79feeb0f285d44066da6736947b242df60accd19de8779`。本轮不生成 DMG，现有 DMG 是历史构建；只有 ad-hoc 签名，未做 Developer ID 签名/公证。
+- **PENDING (native UI)** — 真实截图软件 → 系统一般剪贴板 → 新版应用 → 保存重开/Undo，仍需新版桌面实机验收；独立命名剪贴板和编辑器 DOM 测试不冒充完整跨应用链路。
+- **UNCHANGED (distribution)** — 本轮未提交/推送、发布 Release/Homebrew、覆盖已安装应用或重启用户实例。
+
+### 以下为状态版本 30 验证记录（非本轮交付证据）
 
 本轮状态版本 30：GitHub 首次源码上传完成，原历史保留；未改应用运行时功能。
 
@@ -265,7 +340,7 @@ baseline 1.0：功能、自动门禁、UI 与 debug bundle 已完成。
 - 确认框追加回归：**PASS (automated)** — `⌘K`/`⌘,` 不会打开后台弹层；Tab 可从意外外部焦点回到确认框；原生设置、新建、退出与红色关闭不会覆盖删除确认，取消后仍可正常销毁窗口。
 - 上一轮原生 UI 验收：**PARTIAL** — 使用单独名称/identifier 且 `incognito: true` 的临时 debug 测试包，启动确认未读取旧版工作区记录；临时配置只用于测试包，最终交付包不启用 incognito。已实际验证标签自定义右键和向右分屏、左源码/右可视同文档同步、无行号图片链接加载（含百分号编码路径）、100% 与关闭返回后两组正文/dirty 不变；隐藏目录图片由既有 asset scope 拒绝时可正常关闭错误提示。原生拖动尝试可进入半透明拖动状态，但未观察到移动完成，不计为通过；随后 Mac 锁屏，停止桌面操作，DevTools 与原生关闭未复验。仅停止自建隔离测试进程和开发服务器，未操作用户正常应用或工作文档。旧隔离 smoke 的退出证据与本轮自动化不能替代最终桌面拖动/关闭验收。
 
-当前自动证据对应命令：
+状态版本 26 的历史自动证据对应命令（非当前构建命令）：
 
 ```text
 PATH="$HOME/.cargo/bin:$PATH" pnpm verify
@@ -276,7 +351,7 @@ pnpm repo:check
 pnpm exec prettier --check AGENTS.md README.md docs/PROJECT_STATE.md docs/DESIGN.md docs/REQUIREMENTS.md docs/decisions/0014-external-filesystem-changes.md
 ```
 
-上一版本产物（2026-09-03）位于 `src-tauri/target/debug/bundle/macos/NoteSpace.app` 与 `src-tauri/target/debug/bundle/dmg/NoteSpace_0.1.0_aarch64.dmg`。DMG SHA-256 为 `138727161136918d8b009a0c3273dd6e424b5d4f551fd6f4df1cb43497ab74ae`。本轮最终构建增加通配/模板代码引用误报与可视初始化 anchor 复位修复，保留 ADR-0012 导航、系统浏览器打开、Mermaid 中文/边标签布局和 ADR-0011 能力；ad-hoc runtime 签名、DMG checksum 与 ARM64 架构均通过。未做 Apple Developer ID 签名或公证，未自动安装或重启用户旧实例。debug `.app` 已内嵌前端，可直接双击启动，不需要另启 Vite。
+状态版本 26 的历史产物（2026-09-03）使用相同 `.app`/DMG 路径，但下述哈希不代表当前最新包：当时 DMG SHA-256 为 `138727161136918d8b009a0c3273dd6e424b5d4f551fd6f4df1cb43497ab74ae`。该次构建增加通配/模板代码引用误报与可视初始化 anchor 复位修复，保留 ADR-0012 导航、系统浏览器打开、Mermaid 中文/边标签布局和 ADR-0011 能力；ad-hoc runtime 签名、DMG checksum 与 ARM64 架构当时均通过。当前产物以本节状态版本 31 记录为准。
 
 ## 10. 退役记录
 

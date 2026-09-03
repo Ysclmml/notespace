@@ -9,6 +9,7 @@ import {
 } from "react";
 
 import { useI18n } from "../../app/i18n";
+import { markdownImagePath, prepareMarkdownImageSource } from "../editor/imageSource";
 import { renderMermaidSvg } from "../editor/mermaidRenderer";
 import type { PreviewVisual } from "./model";
 import { isAssetImageSource } from "../image-actions/imageActions";
@@ -52,6 +53,12 @@ function contentSize(element: HTMLElement): { width: number; height: number } | 
 
 function VisualViewerInstance({ visual, onClose }: VisualViewerProps) {
   const { t } = useI18n();
+  const imageReference = visual.kind === "image" ? visual.reference : undefined;
+  const documentPath = visual.kind === "image" ? visual.documentPath : undefined;
+  const prepareLocalImage =
+    imageReference !== undefined &&
+    documentPath !== undefined &&
+    markdownImagePath(documentPath, imageReference) !== null;
   const stageRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
@@ -59,6 +66,9 @@ function VisualViewerInstance({ visual, onClose }: VisualViewerProps) {
   const [svg, setSvg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [imageFailed, setImageFailed] = useState(false);
+  const [imageSource, setImageSource] = useState<string | null>(() =>
+    visual.kind === "image" && !prepareLocalImage ? visual.source : null,
+  );
   const [scale, setScale] = useState(1);
   const [offset, setOffset] = useState<Point>({ x: 0, y: 0 });
   const hasError = imageFailed || Boolean(error);
@@ -124,6 +134,22 @@ function VisualViewerInstance({ visual, onClose }: VisualViewerProps) {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [actualSize, fit, hasError, onClose]);
+
+  useEffect(() => {
+    if (!prepareLocalImage || imageReference === undefined || documentPath === undefined)
+      return;
+    let cancelled = false;
+    void prepareMarkdownImageSource(documentPath, imageReference)
+      .then((source) => {
+        if (!cancelled) setImageSource(source);
+      })
+      .catch(() => {
+        if (!cancelled) setImageFailed(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [documentPath, imageReference, prepareLocalImage]);
 
   useEffect(() => {
     if (visual.kind === "image") return;
@@ -282,19 +308,19 @@ function VisualViewerInstance({ visual, onClose }: VisualViewerProps) {
             ref={contentRef}
             style={{ transform: `translate(${offset.x}px, ${offset.y}px) scale(${scale})` }}
           >
-            {visual.kind === "image" ? (
+            {visual.kind === "image" && imageSource ? (
               // SVG files deliberately stay in the browser's inert image mode;
               // never fetch them into innerHTML or mount them as an object/frame.
               <img
                 alt={visual.imageAlt ?? visual.title}
                 title={visual.imageTitle}
-                crossOrigin={isAssetImageSource(visual.source) ? "anonymous" : undefined}
-                data-visual-image-source={visual.source}
+                crossOrigin={isAssetImageSource(imageSource) ? "anonymous" : undefined}
+                data-visual-image-source={imageSource}
                 data-visual-image-reference={visual.reference ?? visual.source}
                 data-visual-image-document={visual.documentPath}
                 draggable={false}
                 referrerPolicy="no-referrer"
-                src={visual.source}
+                src={imageSource}
                 onError={() => setImageFailed(true)}
                 onLoad={fit}
               />
@@ -315,7 +341,16 @@ function VisualViewerInstance({ visual, onClose }: VisualViewerProps) {
 }
 
 export function VisualViewer(props: VisualViewerProps) {
+  const { visual } = props;
   return (
-    <VisualViewerInstance {...props} key={`${props.visual.kind}:${props.visual.source}`} />
+    <VisualViewerInstance
+      {...props}
+      key={JSON.stringify([
+        visual.kind,
+        visual.source,
+        visual.kind === "image" ? visual.documentPath : null,
+        visual.kind === "image" ? visual.reference : null,
+      ])}
+    />
   );
 }

@@ -11,6 +11,7 @@ import { beforeAll, describe, expect, it, vi } from "vitest";
 
 import { LARGE_PASTE_TEXT_THRESHOLD } from "./pasteGuard";
 import { MarkdownEditor } from "./MarkdownEditor";
+import * as imageSources from "./imageSource";
 import { AppSettingsProvider } from "../../app/settings";
 import { EditorContextMenu, useEditorContextMenu } from "../context-menu";
 import {
@@ -26,6 +27,15 @@ import {
 beforeAll(() => installCodeMirrorDomMeasurementStubs());
 
 beforeAll(() => installImmediateIntersectionObserverStub());
+
+function dispatchClipboardPaste(target: HTMLElement, data: Partial<DataTransfer>) {
+  const event = new Event("paste", { bubbles: true, cancelable: true });
+  Object.defineProperty(event, "clipboardData", {
+    value: { getData: () => "", items: [], files: [], types: [], ...data },
+  });
+  fireEvent(target, event);
+  return event;
+}
 
 function dispatchEditorCommand(
   target: HTMLElement,
@@ -1258,7 +1268,10 @@ describe("VisualMarkdownEditor DOM integration", () => {
     fireEvent.click(screen.getByRole("button", { name: "Apply" }));
     expect(screen.getByRole("alert")).toHaveTextContent("image reference changed");
     expect(onChange).not.toHaveBeenCalled();
-    expect(image.dataset.visualImageReference).toBe("./changed-elsewhere.png");
+    expect(image.isConnected).toBe(false);
+    expect(
+      container.querySelector<HTMLImageElement>("img")!.dataset.visualImageReference,
+    ).toBe("./changed-elsewhere.png");
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
   });
 
@@ -1301,6 +1314,549 @@ describe("VisualMarkdownEditor DOM integration", () => {
         'img[alt="剪贴板截图"][src="/workspace/assets/paste.png"]',
       ),
     ).toBeTruthy();
+  });
+
+  it.each([false, true])(
+    "keeps the capture paste listener above a dirty empty paragraph after controlled rerenders (Strict Mode: %s)",
+    async (strictMode) => {
+      const findView = captureVisualViews();
+      const onImagePaste = vi.fn<
+        (selection: { from: number; to: number }, kind?: string) => Promise<string>
+      >(async () => "![capture](./capture.png)");
+      const onChange = vi.fn();
+      function ControlledEditor({ revision }: { revision: number }) {
+        const [value, setValue] = useState("seed");
+        return (
+          <VisualMarkdownEditor
+            autofocus={false}
+            documentId="/fixtures/capture-lifecycle.md"
+            value={value}
+            onChange={(next) => {
+              setValue(next);
+              onChange(next);
+            }}
+            onImagePaste={(selection, kind) => {
+              void revision;
+              return onImagePaste(selection, kind);
+            }}
+          />
+        );
+      }
+      const { container, rerender } = render(<ControlledEditor revision={0} />, {
+        wrapper: strictMode ? StrictMode : undefined,
+      });
+      const view = await findView(container);
+      act(() => view.dispatch(view.state.tr.delete(1, 5)));
+      expect(onChange).toHaveBeenCalledOnce();
+      expect(view.state.doc.textContent).toBe("");
+      rerender(<ControlledEditor revision={1} />);
+      expect(container.querySelector(".ProseMirror")).toBe(view.dom);
+      const scroller = container.querySelector(".visual-markdown-editor")!;
+      const root = scroller.querySelector(".visual-markdown-editor__root")!;
+      const paragraph = view.dom.querySelector<HTMLElement>("p")!;
+      expect(root.contains(view.dom)).toBe(true);
+      expect(scroller.contains(paragraph)).toBe(true);
+      const key = new KeyboardEvent("keydown", {
+        key: "v",
+        metaKey: true,
+        bubbles: true,
+        cancelable: true,
+      });
+      fireEvent(paragraph, key);
+      expect(key.defaultPrevented).toBe(false);
+      const observedPaths: EventTarget[][] = [];
+      const observe = (event: Event) => observedPaths.push(event.composedPath());
+      const innerHandler = vi.fn();
+      window.addEventListener("paste", observe, true);
+      view.dom.addEventListener("paste", innerHandler);
+      try {
+        let paste!: Event;
+        await act(async () => {
+          paste = dispatchClipboardPaste(paragraph, { types: ["image/png"] });
+        });
+        expect(observedPaths).toHaveLength(1);
+        expect(observedPaths[0]).toEqual(
+          expect.arrayContaining([paragraph, view.dom, root, scroller]),
+        );
+        expect(paste.defaultPrevented).toBe(true);
+        expect(onImagePaste).toHaveBeenCalledExactlyOnceWith({ from: 1, to: 1 }, "image");
+        expect(innerHandler).not.toHaveBeenCalled();
+        expect(view.dom.querySelector('img[alt="capture"]')).toBeTruthy();
+        expect(onChange).toHaveBeenLastCalledWith(
+          expect.stringContaining("![capture](./capture.png)"),
+        );
+      } finally {
+        window.removeEventListener("paste", observe, true);
+        view.dom.removeEventListener("paste", innerHandler);
+      }
+    },
+  );
+
+  it.each(["files", "types", "Files", "image-html", "empty-mime"])(
+    "pastes visual screenshots with %s-only clipboard metadata after the host saves",
+    async (representation) => {
+      const findView = captureVisualViews();
+      let finish!: (markdown: string) => void;
+      const onChange = vi.fn();
+      const onImagePaste = vi.fn(
+        () => new Promise<string>((resolve) => (finish = resolve)),
+      );
+      const { container } = render(
+        <VisualMarkdownEditor
+          autofocus={false}
+          documentId="/fixtures/capture.md"
+          value="original"
+          onChange={onChange}
+          onImagePaste={onImagePaste}
+        />,
+      );
+      const view = await findView(container);
+      const original = view.state.doc;
+      const event = dispatchClipboardPaste(
+        view.dom,
+        representation === "files"
+          ? {
+              files: [
+                new File(["fixture"], "capture.png", { type: "image/png" }),
+              ] as unknown as FileList,
+            }
+          : representation === "image-html"
+            ? {
+                types: ["image/png", "text/html", "text/plain"],
+                getData: (type) =>
+                  type === "text/html"
+                    ? '<div><img src="file:///fixtures/capture.png"></div>'
+                    : type === "text/plain"
+                      ? "\n\uFFFC\n"
+                      : "",
+              }
+            : representation === "empty-mime"
+              ? {
+                  types: ["image/png"],
+                  items: [{ kind: "file", type: "" }] as unknown as DataTransferItemList,
+                }
+              : { types: representation === "types" ? ["image/tiff"] : ["Files"] },
+      );
+      expect(event.defaultPrevented).toBe(true);
+      expect(onImagePaste).toHaveBeenCalledOnce();
+      expect(onImagePaste).toHaveBeenLastCalledWith(
+        expect.objectContaining({ from: expect.any(Number), to: expect.any(Number) }),
+        representation === "Files" ? "native-fallback" : "image",
+      );
+      expect(onChange).not.toHaveBeenCalled();
+      expect(view.state.doc).toBe(original);
+      // Ordinary focus/selection transactions must not invalidate the pending
+      // image or change its insertion point; only actual document edits do.
+      act(() =>
+        view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 6))),
+      );
+      expect(view.state.doc).toBe(original);
+      await act(async () => finish("![test capture](./capture.png)"));
+      expect(container.querySelector('img[alt="test capture"]')).toBeTruthy();
+      expect(view.state.doc.firstChild?.firstChild?.type.name).toBe("image");
+      expect(onChange).toHaveBeenLastCalledWith(
+        expect.stringContaining("![test capture](./capture.png)"),
+      );
+      act(() => {
+        undo(view.state, view.dispatch);
+      });
+      expect(view.state.doc.eq(original)).toBe(true);
+    },
+  );
+
+  it("keeps mixed rich text paste normal and preserves visual text on image cancel or failure", async () => {
+    const findView = captureVisualViews();
+    const onChange = vi.fn();
+    const onPasteError = vi.fn();
+    const onImagePaste = vi.fn(async () => "");
+    const { container } = render(
+      <VisualMarkdownEditor
+        autofocus={false}
+        documentId="/fixtures/cancel.md"
+        value="original"
+        onChange={onChange}
+        onImagePaste={onImagePaste}
+        onPasteError={onPasteError}
+      />,
+    );
+    const view = await findView(container);
+    act(() =>
+      view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 1, 9))),
+    );
+    await act(async () => {
+      dispatchClipboardPaste(view.dom, { types: ["image/png"] });
+    });
+    expect(view.state.doc.textContent).toBe("original");
+    expect(onChange).not.toHaveBeenCalled();
+    expect(onPasteError).not.toHaveBeenCalled();
+    onImagePaste.mockRejectedValueOnce(new Error("disk full"));
+    await act(async () => {
+      dispatchClipboardPaste(view.dom, { types: ["image/tiff"] });
+    });
+    expect(view.state.doc.textContent).toBe("original");
+    expect(onChange).not.toHaveBeenCalled();
+    expect(onPasteError).toHaveBeenCalledWith("disk full");
+    onImagePaste.mockClear();
+    dispatchClipboardPaste(view.dom, {
+      types: ["text/html", "text/plain", "image/png"],
+      getData: (type) =>
+        type === "text/html"
+          ? "<p><strong>copied text</strong></p>"
+          : type === "text/plain"
+            ? "copied text"
+            : "",
+    });
+    await waitFor(() => expect(view.state.doc.textContent).toContain("copied text"));
+    expect(onImagePaste).not.toHaveBeenCalled();
+  });
+
+  it("rejects old visual paste positions after editing and discards results after a document switch", async () => {
+    const findView = captureVisualViews();
+    let finish!: (markdown: string) => void;
+    const onImagePaste = () => new Promise<string>((resolve) => (finish = resolve));
+    const onChange = vi.fn();
+    const onPasteError = vi.fn();
+    const { container, rerender } = render(
+      <VisualMarkdownEditor
+        autofocus={false}
+        documentId="/fixtures/first.md"
+        locale="en-US"
+        value="old"
+        onChange={onChange}
+        onImagePaste={onImagePaste}
+        onPasteError={onPasteError}
+      />,
+    );
+    const view = await findView(container);
+    dispatchClipboardPaste(view.dom, { types: ["image/png"] });
+    act(() => view.dispatch(view.state.tr.insertText("new ", 1)));
+    await act(async () => finish("![](./capture.png)"));
+    expect(view.state.doc.textContent).toBe("new old");
+    expect(container.querySelector("img")).toBeNull();
+    expect(onPasteError).toHaveBeenCalledWith(expect.stringContaining("document changed"));
+    onChange.mockClear();
+    onPasteError.mockClear();
+    dispatchClipboardPaste(view.dom, { types: ["image/png"] });
+    rerender(
+      <VisualMarkdownEditor
+        autofocus={false}
+        documentId="/fixtures/second.md"
+        value="second"
+        onChange={onChange}
+        onImagePaste={onImagePaste}
+        onPasteError={onPasteError}
+      />,
+    );
+    await act(async () => finish("![](./capture.png)"));
+    const newView = await findView(container);
+    expect(newView.state.doc.textContent).toBe("second");
+    expect(container.querySelector("img")).toBeNull();
+    expect(onChange).not.toHaveBeenCalled();
+    expect(onPasteError).not.toHaveBeenCalled();
+  });
+
+  it.each([false, true])(
+    "inserts a saved image once after visual Save As initialization and supports Undo (Strict Mode: %s)",
+    async (strictMode) => {
+      const findView = captureVisualViews();
+      const onChange = vi.fn();
+      const onImageInsertConsumed = vi.fn();
+      const request = {
+        id: 1,
+        documentId: "/fixtures/saved.md",
+        editorMode: "visual" as const,
+        markdown: "![capture](./capture.png)",
+        expectedText: "original",
+        selection: { from: 9, to: 9 },
+      };
+      const { container, rerender } = render(
+        <VisualMarkdownEditor
+          autofocus={false}
+          documentId={request.documentId}
+          value="original"
+          onChange={onChange}
+          imageInsertRequest={request}
+          onImageInsertConsumed={onImageInsertConsumed}
+        />,
+        { wrapper: strictMode ? StrictMode : undefined },
+      );
+      const view = await findView(container);
+      await waitFor(() => expect(onImageInsertConsumed).toHaveBeenCalledExactlyOnceWith(1));
+      expect(container.querySelector('img[alt="capture"]')).toBeTruthy();
+      const serialized = onChange.mock.lastCall?.[0] as string;
+      rerender(
+        <VisualMarkdownEditor
+          autofocus={false}
+          documentId={request.documentId}
+          value={serialized}
+          onChange={onChange}
+          imageInsertRequest={{ ...request }}
+          onImageInsertConsumed={onImageInsertConsumed}
+        />,
+      );
+      expect(onImageInsertConsumed).toHaveBeenCalledTimes(1);
+      act(() => {
+        undo(view.state, view.dispatch);
+      });
+      expect(container.querySelector("img")).toBeNull();
+      expect(view.state.doc.textContent).toBe("original");
+      onChange.mockClear();
+      rerender(
+        <VisualMarkdownEditor
+          autofocus={false}
+          documentId={request.documentId}
+          value="new edit"
+          onChange={onChange}
+          imageInsertRequest={{ ...request, id: 2 }}
+          onImageInsertConsumed={onImageInsertConsumed}
+        />,
+      );
+      expect(onImageInsertConsumed).toHaveBeenLastCalledWith(2);
+      expect(view.state.doc.textContent).toBe("new edit");
+      expect(container.querySelector("img")).toBeNull();
+      expect(onChange).not.toHaveBeenCalled();
+    },
+  );
+
+  it("rejects large embedded-image HTML before a visual paste transaction", async () => {
+    const findView = captureVisualViews();
+    const onChange = vi.fn();
+    const onPasteRejected = vi.fn();
+    const onImagePaste = vi.fn(async () => "![](./capture.png)");
+    const { container } = render(
+      <VisualMarkdownEditor
+        autofocus={false}
+        documentId="/fixtures/html.md"
+        value="original"
+        onChange={onChange}
+        onImagePaste={onImagePaste}
+        onPasteRejected={onPasteRejected}
+      />,
+    );
+    const view = await findView(container);
+    const original = view.state.doc;
+    const event = dispatchClipboardPaste(view.dom, {
+      types: ["text/html", "image/png"],
+      getData: (type) =>
+        type === "text/html"
+          ? '<img src="data:image/png;base64,' +
+            "A".repeat(LARGE_PASTE_TEXT_THRESHOLD + 1) +
+            '">'
+          : "",
+    });
+    expect(event.defaultPrevented).toBe(true);
+    expect(view.state.doc).toBe(original);
+    expect(onPasteRejected).toHaveBeenCalledOnce();
+    expect(onImagePaste).not.toHaveBeenCalled();
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it.each(["source", "visual"] as const)(
+    "discards a queued %s image insertion when the surface changes before initialization finishes",
+    async (editorMode) => {
+      const frames = new Map<number, FrameRequestCallback>();
+      let nextFrame = 0;
+      vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+        frames.set(++nextFrame, callback);
+        return nextFrame;
+      });
+      vi.spyOn(window, "cancelAnimationFrame").mockImplementation((id) => {
+        frames.delete(id);
+      });
+      const flushFrame = () => {
+        for (const id of [...frames.keys()]) {
+          const callback = frames.get(id);
+          frames.delete(id);
+          callback?.(performance.now());
+        }
+      };
+      const creations: ReturnType<Editor["create"]>[] = [];
+      const make = Editor.make;
+      vi.spyOn(Editor, "make").mockImplementation(() => {
+        const editor = make();
+        const create = editor.create;
+        vi.spyOn(editor, "create").mockImplementation(() => {
+          const creation = create();
+          creations.push(creation);
+          return creation;
+        });
+        return editor;
+      });
+      const onChange = vi.fn();
+      const onImageInsertConsumed = vi.fn();
+      const request = {
+        id: 1,
+        documentId: "/fixtures/saved.md",
+        editorMode,
+        markdown: "![capture](./capture.png)",
+        expectedText: "original",
+        selection: { from: 2, to: 4 },
+      };
+      const props = {
+        autofocus: false,
+        documentId: request.documentId,
+        mode: "normal" as const,
+        value: request.expectedText,
+        onChange,
+        onImageInsertConsumed,
+      };
+      const { container, rerender } = render(
+        <MarkdownEditor
+          {...props}
+          presentationMode={editorMode}
+          imageInsertRequest={request}
+        />,
+      );
+      await act(async () => {
+        await Promise.all(creations);
+      });
+      expect(onImageInsertConsumed).not.toHaveBeenCalled();
+      expect(onChange).not.toHaveBeenCalled();
+      const nextMode = editorMode === "source" ? "visual" : "source";
+      rerender(
+        <MarkdownEditor
+          {...props}
+          presentationMode={nextMode}
+          imageInsertRequest={request}
+        />,
+      );
+      await act(async () => {
+        await Promise.all(creations);
+      });
+      act(flushFrame);
+      expect(onImageInsertConsumed).toHaveBeenCalledExactlyOnceWith(request.id);
+      expect(onChange).not.toHaveBeenCalled();
+      expect(container.querySelector("img")).toBeNull();
+      expect(
+        container.querySelector(nextMode === "visual" ? ".ProseMirror" : ".cm-content")
+          ?.textContent,
+      ).toBe("original");
+      // The host removes a consumed request; returning to the original surface
+      // must not replay its old ProseMirror/CodeMirror offsets.
+      rerender(<MarkdownEditor {...props} presentationMode={editorMode} />);
+      await act(async () => {
+        await Promise.all(creations);
+      });
+      act(flushFrame);
+      expect(onChange).not.toHaveBeenCalled();
+      expect(onImageInsertConsumed).toHaveBeenCalledTimes(1);
+      expect(container.querySelector("img")).toBeNull();
+    },
+  );
+
+  it("preserves fenced-code selections for image and ambiguous empty pastes without a native read", async () => {
+    const findView = captureVisualViews();
+    const onChange = vi.fn();
+    const onImagePaste = vi.fn(async () => "![capture](./capture.png)");
+    const onPasteError = vi.fn();
+    const { container } = render(
+      <VisualMarkdownEditor
+        autofocus={false}
+        documentId="/fixtures/code.md"
+        locale="en-US"
+        value={"```text\nkeep the code\n```\n\nparagraph"}
+        onChange={onChange}
+        onImagePaste={onImagePaste}
+        onPasteError={onPasteError}
+      />,
+    );
+    const view = await findView(container);
+    const code = await waitFor(() => {
+      const element = container.querySelector<HTMLElement>(".cm-content");
+      expect(element).toBeTruthy();
+      return element!;
+    });
+    const codeView = CodeMirrorView.findFromDOM(code)!;
+    act(() => codeView.dispatch({ selection: { anchor: 0, head: 4 } }));
+    const codeSelection = codeView.state.selection.main;
+    const codeText = codeView.state.doc.toString();
+    const original = view.state.doc;
+    const event = dispatchClipboardPaste(code, { types: ["image/png"] });
+    expect(event.defaultPrevented).toBe(true);
+    expect(onPasteError).toHaveBeenCalledExactlyOnceWith(
+      "Move the cursor outside the code block to paste an image.",
+    );
+    expect(onImagePaste).not.toHaveBeenCalled();
+    expect(onChange).not.toHaveBeenCalled();
+    expect(view.state.doc).toBe(original);
+    onPasteError.mockClear();
+    const emptyEvent = dispatchClipboardPaste(code, { types: ["Files"] });
+    expect(emptyEvent.defaultPrevented).toBe(true);
+    expect(onPasteError).not.toHaveBeenCalled();
+    expect(onImagePaste).not.toHaveBeenCalled();
+    expect(onChange).not.toHaveBeenCalled();
+    expect(view.state.doc).toBe(original);
+    expect(codeView.state.doc.toString()).toBe(codeText);
+    expect(codeView.state.selection.main).toEqual(codeSelection);
+    dispatchClipboardPaste(code, {
+      types: ["text/plain"],
+      getData: (type) => (type === "text/plain" ? "edit" : ""),
+    });
+    expect(codeView.state.doc.toString()).toBe("edit the code");
+    expect(onImagePaste).not.toHaveBeenCalled();
+    expect(onPasteError).not.toHaveBeenCalled();
+  }, 15_000);
+
+  it("prepares local image scopes before loading and ignores stale source or destroyed-node results", async () => {
+    const findView = captureVisualViews();
+    const pending = new Map<string, (source: string) => void>();
+    vi.spyOn(imageSources, "resolveMarkdownImageSource").mockImplementation(
+      (_document, source) => `asset://localhost/${source}`,
+    );
+    const prepare = vi
+      .spyOn(imageSources, "prepareMarkdownImageSource")
+      .mockImplementation(
+        (_document, source) =>
+          new Promise<string>((resolve) => pending.set(source, resolve)),
+      );
+    const onChange = vi.fn();
+    const { container, unmount } = render(
+      <VisualMarkdownEditor
+        autofocus={false}
+        documentId="/fixtures/images.md"
+        value="![test](./first.png)"
+        onChange={onChange}
+      />,
+    );
+    const view = await findView(container);
+    const image = container.querySelector("img")!;
+    expect(prepare).toHaveBeenCalledWith("/fixtures/images.md", "./first.png");
+    expect(image.hasAttribute("src")).toBe(false);
+    let position = -1;
+    view.state.doc.descendants((node, offset) => {
+      if (node.type.name === "image") position = offset;
+    });
+    act(() =>
+      view.dispatch(
+        view.state.tr.setNodeMarkup(position, undefined, {
+          src: "./second.png",
+          alt: "second",
+          title: "",
+        }),
+      ),
+    );
+    const updated = container.querySelector("img")!;
+    expect(updated.getAttribute("alt")).toBe("second");
+    expect(updated.hasAttribute("src")).toBe(false);
+    await act(async () => pending.get("./first.png")?.("asset://localhost/first.png"));
+    expect(updated.hasAttribute("src")).toBe(false);
+    await act(async () => pending.get("./second.png")?.("asset://localhost/second.png"));
+    expect(updated.getAttribute("src")).toBe("asset://localhost/second.png");
+    expect(updated.dataset.visualImageReference).toBe("./second.png");
+    act(() =>
+      view.dispatch(
+        view.state.tr.setNodeMarkup(position, undefined, {
+          src: "./third.png",
+          alt: "third",
+          title: "",
+        }),
+      ),
+    );
+    const thirdImage = container.querySelector("img")!;
+    expect(thirdImage.hasAttribute("src")).toBe(false);
+    unmount();
+    await act(async () => pending.get("./third.png")?.("asset://localhost/third.png"));
+    expect(thirdImage.hasAttribute("src")).toBe(false);
   });
 
   it("uses a localized light code-block theme with persistent controls and an unclipped picker", async () => {

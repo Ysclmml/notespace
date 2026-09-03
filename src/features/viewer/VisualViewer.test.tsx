@@ -1,8 +1,16 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { AppSettingsProvider } from "../../app/settings";
 import { EditorContextMenu, useEditorContextMenu } from "../context-menu";
+
+const { convertFileSrc, invoke, isTauri } = vi.hoisted(() => ({
+  convertFileSrc: vi.fn((path: string) => `asset://localhost${path}`),
+  invoke: vi.fn(),
+  isTauri: vi.fn(() => false),
+}));
+
+vi.mock("@tauri-apps/api/core", () => ({ convertFileSrc, invoke, isTauri }));
 
 vi.mock("../editor/mermaidRenderer", () => ({
   renderMermaidSvg: vi.fn(async () =>
@@ -13,8 +21,16 @@ vi.mock("../editor/mermaidRenderer", () => ({
 import { VisualViewer } from "./VisualViewer";
 import { renderMermaidSvg } from "../editor/mermaidRenderer";
 
+beforeEach(() => {
+  convertFileSrc.mockClear();
+  invoke.mockReset();
+  isTauri.mockReturnValue(false);
+});
+
 describe("VisualViewer", () => {
   it("provides read-only image copy/reference actions in the viewer and keeps Escape scoped to the menu", async () => {
+    isTauri.mockReturnValue(true);
+    invoke.mockResolvedValue("/fixtures/assets/photo.png");
     const onClose = vi.fn();
     const revealImage = vi.fn();
     const writeText = vi.fn(async () => undefined);
@@ -52,6 +68,7 @@ describe("VisualViewer", () => {
       );
     }
     const { container } = render(<Harness />);
+    await waitFor(() => expect(container.querySelector("img")).not.toBeNull());
     const image = container.querySelector<HTMLImageElement>("img")!;
     expect(image).toHaveAttribute("crossorigin", "anonymous");
     const stage = container.querySelector<HTMLElement>(".visual-viewer__stage")!;
@@ -212,6 +229,213 @@ describe("VisualViewer", () => {
     expect(
       container.querySelector("svg, object, iframe, script, .visual-viewer__diagram"),
     ).toBeNull();
+  });
+
+  it("waits for the exact local image to be prepared before assigning its asset source", async () => {
+    isTauri.mockReturnValue(true);
+    let finish!: (path: string) => void;
+    invoke.mockReturnValue(new Promise<string>((resolve) => (finish = resolve)));
+    const { container } = render(
+      <AppSettingsProvider storage={null}>
+        <VisualViewer
+          onClose={vi.fn()}
+          visual={{
+            kind: "image",
+            source: "asset://localhost/workspace/images/a%20b.svg",
+            title: "A diagram",
+            documentPath: "/workspace/docs/readme.md",
+            reference: "../images/a%20b.svg",
+          }}
+        />
+      </AppSettingsProvider>,
+    );
+    expect(invoke).toHaveBeenCalledExactlyOnceWith("prepare_local_image", {
+      path: "/workspace/images/a b.svg",
+    });
+    expect(container.querySelector("img")).toBeNull();
+    expect(convertFileSrc).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "关闭查看器" })).toBeEnabled();
+
+    await act(async () => finish("/pictures/a b.svg"));
+    const image = screen.getByRole("img", { name: "A diagram" });
+    expect(image).toHaveAttribute("src", "asset://localhost/pictures/a b.svg");
+    expect(image).toHaveAttribute("crossorigin", "anonymous");
+    expect(image).toHaveAttribute("data-visual-image-reference", "../images/a%20b.svg");
+    expect(image).toHaveAttribute(
+      "data-visual-image-document",
+      "/workspace/docs/readme.md",
+    );
+    expect(image).toHaveAttribute(
+      "data-visual-image-source",
+      "asset://localhost/pictures/a b.svg",
+    );
+    expect(container.querySelector("svg, object, iframe, script")).toBeNull();
+  });
+
+  it.each([
+    { locale: "zh-CN" as const, title: "图片未能加载", close: "关闭查看器" },
+    { locale: "en-US" as const, title: "Image could not be loaded", close: "Close Viewer" },
+  ])(
+    "shows a safe localized failure when preparation fails in $locale",
+    async ({ locale, title, close }) => {
+      isTauri.mockReturnValue(true);
+      invoke.mockRejectedValue(new Error("Native image preparation failed"));
+      const onClose = vi.fn();
+      render(
+        <AppSettingsProvider initialSettings={{ locale }} storage={null}>
+          <VisualViewer
+            onClose={onClose}
+            visual={{
+              kind: "image",
+              source: "asset://localhost/pictures/missing.png",
+              title: "Missing image",
+              documentPath: "/workspace/readme.md",
+              reference: "../pictures/missing.png",
+            }}
+          />
+        </AppSettingsProvider>,
+      );
+      await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent(title));
+      expect(screen.queryByRole("img")).toBeNull();
+      expect(convertFileSrc).not.toHaveBeenCalled();
+      expect(screen.queryByText("Native image preparation failed")).toBeNull();
+      expect(screen.getByRole("button", { name: close })).toBeEnabled();
+      fireEvent.click(screen.getByRole("button", { name: close }));
+      expect(onClose).toHaveBeenCalledOnce();
+    },
+  );
+
+  it.each(["resolve", "reject"] as const)(
+    "ignores a late preparation %s after the image reference changes, even with an unchanged source",
+    async (outcome) => {
+      isTauri.mockReturnValue(true);
+      let finishOld!: (path: string) => void;
+      let rejectOld!: (reason: Error) => void;
+      invoke.mockReturnValueOnce(
+        new Promise<string>((resolve, reject) => {
+          finishOld = resolve;
+          rejectOld = reject;
+        }),
+      );
+      invoke.mockResolvedValueOnce("/new/pictures/diagram.png");
+      const renderViewer = (documentPath: string) => (
+        <AppSettingsProvider storage={null}>
+          <VisualViewer
+            onClose={vi.fn()}
+            visual={{
+              kind: "image",
+              source: "./pictures/diagram.png",
+              title: "Diagram",
+              documentPath,
+              reference: "./pictures/diagram.png",
+            }}
+          />
+        </AppSettingsProvider>
+      );
+      const { rerender } = render(renderViewer("/old/readme.md"));
+      expect(screen.queryByRole("img")).toBeNull();
+      rerender(renderViewer("/new/readme.md"));
+      await waitFor(() =>
+        expect(screen.getByRole("img", { name: "Diagram" })).toHaveAttribute(
+          "src",
+          "asset://localhost/new/pictures/diagram.png",
+        ),
+      );
+      await act(async () => {
+        if (outcome === "resolve") finishOld("/old/pictures/diagram.png");
+        else rejectOld(new Error("Old request failed"));
+      });
+      expect(screen.getByRole("img", { name: "Diagram" })).toHaveAttribute(
+        "src",
+        "asset://localhost/new/pictures/diagram.png",
+      );
+      expect(screen.queryByRole("status")).toBeNull();
+      expect(invoke).toHaveBeenNthCalledWith(1, "prepare_local_image", {
+        path: "/old/pictures/diagram.png",
+      });
+      expect(invoke).toHaveBeenNthCalledWith(2, "prepare_local_image", {
+        path: "/new/pictures/diagram.png",
+      });
+    },
+  );
+
+  it("does not resurrect a closed viewer after local preparation resolves", async () => {
+    isTauri.mockReturnValue(true);
+    let finish!: (path: string) => void;
+    invoke.mockReturnValue(new Promise<string>((resolve) => (finish = resolve)));
+    const { unmount } = render(
+      <AppSettingsProvider storage={null}>
+        <VisualViewer
+          onClose={vi.fn()}
+          visual={{
+            kind: "image",
+            source: "./a.png",
+            title: "A",
+            documentPath: "/docs/a.md",
+            reference: "./a.png",
+          }}
+        />
+      </AppSettingsProvider>,
+    );
+    unmount();
+    await act(async () => finish("/docs/a.png"));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.queryByRole("img")).toBeNull();
+  });
+
+  it("keeps browser image preparation independent of the desktop host", async () => {
+    render(
+      <AppSettingsProvider storage={null}>
+        <VisualViewer
+          onClose={vi.fn()}
+          visual={{
+            kind: "image",
+            source: "./a.png",
+            title: "Browser image",
+            documentPath: "/fixtures/a.md",
+            reference: "./a.png",
+          }}
+        />
+      </AppSettingsProvider>,
+    );
+    await waitFor(() =>
+      expect(screen.getByRole("img", { name: "Browser image" })).toHaveAttribute(
+        "src",
+        "/fixtures/a.png",
+      ),
+    );
+    expect(invoke).not.toHaveBeenCalled();
+    expect(convertFileSrc).not.toHaveBeenCalled();
+  });
+
+  it("opens remote images directly without preparation IPC or application fetches", () => {
+    isTauri.mockReturnValue(true);
+    const fetch = vi.spyOn(globalThis, "fetch");
+    try {
+      render(
+        <AppSettingsProvider storage={null}>
+          <VisualViewer
+            onClose={vi.fn()}
+            visual={{
+              kind: "image",
+              source: "https://example.test/diagram.svg",
+              title: "Remote",
+              documentPath: "/docs/readme.md",
+              reference: "https://example.test/diagram.svg",
+            }}
+          />
+        </AppSettingsProvider>,
+      );
+      expect(screen.getByRole("img", { name: "Remote" })).toHaveAttribute(
+        "src",
+        "https://example.test/diagram.svg",
+      );
+      expect(invoke).not.toHaveBeenCalled();
+      expect(convertFileSrc).not.toHaveBeenCalled();
+      expect(fetch).not.toHaveBeenCalled();
+    } finally {
+      fetch.mockRestore();
+    }
   });
 
   it("renders Mermaid and exposes zoom, fit and close controls", async () => {

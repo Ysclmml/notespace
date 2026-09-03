@@ -21,6 +21,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::pick_workspace,
             commands::pick_document,
+            commands::pick_image_directory,
             commands::list_workspace,
             commands::open_document,
             commands::filesystem::inspect_documents,
@@ -34,6 +35,8 @@ pub fn run() {
             commands::save_document,
             commands::save_document_as,
             commands::save_clipboard_image,
+            commands::clipboard_has_image,
+            commands::prepare_local_image,
             commands::set_native_menu_locale,
         ])
         .run(tauri::generate_context!())

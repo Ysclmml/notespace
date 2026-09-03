@@ -31,6 +31,7 @@ export interface WorkspaceTreeProps {
     rootPath: string,
     showHidden: boolean,
   ) => void | Promise<void>;
+  readonly onImageSettings?: (rootPath: string) => void;
   readonly onCopyPath?: (path: string) => void | Promise<void>;
   readonly onCreateFile?: (directoryPath: string, fileName: string) => Promise<void>;
   readonly onCreateFolder?: (directoryPath: string, folderName: string) => Promise<void>;
@@ -499,6 +500,7 @@ export function WorkspaceTree({
   onActivateWorkspace,
   onCloseWorkspace,
   onShowHiddenChange,
+  onImageSettings,
   onCopyPath,
   onCreateFile,
   onCreateFolder,
@@ -671,6 +673,14 @@ export function WorkspaceTree({
             label: t("workspace.showHiddenFiles"),
             checked: showHidden,
             action: () => onShowHiddenChange(rootPath, !showHidden),
+          },
+        ]
+      : []),
+    ...(!menuNode && onImageSettings
+      ? [
+          {
+            label: t("workspace.imageSettings"),
+            action: () => onImageSettings(rootPath),
           },
         ]
       : []),

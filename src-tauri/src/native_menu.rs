@@ -227,8 +227,9 @@ fn build_native_menu<R: Runtime>(
     let quit = MenuItemBuilder::with_id(ACTION_QUIT_APP, labels.quit)
         .accelerator("CmdOrCtrl+Q")
         .build(app)?;
+    let about = MenuItemBuilder::with_id(ACTION_OPEN_HELP, labels.about).build(app)?;
     let application = SubmenuBuilder::with_id(app, "menu.application", labels.application)
-        .item(&PredefinedMenuItem::about(app, Some(labels.about), None)?)
+        .item(&about)
         .separator()
         .item(&settings)
         .separator()

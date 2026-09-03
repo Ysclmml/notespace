@@ -235,6 +235,101 @@ describe("WorkspaceTree", () => {
     );
   });
 
+  it.each([
+    ["zh-CN", "图片保存位置…", "折叠工作区"],
+    ["en-US", "Image Save Location…", "Collapse Workspace"],
+  ] as const)(
+    "opens localized image settings for the exact root or its blank area in %s",
+    (locale, label, collapseLabel) => {
+      const onImageSettings = vi.fn();
+      const onOpen = vi.fn();
+      const onActivateWorkspace = vi.fn();
+      const { container } = render(
+        <AppSettingsProvider initialSettings={{ locale }} storage={null}>
+          <WorkspaceTree
+            nodes={nodes}
+            onActivateWorkspace={onActivateWorkspace}
+            onImageSettings={onImageSettings}
+            onOpen={onOpen}
+            rootName="First"
+            rootPath="/workspace"
+          />
+          <WorkspaceTree
+            nodes={[]}
+            onActivateWorkspace={onActivateWorkspace}
+            onImageSettings={onImageSettings}
+            onOpen={onOpen}
+            rootName="Second"
+            rootPath="/second"
+          />
+        </AppSettingsProvider>,
+      );
+      fireEvent.contextMenu(
+        screen.getByRole("button", { name: `${collapseLabel} · First` }),
+        { clientX: 24, clientY: 40 },
+      );
+      expect(onImageSettings).not.toHaveBeenCalled();
+      fireEvent.click(screen.getByRole("menuitem", { name: label }));
+      expect(onImageSettings).toHaveBeenLastCalledWith("/workspace");
+      expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+
+      const secondBlankArea = container.querySelectorAll(".workspace-tree")[1]!;
+      fireEvent.contextMenu(secondBlankArea, { clientX: 24, clientY: 140 });
+      fireEvent.click(screen.getByRole("menuitem", { name: label }));
+      expect(onImageSettings).toHaveBeenLastCalledWith("/second");
+      expect(onImageSettings).toHaveBeenCalledTimes(2);
+      expect(onOpen).not.toHaveBeenCalled();
+      expect(onActivateWorkspace).not.toHaveBeenCalled();
+    },
+  );
+
+  it("never offers workspace image settings for a child file or folder", () => {
+    const onImageSettings = vi.fn();
+    const { onOpen } = renderTree(undefined, undefined, "zh-CN", {
+      onImageSettings,
+      rootName: "Workspace",
+    });
+    for (const name of ["docs", "guide.md"]) {
+      fireEvent.contextMenu(screen.getByRole("button", { name }), {
+        clientX: 24,
+        clientY: 80,
+      });
+      expect(
+        screen.queryByRole("menuitem", { name: "图片保存位置…" }),
+      ).not.toBeInTheDocument();
+      fireEvent.keyDown(document, { key: "Escape" });
+    }
+    expect(onImageSettings).not.toHaveBeenCalled();
+    expect(onOpen).not.toHaveBeenCalled();
+  });
+
+  it("omits the image setting entry when no handler exists and supports root blank-area requests", () => {
+    const { container, rerender } = renderTree();
+    fireEvent.contextMenu(container.querySelector(".workspace-tree-shell")!, {
+      clientX: 24,
+      clientY: 140,
+    });
+    expect(
+      screen.queryByRole("menuitem", { name: "图片保存位置…" }),
+    ).not.toBeInTheDocument();
+    fireEvent.keyDown(document, { key: "Escape" });
+
+    const onImageSettings = vi.fn();
+    rerender(
+      <AppSettingsProvider initialSettings={{ locale: "zh-CN" }} storage={null}>
+        <WorkspaceTree
+          contextMenuRequest={{ x: 24, y: 300, id: 1 }}
+          nodes={nodes}
+          onImageSettings={onImageSettings}
+          onOpen={vi.fn()}
+          rootPath="/workspace"
+        />
+      </AppSettingsProvider>,
+    );
+    fireEvent.click(screen.getByRole("menuitem", { name: "图片保存位置…" }));
+    expect(onImageSettings).toHaveBeenCalledExactlyOnceWith("/workspace");
+  });
+
   it("defaults extensionless names to Markdown and preserves explicit suffixes", () => {
     expect(normalizeWorkspaceFileName("notes")).toBe("notes.md");
     expect(normalizeWorkspaceFileName("worker.py")).toBe("worker.py");

@@ -132,7 +132,12 @@ export interface DesktopAdapter {
     content: string,
     excludedPaths: readonly string[],
   ): Promise<SaveDocumentResult | null>;
-  saveClipboardImage(documentPath: string): Promise<SavedClipboardImage>;
+  pickImageDirectory?(locale: "zh-CN" | "en-US"): Promise<string | null>;
+  hasClipboardImage?(): Promise<boolean>;
+  saveClipboardImage(
+    documentPath: string,
+    directoryPath?: string,
+  ): Promise<SavedClipboardImage>;
   setNativeMenuLocale?(locale: "zh-CN" | "en-US"): Promise<void>;
   listenNativeMenuAction?(
     listener: (actionId: NativeMenuActionId) => void,
@@ -224,8 +229,19 @@ export class TauriDesktopAdapter implements DesktopAdapter {
     });
   }
 
-  saveClipboardImage(documentPath: string) {
-    return invoke<SavedClipboardImage>("save_clipboard_image", { documentPath });
+  pickImageDirectory(locale: "zh-CN" | "en-US") {
+    return invoke<string | null>("pick_image_directory", { locale });
+  }
+
+  hasClipboardImage() {
+    return invoke<boolean>("clipboard_has_image");
+  }
+
+  saveClipboardImage(documentPath: string, directoryPath?: string) {
+    return invoke<SavedClipboardImage>("save_clipboard_image", {
+      documentPath,
+      ...(directoryPath === undefined ? {} : { directoryPath }),
+    });
   }
 
   setNativeMenuLocale(locale: "zh-CN" | "en-US") {
@@ -560,9 +576,17 @@ export class DemoDesktopAdapter implements DesktopAdapter {
     };
   }
 
-  async saveClipboardImage(documentPath: string): Promise<SavedClipboardImage> {
+  async pickImageDirectory(): Promise<string | null> {
+    throw { code: "desktopOnly" };
+  }
+
+  async saveClipboardImage(
+    documentPath: string,
+    directoryPath?: string,
+  ): Promise<SavedClipboardImage> {
     void documentPath;
-    throw new Error("浏览器演示模式不能写入系统剪贴板图片，请启动桌面应用。");
+    void directoryPath;
+    throw { code: "desktopOnly" };
   }
 
   async setNativeMenuLocale(): Promise<void> {

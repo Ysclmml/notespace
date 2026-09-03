@@ -1,12 +1,14 @@
 export const WORKSPACE_HISTORY_STORAGE_KEY = "markdown-workspace.workspaces.v1";
 
 const MAX_RECENT_ITEMS = 12;
+const MAX_IMAGE_DIRECTORY_LENGTH = 4096;
 
 export interface RememberedWorkspace {
   readonly path: string;
   readonly name: string;
   readonly lastOpenedAt: number;
   readonly showHidden?: boolean;
+  readonly imageDirectoryPath?: string | null;
 }
 
 export interface RememberedFile {
@@ -60,13 +62,41 @@ function validFile(value: unknown): value is RememberedFile {
 }
 
 function normalizeWorkspace(workspace: RememberedWorkspace): RememberedWorkspace {
-  const { path, name, lastOpenedAt, showHidden } = workspace;
+  const { path, name, lastOpenedAt, showHidden, imageDirectoryPath } = workspace;
   return {
     path,
     name,
     lastOpenedAt,
     ...(typeof showHidden === "boolean" ? { showHidden } : {}),
+    ...(imageDirectoryPath !== undefined
+      ? { imageDirectoryPath: normalizeWorkspaceImageDirectoryPath(imageDirectoryPath) }
+      : {}),
   };
+}
+
+export function normalizeWorkspaceImageDirectoryPath(value: unknown): string | null {
+  if (
+    typeof value !== "string" ||
+    value.length === 0 ||
+    value.length > MAX_IMAGE_DIRECTORY_LENGTH ||
+    Array.from(value).some((character) => {
+      const code = character.charCodeAt(0);
+      return code < 32 || code === 127;
+    })
+  ) {
+    return null;
+  }
+  // Paths come from the native directory picker. Preserve spaces and Unicode;
+  // only concrete absolute paths may become a workspace destination.
+  const isAbsolute =
+    value.startsWith("/") ||
+    /^[a-z]:[\\/]/iu.test(value) ||
+    /^\\\\[^\\/]+[\\/][^\\/]+/u.test(value);
+  return isAbsolute ? value : null;
+}
+
+function normalizeFile({ path, name, lastOpenedAt }: RememberedFile): RememberedFile {
+  return { path, name, lastOpenedAt };
 }
 
 function uniqueByPath<T extends { readonly path: string }>(items: readonly T[]): T[] {
@@ -102,6 +132,7 @@ export function loadWorkspaceHistory(
     const recentFiles = uniqueByPath(
       (Array.isArray(parsed.recentFiles) ? parsed.recentFiles : [])
         .filter(validFile)
+        .map(normalizeFile)
         .sort((left, right) => right.lastOpenedAt - left.lastOpenedAt)
         .slice(0, MAX_RECENT_ITEMS),
     );
@@ -123,7 +154,15 @@ export function saveWorkspaceHistory(
 ): void {
   if (!storage) return;
   try {
-    storage.setItem(WORKSPACE_HISTORY_STORAGE_KEY, JSON.stringify(state));
+    storage.setItem(
+      WORKSPACE_HISTORY_STORAGE_KEY,
+      JSON.stringify({
+        openWorkspaces: state.openWorkspaces.map(normalizeWorkspace),
+        recentWorkspaces: state.recentWorkspaces.map(normalizeWorkspace),
+        recentFiles: state.recentFiles.map(normalizeFile),
+        activeWorkspacePath: state.activeWorkspacePath,
+      }),
+    );
   } catch {
     // Preferences are a convenience; editing must continue if storage is unavailable.
   }
@@ -135,6 +174,7 @@ export function rememberWorkspace(
     readonly path: string;
     readonly name: string;
     readonly showHidden?: boolean;
+    readonly imageDirectoryPath?: string | null;
   },
   now = Date.now(),
 ): WorkspaceHistoryState {
@@ -142,11 +182,16 @@ export function rememberWorkspace(
     (item) => item.path === workspace.path,
   );
   const showHidden = workspace.showHidden ?? previous?.showHidden;
-  const remembered: RememberedWorkspace = {
+  const imageDirectoryPath =
+    workspace.imageDirectoryPath === undefined
+      ? previous?.imageDirectoryPath
+      : workspace.imageDirectoryPath;
+  const remembered = normalizeWorkspace({
     ...workspace,
     ...(showHidden !== undefined ? { showHidden } : {}),
+    ...(imageDirectoryPath !== undefined ? { imageDirectoryPath } : {}),
     lastOpenedAt: now,
-  };
+  });
   return {
     ...state,
     openWorkspaces: [
@@ -178,6 +223,31 @@ export function setWorkspaceShowHidden(
 ): WorkspaceHistoryState {
   const update = (workspace: RememberedWorkspace) =>
     workspace.path === path ? { ...workspace, showHidden } : workspace;
+  return {
+    ...state,
+    openWorkspaces: state.openWorkspaces.map(update),
+    recentWorkspaces: state.recentWorkspaces.map(update),
+  };
+}
+
+export function getWorkspaceImageDirectory(
+  state: WorkspaceHistoryState,
+  path: string,
+): string | null {
+  const workspace = [...state.openWorkspaces, ...state.recentWorkspaces].find(
+    (item) => item.path === path,
+  );
+  return normalizeWorkspaceImageDirectoryPath(workspace?.imageDirectoryPath);
+}
+
+export function setWorkspaceImageDirectory(
+  state: WorkspaceHistoryState,
+  path: string,
+  directoryPath: string | null,
+): WorkspaceHistoryState {
+  const imageDirectoryPath = normalizeWorkspaceImageDirectoryPath(directoryPath);
+  const update = (workspace: RememberedWorkspace) =>
+    workspace.path === path ? { ...workspace, imageDirectoryPath } : workspace;
   return {
     ...state,
     openWorkspaces: state.openWorkspaces.map(update),

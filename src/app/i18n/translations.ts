@@ -18,6 +18,11 @@ export const zhCN = {
   "external.watchFailed": "实时文件监听暂不可用，已启用定期检查。",
   "external.workspaceUnavailable": "工作区 {name} 暂时不可读取，恢复后会自动刷新。",
   "app.name": "笔记空间",
+  "about.title": "关于笔记空间",
+  "about.description": "本地优先的 Markdown 与文本编辑器。",
+  "about.repository": "GitHub 仓库",
+  "about.openRepository": "在默认浏览器中打开仓库",
+  "about.openFailed": "无法打开浏览器。请重试，或复制上方仓库地址到浏览器访问。",
   "common.cancel": "取消",
   "common.close": "关闭",
   "common.confirm": "确定",
@@ -36,6 +41,19 @@ export const zhCN = {
   "find.matchCount": "{current}/{total}",
   "find.empty": "输入查找内容",
   "workspace.showHiddenFiles": "显示隐藏文件和文件夹",
+  "workspace.imageSettings": "图片保存位置…",
+  "workspaceImages.title": "图片保存位置",
+  "workspaceImages.description": "仅影响此工作区以后粘贴的截图，不移动已有图片。",
+  "workspaceImages.sameDirectory": "与 Markdown 文件保存在同一目录",
+  "workspaceImages.sameDirectoryDescription": "跟随每篇文档的位置，插入相对图片链接。",
+  "workspaceImages.customDirectory": "保存到指定目录",
+  "workspaceImages.customDirectoryDescription": "此工作区的截图统一保存到所选文件夹。",
+  "workspaceImages.directoryPath": "图片文件夹",
+  "workspaceImages.chooseDirectory": "选择文件夹…",
+  "workspaceImages.chooseDirectoryHint": "请选择一个图片文件夹",
+  "workspaceImages.chooseDirectoryError": "无法选择图片文件夹，请在桌面应用中重试。",
+  "workspaceImages.cancel": "取消",
+  "workspaceImages.save": "保存设置",
   "workspace.label": "工作区",
   "settings.startupBehavior": "启动时",
   "settings.startupBehaviorDescription":
@@ -184,7 +202,21 @@ export const zhCN = {
   "status.linkNotFound": "没有找到链接目标：{target}",
   "status.saveBeforeScreenshot": "请先保存文档，再粘贴截图",
   "status.screenshotSaved": "截图已保存到 {path}",
-  "status.imageSaveFailed": "图片没有保存：{error}",
+  "status.imageSaveFailed": "无法插入图片：{error}",
+  "status.workspaceImagesSaved": "已更新 {name} 的图片保存位置",
+  "imagePaste.clipboardNoImage": "剪贴板中没有可用图片，请重新截图后粘贴。",
+  "imagePaste.clipboardUnavailable": "无法读取系统剪贴板，请检查系统权限后重试。",
+  "imagePaste.imageDecodeFailed": "无法读取这张图片，请重新截图或复制图片后重试。",
+  "imagePaste.imageTooLarge": "这张图片过大，请缩小截图范围后重试。",
+  "imagePaste.imageDirectoryUnavailable":
+    "图片保存目录不存在或不可用，请在工作区右键菜单中重新选择。",
+  "imagePaste.imageEncodeFailed": "图片编码失败，文档内容未改变。",
+  "imagePaste.imagePreviewUnavailable":
+    "图片已保存，但暂时无法加载预览。文档未插入链接，请检查文件访问权限。",
+  "imagePaste.io": "图片写入失败，请检查保存目录是否可写以及磁盘空间。",
+  "imagePaste.desktopOnly": "请在桌面应用中粘贴截图；浏览器演示模式不读取系统图片剪贴板。",
+  "imagePaste.documentChanged":
+    "文档已切换或内容已改变，未插入图片。请在目标位置重新粘贴。",
   "status.openFailedDataUri": "未打开：包含很大的内嵌图片数据。原文件没有被修改。",
   "status.openFailedLongLine": "未打开：包含过长的单行文本。原文件没有被修改。",
   "status.openFailedUtf8": "未打开：不是可编辑的 UTF-8 文本。原文件没有被修改。",
@@ -363,6 +395,12 @@ export const enUS = {
   "external.workspaceUnavailable":
     "Workspace {name} is temporarily unreadable. It will refresh when available.",
   "app.name": "NoteSpace",
+  "about.title": "About NoteSpace",
+  "about.description": "A local-first Markdown and text editor.",
+  "about.repository": "GitHub Repository",
+  "about.openRepository": "Open the repository in your default browser",
+  "about.openFailed":
+    "Could not open the browser. Try again, or copy the repository address into your browser.",
   "common.cancel": "Cancel",
   "common.close": "Close",
   "common.confirm": "OK",
@@ -381,6 +419,23 @@ export const enUS = {
   "find.matchCount": "{current}/{total}",
   "find.empty": "Enter text to find",
   "workspace.showHiddenFiles": "Show Hidden Files and Folders",
+  "workspace.imageSettings": "Image Save Location…",
+  "workspaceImages.title": "Image Save Location",
+  "workspaceImages.description":
+    "Applies to future screenshot pastes in this workspace. Existing images are not moved.",
+  "workspaceImages.sameDirectory": "Same folder as the Markdown file",
+  "workspaceImages.sameDirectoryDescription":
+    "Save beside each document and insert a relative image link.",
+  "workspaceImages.customDirectory": "Use a specific folder",
+  "workspaceImages.customDirectoryDescription":
+    "Save screenshots from this workspace in the selected folder.",
+  "workspaceImages.directoryPath": "Image folder",
+  "workspaceImages.chooseDirectory": "Choose Folder…",
+  "workspaceImages.chooseDirectoryHint": "Choose a folder for images",
+  "workspaceImages.chooseDirectoryError":
+    "Could not choose a folder. Please try again in the desktop app.",
+  "workspaceImages.cancel": "Cancel",
+  "workspaceImages.save": "Save Settings",
   "workspace.label": "Workspace",
   "settings.startupBehavior": "On startup",
   "settings.startupBehaviorDescription":
@@ -535,7 +590,27 @@ export const enUS = {
   "status.linkNotFound": "Link target not found: {target}",
   "status.saveBeforeScreenshot": "Save the document before pasting a screenshot",
   "status.screenshotSaved": "Screenshot saved to {path}",
-  "status.imageSaveFailed": "Image was not saved: {error}",
+  "status.imageSaveFailed": "Could not insert image: {error}",
+  "status.workspaceImagesSaved": "Updated the image save location for {name}",
+  "imagePaste.clipboardNoImage":
+    "No image is available on the clipboard. Take another screenshot and paste again.",
+  "imagePaste.clipboardUnavailable":
+    "Cannot read the system clipboard. Check system permissions and try again.",
+  "imagePaste.imageDecodeFailed":
+    "Cannot decode this image. Take another screenshot or copy the image again.",
+  "imagePaste.imageTooLarge":
+    "This image is too large. Capture a smaller area and try again.",
+  "imagePaste.imageDirectoryUnavailable":
+    "The image folder is missing or unavailable. Choose another folder from the workspace context menu.",
+  "imagePaste.imageEncodeFailed": "Image encoding failed. The document was not changed.",
+  "imagePaste.imagePreviewUnavailable":
+    "The image was saved, but preview access failed. No link was inserted; check file access permissions.",
+  "imagePaste.io":
+    "Could not write the image. Check folder permissions and available disk space.",
+  "imagePaste.desktopOnly":
+    "Paste screenshots in the desktop app. The browser demo does not read the system image clipboard.",
+  "imagePaste.documentChanged":
+    "The document changed or navigation moved away. No image was inserted; paste again at the intended location.",
   "status.openFailedDataUri":
     "Not opened: the file contains a very large embedded image. The original file was not changed.",
   "status.openFailedLongLine":

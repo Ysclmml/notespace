@@ -1,3 +1,4 @@
+mod clipboard_image;
 mod external_url;
 pub mod filesystem;
 
@@ -8,7 +9,6 @@ use std::io::{self, BufRead, BufReader, Read, Seek, Write};
 use std::path::{Component, Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::{SystemTime, UNIX_EPOCH};
 
 const SCAN_BUFFER_BYTES: usize = 64 * 1024;
 const NORMAL_FILE_BYTES: u64 = 8 * 1024 * 1024;
@@ -272,6 +272,34 @@ pub async fn pick_workspace() -> BackendResult<Option<WorkspaceSelection>> {
 }
 
 #[tauri::command]
+pub async fn pick_image_directory(locale: Option<String>) -> BackendResult<Option<String>> {
+    let selected = rfd::AsyncFileDialog::new()
+        .set_title(if locale.as_deref() == Some("en-US") {
+            "Choose Image Folder"
+        } else {
+            "选择图片保存目录"
+        })
+        .pick_folder()
+        .await;
+
+    selected
+        .map(|handle| clipboard_image::normalize_image_directory(handle.path()))
+        .transpose()
+        .map(|selected| selected.map(|path| display_path(&path)))
+}
+
+#[tauri::command]
+pub fn prepare_local_image(app: tauri::AppHandle, path: String) -> BackendResult<String> {
+    use tauri::Manager;
+
+    let path = clipboard_image::normalize_local_image(Path::new(&path))?;
+    app.asset_protocol_scope()
+        .allow_file(&path)
+        .map_err(|error| BackendError::new("imagePreviewUnavailable", error.to_string()))?;
+    Ok(display_path(&path))
+}
+
+#[tauri::command]
 pub async fn pick_document() -> BackendResult<Option<DocumentSelection>> {
     let selected = rfd::AsyncFileDialog::new()
         .set_title("打开文本或代码文件 / Open Text or Code File")
@@ -494,24 +522,35 @@ fn comparable_path(path: &Path) -> PathBuf {
 }
 
 #[tauri::command(rename_all = "camelCase")]
-pub fn save_clipboard_image(document_path: String) -> BackendResult<SavedClipboardImage> {
-    let mut clipboard = arboard::Clipboard::new()
-        .map_err(|error| BackendError::new("clipboardUnavailable", error.to_string()))?;
-    let image = clipboard
-        .get_image()
-        .map_err(|error| BackendError::new("clipboardNoImage", error.to_string()))?;
+pub async fn save_clipboard_image(
+    app: tauri::AppHandle,
+    document_path: String,
+    directory_path: Option<String>,
+) -> BackendResult<SavedClipboardImage> {
+    use tauri::Manager;
 
-    let width = u32::try_from(image.width)
-        .map_err(|_| BackendError::new("imageTooLarge", "clipboard image width is too large"))?;
-    let height = u32::try_from(image.height)
-        .map_err(|_| BackendError::new("imageTooLarge", "clipboard image height is too large"))?;
+    let saved = tauri::async_runtime::spawn_blocking(move || {
+        clipboard_image::save_system_clipboard_image(
+            Path::new(&document_path),
+            directory_path.as_deref().map(Path::new),
+        )
+    })
+    .await
+    .map_err(|error| BackendError::new("clipboardUnavailable", error.to_string()))??;
 
-    save_rgba_image(
-        Path::new(&document_path),
-        width,
-        height,
-        image.bytes.as_ref(),
-    )
+    // Explicit custom folders may be outside the default HOME asset scope. Only
+    // the image just written becomes readable, never the whole chosen directory.
+    app.asset_protocol_scope()
+        .allow_file(&saved.path)
+        .map_err(|error| BackendError::new("imagePreviewUnavailable", error.to_string()))?;
+    Ok(saved)
+}
+
+#[tauri::command]
+pub async fn clipboard_has_image() -> BackendResult<bool> {
+    tauri::async_runtime::spawn_blocking(clipboard_image::has_system_clipboard_image)
+        .await
+        .map_err(|error| BackendError::new("clipboardUnavailable", error.to_string()))?
 }
 
 fn list_workspace_path(root: &Path, show_hidden: bool) -> BackendResult<Vec<WorkspaceNode>> {
@@ -1331,6 +1370,7 @@ fn advance_match(matched: &mut usize, pattern: &[u8], byte: u8) -> bool {
     }
 }
 
+#[cfg(test)]
 fn atomic_write(path: &Path, bytes: &[u8]) -> io::Result<()> {
     atomic_write_with_hook(path, bytes, |_| Ok(())).map(|_| ())
 }
@@ -1397,80 +1437,9 @@ fn create_temp_file(parent: &Path, target_name: Option<&OsStr>) -> io::Result<(P
     ))
 }
 
-fn save_rgba_image(
-    document_path: &Path,
-    width: u32,
-    height: u32,
-    rgba: &[u8],
-) -> BackendResult<SavedClipboardImage> {
-    if !document_path.is_file() {
-        return Err(BackendError::new(
-            "documentNotSaved",
-            "save the Markdown document before pasting an image",
-        ));
-    }
-    let expected_len = usize::try_from(width)
-        .ok()
-        .and_then(|width| {
-            usize::try_from(height)
-                .ok()
-                .and_then(|height| width.checked_mul(height))
-        })
-        .and_then(|pixels| pixels.checked_mul(4))
-        .ok_or_else(|| BackendError::new("imageTooLarge", "clipboard image is too large"))?;
-    if rgba.len() != expected_len {
-        return Err(BackendError::new(
-            "invalidImage",
-            "clipboard image does not contain RGBA pixels",
-        ));
-    }
-
-    let parent = document_path.parent().ok_or_else(|| {
-        BackendError::new(
-            "documentNotSaved",
-            "save the Markdown document before pasting an image",
-        )
-    })?;
-    let assets = parent.join("assets");
-    fs::create_dir_all(&assets)
-        .map_err(|error| BackendError::io("assets directory could not be created", error))?;
-
-    let timestamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis();
-    let counter = UNIQUE_COUNTER.fetch_add(1, Ordering::Relaxed);
-    let file_name = format!("paste-{timestamp}-{counter}.png");
-    let image_path = assets.join(&file_name);
-
-    let mut encoded = Vec::new();
-    {
-        let mut encoder = png::Encoder::new(&mut encoded, width, height);
-        encoder.set_color(png::ColorType::Rgba);
-        encoder.set_depth(png::BitDepth::Eight);
-        let mut writer = encoder
-            .write_header()
-            .map_err(|error| BackendError::new("imageEncodeFailed", error.to_string()))?;
-        writer
-            .write_image_data(rgba)
-            .map_err(|error| BackendError::new("imageEncodeFailed", error.to_string()))?;
-    }
-
-    atomic_write(&image_path, &encoded)
-        .map_err(|error| BackendError::io("clipboard image could not be saved", error))?;
-
-    Ok(SavedClipboardImage {
-        path: display_path(&image_path),
-        markdown_uri: format!("./assets/{file_name}"),
-        width,
-        height,
-    })
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::Cursor;
     use tauri::ipc::{InvokeResponseBody, IpcResponse};
 
     pub(super) struct TestDirectory(PathBuf);
@@ -2480,37 +2449,5 @@ mod tests {
             .filter(|entry| entry.file_name().to_string_lossy().ends_with(".tmp"))
             .count();
         assert_eq!(leftovers, 0);
-    }
-
-    #[test]
-    fn rgba_image_is_saved_as_png_with_relative_markdown_uri() {
-        let temp = TestDirectory::new("save-image");
-        let document = temp.path().join("document.md");
-        fs::write(&document, "# Image\n").expect("write document");
-        let rgba = [255_u8, 0, 0, 255, 0, 255, 0, 255];
-
-        let saved = save_rgba_image(&document, 2, 1, &rgba).expect("save image");
-
-        assert!(saved.markdown_uri.starts_with("./assets/paste-"));
-        assert!(saved.markdown_uri.ends_with(".png"));
-        let bytes = fs::read(&saved.path).expect("read saved PNG");
-        assert_eq!(&bytes[..8], b"\x89PNG\r\n\x1a\n");
-
-        let decoder = png::Decoder::new(Cursor::new(bytes));
-        let reader = decoder.read_info().expect("read PNG metadata");
-        assert_eq!(reader.info().width, 2);
-        assert_eq!(reader.info().height, 1);
-    }
-
-    #[test]
-    fn image_paste_requires_a_saved_document() {
-        let temp = TestDirectory::new("save-image-unsaved");
-        let document = temp.path().join("missing.md");
-
-        let error = save_rgba_image(&document, 1, 1, &[0, 0, 0, 255])
-            .expect_err("unsaved document must be rejected");
-
-        assert_eq!(error.code, "documentNotSaved");
-        assert!(!temp.path().join("assets").exists());
     }
 }
