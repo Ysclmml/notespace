@@ -169,7 +169,7 @@ describe("AppShell editor groups and preview tabs", () => {
     await openTree(sidebar, "alpha.json");
     await split("alpha.json");
     focus(await editorView(2));
-    fireEvent.keyDown(window, { key: "f", metaKey: true });
+    fireEvent.keyDown(window, { key: "f", ctrlKey: true });
     const search = await within(panel(2)).findByRole("search", { name: "当前页查找" });
     expect(within(panel(1)).queryByRole("search")).toBeNull();
     fireEvent.change(within(search).getByRole("textbox"), { target: { value: "title" } });

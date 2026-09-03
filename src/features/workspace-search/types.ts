@@ -10,6 +10,8 @@ export interface WorkspaceSearchMatch {
   /** One-based physical line and UTF-16 column of the first match on the line. */
   readonly line: number;
   readonly column: number;
+  /** UTF-16 length of the first match on this line. */
+  readonly matchLength: number;
   readonly snippet: string;
 }
 
@@ -21,8 +23,42 @@ export interface WorkspaceSearchResponse {
   readonly truncated: boolean;
 }
 
+export interface WorkspaceSearchOutcome {
+  readonly inputKey: string;
+  readonly response?: WorkspaceSearchResponse;
+  readonly failed?: "invalidSearchPattern" | "invalidFileFilter" | "generic";
+}
+
+export interface WorkspaceSearchViewState {
+  readonly query: string;
+  readonly caseSensitive: boolean;
+  readonly useRegex: boolean;
+  readonly fileFilter: string;
+  readonly selectedRoot: string;
+  readonly criteriaVersion: number;
+  readonly outcome: WorkspaceSearchOutcome | null;
+  readonly resultsScrollTop: number;
+  readonly selectedResultKey: string | null;
+}
+
+export function createWorkspaceSearchViewState(): WorkspaceSearchViewState {
+  return {
+    query: "",
+    caseSensitive: false,
+    useRegex: false,
+    fileFilter: "",
+    selectedRoot: "",
+    criteriaVersion: 0,
+    outcome: null,
+    resultsScrollTop: 0,
+    selectedResultKey: null,
+  };
+}
+
 export type WorkspaceSearch = (
   workspaces: readonly WorkspaceSearchRoot[],
   query: string,
   caseSensitive: boolean,
+  useRegex: boolean,
+  fileFilter: string,
 ) => Promise<WorkspaceSearchResponse>;

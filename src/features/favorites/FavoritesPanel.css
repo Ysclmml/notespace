@@ -1,0 +1,219 @@
+.favorites-panel {
+  min-width: 0;
+  padding: 2px 8px 9px;
+  margin-bottom: 3px;
+  border-bottom: 1px solid var(--line-200);
+}
+
+.favorites-panel ul {
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+.favorites-panel__row {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  height: 32px;
+  padding-inline: 14px 3px;
+  border-radius: 5px;
+}
+
+.favorites-panel button {
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--ink-500);
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.favorites-panel button:focus-visible {
+  outline: 2px solid var(--accent-600);
+  outline-offset: -2px;
+}
+
+.favorites-panel__heading {
+  display: flex;
+  width: 100%;
+  height: 34px;
+  align-items: center;
+  gap: 7px;
+  padding: 0 9px;
+  font-weight: 600;
+  text-align: left;
+}
+
+.favorites-panel__heading:hover,
+.favorites-panel__row:hover {
+  background: var(--surface-hover);
+}
+
+.favorites-panel__heading > svg:first-child {
+  color: var(--accent-600);
+}
+
+.favorites-panel__count {
+  color: var(--ink-400);
+  font-size: 11px;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+
+.favorites-panel__chevron {
+  margin-left: auto;
+  color: var(--ink-400);
+}
+
+.favorites-panel__heading[aria-expanded="false"] .favorites-panel__chevron {
+  transform: rotate(-90deg);
+}
+
+.favorites-panel__file {
+  display: flex;
+  height: 32px;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+  padding: 0 5px;
+  text-align: left;
+}
+
+.favorites-panel__file > svg {
+  flex: 0 0 15px;
+  color: var(--ink-400);
+}
+
+.favorites-panel__name,
+.favorites-panel__hint {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.favorites-panel__name {
+  flex: 0 1 auto;
+}
+
+.favorites-panel__hint {
+  flex: 0 3 auto;
+  margin-left: auto;
+  max-width: 42%;
+  font-size: 10px;
+  color: var(--ink-400);
+}
+
+.favorites-panel__row--active {
+  color: var(--surface-selected-ink);
+  background: var(--surface-selected);
+  box-shadow: inset 3px 0 var(--accent-600);
+}
+
+.favorites-panel__row--active:hover {
+  background: var(--surface-selected-hover);
+}
+
+.favorites-panel__row--active .favorites-panel__file {
+  color: var(--surface-selected-ink);
+  font-weight: 600;
+}
+
+.favorites-panel__row--unavailable .favorites-panel__hint {
+  color: var(--ink-700);
+}
+
+.favorites-panel__action {
+  display: inline-flex;
+  width: 23px;
+  height: 24px;
+  flex: 0 0 23px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.favorites-panel__action:hover {
+  color: var(--ink-950);
+  background: var(--paper-3);
+}
+
+.favorites-panel__action:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.favorites-panel__remove {
+  opacity: 0;
+}
+
+.favorites-panel__row:hover .favorites-panel__remove,
+.favorites-panel__row:focus-within .favorites-panel__remove,
+.favorites-panel__row--unavailable .favorites-panel__remove {
+  opacity: 1;
+}
+
+.favorites-panel__empty {
+  padding: 2px 9px 6px 30px;
+  color: var(--ink-400);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.favorites-panel__empty p {
+  margin: 3px 0;
+}
+
+.favorites-panel__context-menu {
+  position: fixed;
+  z-index: 1150;
+  width: max-content;
+  min-width: 158px;
+  max-width: calc(100vw - 16px);
+  padding: 5px;
+  color: #292b30;
+  background: rgba(248, 248, 248, 0.96);
+  border: 1px solid rgba(76, 80, 87, 0.25);
+  border-radius: 9px;
+  outline: none;
+  box-shadow:
+    0 10px 32px rgba(20, 24, 30, 0.18),
+    0 1px 4px rgba(20, 24, 30, 0.12);
+  backdrop-filter: blur(22px) saturate(1.15);
+  -webkit-backdrop-filter: blur(22px) saturate(1.15);
+  font:
+    400 13px/1.35 -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.favorites-panel__context-menu button {
+  display: block;
+  width: 100%;
+  min-height: 26px;
+  padding: 4px 16px;
+  color: inherit;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+  background: transparent;
+  border: 0;
+  border-radius: 5px;
+  outline: none;
+  font: inherit;
+}
+
+.favorites-panel__context-menu button:hover,
+.favorites-panel__context-menu button:focus-visible {
+  color: #fff;
+  background: #4c82e8;
+}
+
+@media (hover: none) {
+  .favorites-panel__remove {
+    opacity: 1;
+  }
+}

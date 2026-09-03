@@ -2,6 +2,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useI18n, type TranslationKey } from "../../app/i18n";
 import {
+  formatShortcut,
+  FORMATTING_ACTIONS,
+  type FormattingAction,
+} from "../shortcuts/shortcuts";
+import { useFormattingShortcuts } from "../editor/useFormattingShortcuts";
+import {
   executeEditorContextMenuCommand,
   isReadOnlyCodeTarget,
   isVisualMarkdownTarget,
@@ -59,28 +65,28 @@ const LINK_ITEMS: ReadonlyArray<MenuItem> = [
 ];
 
 const HISTORY_ITEMS: ReadonlyArray<MenuItem> = [
-  { command: "undo", label: "menu.undo", shortcut: "⌘Z" },
-  { command: "redo", label: "menu.redo", shortcut: "⇧⌘Z" },
+  { command: "undo", label: "menu.undo", shortcut: "Mod+Z" },
+  { command: "redo", label: "menu.redo", shortcut: "Mod+Shift+Z" },
 ];
 
 const EDIT_ITEMS: ReadonlyArray<MenuItem> = [
-  { command: "cut", label: "context.cut", shortcut: "⌘X", separated: true },
-  { command: "copy", label: "context.copy", shortcut: "⌘C" },
-  { command: "paste", label: "context.paste", shortcut: "⌘V" },
+  { command: "cut", label: "context.cut", shortcut: "Mod+X", separated: true },
+  { command: "copy", label: "context.copy", shortcut: "Mod+C" },
+  { command: "paste", label: "context.paste", shortcut: "Mod+V" },
   {
     command: "selectAll",
     label: "context.selectAll",
-    shortcut: "⌘A",
+    shortcut: "Mod+A",
     separated: true,
   },
 ];
 
 const READ_ONLY_ITEMS: ReadonlyArray<MenuItem> = [
-  { command: "copy", label: "context.copy", shortcut: "⌘C" },
+  { command: "copy", label: "context.copy", shortcut: "Mod+C" },
   {
     command: "selectAll",
     label: "context.selectAll",
-    shortcut: "⌘A",
+    shortcut: "Mod+A",
     separated: true,
   },
 ];
@@ -95,6 +101,9 @@ const VISUAL_BRANCHES: ReadonlyArray<MenuBranch> = [
       { command: "heading1", label: "context.heading1" },
       { command: "heading2", label: "context.heading2" },
       { command: "heading3", label: "context.heading3" },
+      { command: "heading4", label: "context.heading4" },
+      { command: "heading5", label: "context.heading5" },
+      { command: "heading6", label: "context.heading6" },
       { command: "blockquote", label: "context.blockquote", separated: true },
       { command: "bulletList", label: "context.bulletList" },
       { command: "orderedList", label: "context.orderedList" },
@@ -105,8 +114,8 @@ const VISUAL_BRANCHES: ReadonlyArray<MenuBranch> = [
     id: "format",
     label: "menu.format",
     items: [
-      { command: "toggleBold", label: "context.bold", shortcut: "⌘B" },
-      { command: "toggleItalic", label: "context.italic", shortcut: "⌘I" },
+      { command: "toggleBold", label: "context.bold" },
+      { command: "toggleItalic", label: "context.italic" },
       { command: "toggleStrike", label: "context.strike" },
       { command: "toggleInlineCode", label: "context.inlineCode" },
       { command: "clearFormatting", label: "context.clearFormatting", separated: true },
@@ -199,6 +208,13 @@ export function EditorContextMenu({
   target,
 }: EditorContextMenuProps) {
   const { t } = useI18n();
+  const shortcuts = useFormattingShortcuts();
+  const itemShortcut = (item: MenuItem) =>
+    formatShortcut(
+      FORMATTING_ACTIONS.includes(item.command as FormattingAction)
+        ? shortcuts[item.command as FormattingAction]
+        : (item.shortcut ?? null),
+    );
   const menuRef = useRef<HTMLDivElement>(null);
   const [openBranch, setOpenBranch] = useState<MenuBranch["id"] | null>(null);
   const [actionError, setActionError] = useState(false);
@@ -361,7 +377,7 @@ export function EditorContextMenu({
             type="button"
           >
             <span>{t(item.label)}</span>
-            {item.shortcut && <kbd>{item.shortcut}</kbd>}
+            {itemShortcut(item) && <kbd>{itemShortcut(item)}</kbd>}
           </button>
         );
       })}
@@ -426,7 +442,7 @@ export function EditorContextMenu({
                   type="button"
                 >
                   <span>{t(item.label)}</span>
-                  {item.shortcut && <kbd>{item.shortcut}</kbd>}
+                  {itemShortcut(item) && <kbd>{itemShortcut(item)}</kbd>}
                 </button>
               ))}
             </div>

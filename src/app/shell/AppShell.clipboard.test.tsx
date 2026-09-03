@@ -163,7 +163,7 @@ describe("workspace clipboard image integration", () => {
     const { saveImage } = await setup();
     expect(await paste(NOTE_A)).toBe("![](./paste.png)");
     expect(saveImage).toHaveBeenLastCalledWith(NOTE_A);
-    fireEvent.keyDown(window, { key: "o", metaKey: true });
+    fireEvent.keyDown(window, { key: "o", ctrlKey: true });
     await waitFor(() => expect(editors.has(STANDALONE)).toBe(true));
     expect(await paste(STANDALONE)).toBe("![](./paste.png)");
     expect(saveImage).toHaveBeenLastCalledWith(STANDALONE);
@@ -199,7 +199,7 @@ describe("workspace clipboard image integration", () => {
         name: "与 Markdown 文件保存在同一目录",
       }),
     );
-    fireEvent.keyDown(window, { key: "n", metaKey: true });
+    fireEvent.keyDown(window, { key: "n", ctrlKey: true });
     expect(container.querySelectorAll(".tab-rail__item")).toHaveLength(1);
     fireEvent.click(within(dialog).getByRole("button", { name: "取消" }));
     await paste(NOTE_A);
@@ -219,7 +219,7 @@ describe("workspace clipboard image integration", () => {
   it("saves an untitled document before queuing insertion on its remounted editor", async () => {
     const { saveAs, saveImage, choose } = await setup();
     await setDirectory("Alpha", "/clipboard-images/drafts", choose);
-    fireEvent.keyDown(window, { key: "n", metaKey: true });
+    fireEvent.keyDown(window, { key: "n", ctrlKey: true });
     const draft = "untitled://未命名-1.md";
     await waitFor(() => expect(editors.has(draft)).toBe(true));
     expect(await paste(draft)).toBe("");
@@ -243,7 +243,7 @@ describe("workspace clipboard image integration", () => {
 
   it("does not write an image when Save As is cancelled or the empty clipboard has no image", async () => {
     const { adapter, saveAs, saveImage } = await setup();
-    fireEvent.keyDown(window, { key: "n", metaKey: true });
+    fireEvent.keyDown(window, { key: "n", ctrlKey: true });
     const draft = "untitled://未命名-1.md";
     await waitFor(() => expect(editors.has(draft)).toBe(true));
     const available = vi.spyOn(adapter, "hasClipboardImage").mockResolvedValue(false);
@@ -260,7 +260,7 @@ describe("workspace clipboard image integration", () => {
 
   it("discards a queued Save As insertion when its editor surface changes", async () => {
     await setup();
-    fireEvent.keyDown(window, { key: "n", metaKey: true });
+    fireEvent.keyDown(window, { key: "n", ctrlKey: true });
     const draft = "untitled://未命名-1.md";
     await waitFor(() => expect(editors.has(draft)).toBe(true));
     await paste(draft);
@@ -302,7 +302,7 @@ describe("workspace clipboard image integration", () => {
       "无法插入图片：无法读取系统剪贴板，请检查系统权限后重试。",
     );
 
-    fireEvent.keyDown(window, { key: "o", metaKey: true });
+    fireEvent.keyDown(window, { key: "o", ctrlKey: true });
     await waitFor(() => expect(editors.has(STANDALONE)).toBe(true));
     expect(container.querySelector(".status-bar__state")).not.toHaveTextContent(
       "无法插入图片",

@@ -2,19 +2,27 @@
 
 | 字段     | 值                                                                               |
 | -------- | -------------------------------------------------------------------------------- |
-| 状态     | Approved baseline 1.3（ADR-0016，产品版本 0.1.1）                                 |
-| 日期     | 2026-09-03                                                                       |
+| 状态     | Approved baseline 1.8（ADR-0021，NoteSpace 0.2.0）                               |
+| 日期     | 2026-09-04                                                                       |
 | 首发平台 | macOS                                                                            |
 | 技术栈   | React 19 + TypeScript + Milkdown/ProseMirror + CodeMirror 6 + Tauri 2 + Rust     |
 | 数据原则 | 本地 Markdown、文本与图片资源文件是唯一持久化真相；UI 投影和本机便利状态均可重建 |
 
 本文是实现、评审和上下文压缩后的首要产品规范。若历史设计与本文冲突，以 [ADR-0005](decisions/0005-lean-local-editor-boundary.md)、[ADR-0006](decisions/0006-visual-editor-explicit-source-mode.md)、[ADR-0007](decisions/0007-local-files-multiple-workspaces-and-split-preview.md)、[ADR-0008](decisions/0008-save-workspace-files-and-visual-tables.md)、[ADR-0009](decisions/0009-recoverable-workspace-delete-and-dirty-close.md)、[ADR-0010](decisions/0010-workspace-context-actions-and-folder-creation.md)、[ADR-0011](decisions/0011-editor-groups-preview-tabs-and-image-links.md) 和本文为准。
 
-导航规则由 [ADR-0012](decisions/0012-markdown-link-policy-and-window-navigation.md) 更新：普通 Markdown 链接按当前标签是否固定选择新页/原位，工具栏前进/后退使用窗口级跨标签访问轨迹。[ADR-0013](decisions/0013-browsing-restore-and-unified-editor-panes.md) 进一步取代旧的独立右侧只读栏、分屏复制标签和不恢复浏览元数据边界。[ADR-0014](decisions/0014-external-filesystem-changes.md) 接受轻量外部文件监听、重载与版本检查，取代“外部修改后置”。[ADR-0015](decisions/0015-workspace-clipboard-images.md) 接受每工作区截图位置、剪贴板兼容和本地图片单文件授权；冲突时以最新适用 ADR 和当前 baseline 1.3 为准。
+导航规则由 [ADR-0012](decisions/0012-markdown-link-policy-and-window-navigation.md) 更新：普通 Markdown 链接按当前标签是否固定选择新页/原位，工具栏前进/后退使用窗口级跨标签访问轨迹。[ADR-0013](decisions/0013-browsing-restore-and-unified-editor-panes.md) 进一步取代旧的独立右侧只读栏、分屏复制标签和不恢复浏览元数据边界。[ADR-0014](decisions/0014-external-filesystem-changes.md) 接受轻量外部文件监听、重载与版本检查，取代“外部修改后置”。[ADR-0015](decisions/0015-workspace-clipboard-images.md) 接受每工作区截图位置、剪贴板兼容和本地图片单文件授权；冲突时以最新适用 ADR 和当前 baseline 1.8 为准。
 
 ## 1. 产品定义
 
-[ADR-0016](decisions/0016-workspace-search-html-export-and-restore-notice.md) 增加工作区全文搜索、静态 HTML 导出及失效浏览恢复提示；涉及这些行为时优先于早期基线，其他编辑与数据边界保持不变。
+[ADR-0016](decisions/0016-workspace-search-html-export-and-restore-notice.md) 增加工作区全文搜索、静态 HTML 导出及失效浏览恢复提示。[ADR-0017](decisions/0017-writing-tools-and-shareable-exports.md) 将导出升级为含图片和静态 Mermaid 的可分享 HTML 与 macOS PDF，并增加可配置格式快捷键、当前页替换、收藏、专注和模板；冲突时优先于早期基线，其他编辑与数据边界保持不变。
+
+[ADR-0018](decisions/0018-organized-favorites-global-search-and-local-templates.md) 将收藏并入文件页顶部折叠组、全文搜索移为独立弹窗，并补充离线帮助、本地 Markdown 模板库及导出二级菜单；该基线确立了 25 个实际命令和 19 个原生菜单动作。
+
+[ADR-0019](decisions/0019-search-favorites-and-github-update-checks.md) 增加应用自绘搜索范围、正文/路径正则、收藏显示设置和固定 GitHub 最新发布检查；新增 `check_for_update()` 后当前有 26 个实际命令，原生菜单动作仍为 19 个。
+
+[ADR-0020](decisions/0020-search-history-favorites-menu-and-markdown-associations.md) 增加有界的最近搜索条件、明确的收藏关闭菜单，以及打包应用的 `.md/.markdown` 文件关联；新增 `take_opened_document_paths()` 后当前有 27 个实际命令，原生菜单动作仍为 19 个。
+
+[ADR-0021](decisions/0021-search-session-and-desktop-ui-localization.md) 让全文搜索在结果跳转后恢复本次运行内的结果与位置，历史上限改为默认 15、可配 1–30，并补齐 macOS 系统菜单本地化和 About 稳定状态区；命令与原生菜单动作数量不变。
 
 NoteSpace（笔记空间）是一个“像 Typora 一样编辑、像浏览器一样阅读”的本地桌面编辑器：Markdown 使用稳定真可视编辑；文档跳转具有 Tab、前进和后退；代码/配置/纯文本也能直接编辑。默认单画布，可将原标签移动到横向编辑组并在组间拖动；本地引用可先看只读浮层或进入普通右侧编辑组，图片链接进入专门查看器。启动可恢复上次浏览的路径与视图，也可按偏好打开空白窗口，正文始终从磁盘读取。
 
@@ -39,8 +47,13 @@ NoteSpace（笔记空间）是一个“像 Typora 一样编辑、像浏览器一
 ### 2.1 当前能力
 
 - 恢复过程中暂不可用的工作区/文件有非模态提示：详情、重试、选择文件夹或只移除最近记录；不自动判定为删除，不重建磁盘内容。
-- 侧栏工作区搜索（`Cmd/Ctrl+Shift+F`）按用户提交读取已打开根的磁盘内容。大小写选项、匹配行号与上下文；沿用隐藏/后缀/重目录/symlink 过滤，有限扫描不建索引。每行首次命中，最多 200 行结果；32 根、20,000 枚举项、5,000 文件、2 MiB 单文件、64 MiB 总读取、64 层深度限制，达到边界或部分目录不可读明确标记不完整。跳过与不可用根单独报告。未保存修改不参与磁盘搜索，点击结果仍保持现有 dirty 会话并在活动组定位。
-- 顶部文件菜单/应用更多菜单可导出普通 Markdown 为静态 HTML：使用最新正文快照，GFM 结构、内联排版样式、代码与资源引用。通过 remark 结构树白名单输出，不导出原始可执行 HTML、脚本或编辑器 DOM。相对图片/链接变为基于源文件的本地 file URI；不请求网络、不打包资源。Mermaid 保留源码，未命名文档无法解析相对资源时明确占位，source-only 暂禁用导出。原生 HTML 保存对话框与原子写入独立于 Markdown 保存，不清 dirty、不改 Undo。
+- 工具栏全文搜索（`Cmd/Ctrl+Shift+F`）打开独立弹窗，通过带清晰 SVG 箭头的应用自绘单选控件选择全部已打开根或一个根，按用户提交读取受支持 Markdown/代码/文本的磁盘正文；快速打开仍只查文件名/路径。正文默认普通文本，可切换正则并选择大小写；另有独立、忽略大小写的文件名/相对路径正则筛选。最近记录紧凑显示查询文字，默认保留 15 条成功搜索条件，可在设置中调整为 1–30 条、选择回填或手动清空；选择历史不会自动读盘，已关闭的历史范围回退为全部当前根。无效正则分别提示；匹配行号与上下文、隐藏/后缀/重目录/symlink 过滤及有限无索引扫描保持不变。每行首次命中，最多 200 行结果；32 根、20,000 枚举项、5,000 文件、2 MiB 单文件、64 MiB 总读取、64 层深度限制，达到边界或部分目录不可读明确标记不完整。跳过与不可用根单独报告。未保存修改不参与磁盘搜索。点击结果关闭弹窗、保持现有 dirty 会话并在活动组定位；重开时恢复本次运行内的表单、结果、滚动和最后激活项，不重新读盘，退出应用即丢弃结果。
+- 普通 Markdown 导出为自带图片/样式/静态 Mermaid 的单文件 HTML 或 macOS 原生分页 PDF。采用最新正文快照与 remark 白名单，不导出可执行 HTML/脚本或编辑器 DOM。图片字节由 Rust 有界嵌入最终产物，不经过 JS/Markdown Base64；联网图片仅在本次对话框显式勾选后读取。缺失/过大/无法渲染资源导致明确失败，不静默缺图。source-only 暂禁用，解析前正文限 8 MiB；详细预算与原子目标保护见 ADR-0017。导出不清 dirty、不改 Undo，不递归打包其他文档。
+- 当前页查找可展开可撤销的单项/全部替换；设置可重绑平台格式快捷键。文件收藏只存路径，与固定标签独立；内置模板在当前组新建 dirty 未命名 Markdown；专注模式保持编辑器挂载，只隐藏界面并支持 Esc/快捷键退出。
+- 收藏位于文件页顶部可折叠分组，工具栏星标/文件右键均可添加或移除。`showFavorites` 设置可显示或隐藏分组；标题右键/Control-click 打开菜单，只有明确选择「关闭收藏」才隐藏，普通左键仍只折叠。关闭不会清空收藏路径。工作区关闭后独立打开收藏文件；失效项保留并标记，重试/取消不删除或修复原文件。只检查最多 100 个路径元数据，不读取正文。
+- 打包版声明可编辑 `.md/.markdown`，可从 Finder/系统「打开方式」进入现有文档打开流程；应用只注册候选处理程序，不静默接管系统默认。关联文件作为独立前台标签打开，不隐式打开父目录工作区，继续使用既有预检、共享会话、dirty 和保存规则。
+- About 显示当前应用版本并可手动检查更新；默认启动检查可在设置中关闭。检查只读取 `https://api.github.com/repos/Ysclmml/notespace/releases/latest` 的稳定发布元数据，失败不影响编辑；跳过仅记住该一个版本，发布页只在用户点击后交给系统浏览器。不自动下载/安装，不上传文档或路径。
+- 自定义模板位于当前应用 `app_data_dir()/templates`，不在安装包内；显式打开「自定义模板」才列目录，可复制当前正文为模板、刷新、打开文件夹管理。直属普通 `.md/.markdown`，最多 128 篇/1024 枚举项、单篇 256 KiB；有界预检、create-new 不覆盖，失败提示。选用生成普通 dirty 未命名 Markdown，保存模板不保存源页；不搬运相对图片或执行模板变量。
 
 - 多工作区根及其文件树同时显示、各根独立折叠、活动根、聚合 Quick Open、根路径复制/关闭、独立文件打开和最近工作区/文件；根右键可切换本根隐藏项显示，默认关闭。
 - 启动默认 `restore`，按保存的路径、标签/分组顺序、固定状态和数值阅读位置重新打开磁盘文件；`empty` 跳过工作区/标签自动打开但保留最近项。不保存正文、未命名页或导航历史。
@@ -54,7 +67,7 @@ NoteSpace（笔记空间）是一个“像 Typora 一样编辑、像浏览器一
 - 当前页查找覆盖可视正文、Markdown 源码和普通代码，支持匹配定位/循环与退出，不修改正文或 dirty。
 - 浅色 fenced code、真实行号、可读 selection 对比度、失焦后清理旧活动选区、语言选择/Copy、fence 语言自动补全和列表 marker 对齐；长链接编辑地址可完整换行。
 - 中英文 Shell、设置、应用内菜单、自定义右键和 macOS 原生菜单。
-- 九项本地持久设置；Base64 预检、截图落盘后插链接、同目录原子保存三项实用护栏。
+- 十三项本地持久设置；Base64 预检、截图落盘后插链接、同目录原子保存三项实用护栏。
 - GFM 表格真可视编辑、内部横向滚动、view-only 列宽、尺寸网格和行列结构操作。
 - Mermaid/图片文内预览与沉浸查看器。
 
@@ -71,6 +84,7 @@ NoteSpace（笔记空间）是一个“像 Typora 一样编辑、像浏览器一
 - HMAC/nonce、repair token、193 MiB IPC 测试、37 命令 schema、通用 feature flags。
 - 递归创建目录、重命名、移动、复制文件内容、永久删除、批量文件操作或通用文件管理器。
 - Git、知识图谱、AI、插件市场；真实需求出现后逐项决策。
+- 任意更新源、自动下载/安装、静默替换应用包或携带文档/工作区路径的更新请求；当前只允许 ADR-0019 的固定 GitHub 最新发布查询。
 
 ## 3. 体验与视觉
 
@@ -117,6 +131,7 @@ NoteSpace（笔记空间）是一个“像 Typora 一样编辑、像浏览器一
 | 点击 Outline / heading anchor | 滚动并聚焦目标标题                                                        |
 | `⌘K` / `⌘P`                   | 聚合搜索全部已打开工作区文件                                              |
 | `⌘F` / `Ctrl+F`               | 查找当前活动页；前后匹配、循环和 Esc 退出，不改变正文                     |
+| `Cmd/Ctrl+Shift+F`            | 打开磁盘全文搜索；自绘范围、双正则和可清空最近搜索条件                    |
 | `⌘O`                          | 原生 chooser 打开独立文件                                                 |
 | `⌘N`                          | 新建 Markdown；应用内菜单另有新建文本                                     |
 | `⌘S` / `⌘⇧S`                  | 保存 / 另存为当前可编辑主 Tab                                             |
@@ -125,6 +140,8 @@ NoteSpace（笔记空间）是一个“像 Typora 一样编辑、像浏览器一
 | 点击工作区根折叠按钮          | 只收起/展开该根；不改变活动根、Tab 或磁盘                                 |
 | 根“复制路径 / 关闭工作区”     | 复制绝对路径；或只从当前窗口移出该根                                      |
 | 根“显示隐藏文件”              | 切换该根及子树的隐藏项显示，默认关闭并独立持久化                          |
+| 收藏标题右键 / Control-click  | 打开收藏菜单；选「关闭收藏」后隐藏，设置可恢复且不清路径                  |
+| 系统打开 `.md/.markdown`      | 在前台标签打开独立 Markdown 文件；不自动添加父目录工作区                  |
 | 文件/目录“移到废纸篓”         | 应用内确认后可恢复删除；取消或失败保持原状                                |
 | `⌘/`                          | Markdown 可视/源码切换；代码/文本无此开关                                 |
 | `path.ext:line` hover/点击    | hover 为有界浮层；已有右编辑组时点击直接打开，干净临时页可替换            |
@@ -137,25 +154,31 @@ NoteSpace（笔记空间）是一个“像 Typora 一样编辑、像浏览器一
 
 ### 3.3 语言、菜单与设置
 
-- 首次启动 `zh-CN`，可即时切换 `en-US`。Shell、设置、代码控件、viewer、应用内/右键菜单随 React locale 更新；Rust 通过 `set_native_menu_locale(locale)` 重建原生菜单。
-- 原生菜单包含应用、文件、编辑、显示、窗口和帮助。15 个固定小型 action ID 送给前端，含 `file.reveal` 和当前页查找 `edit.find`；Undo/Redo/Cut/Copy/Paste/Select All 使用 Tauri 预定义命令。`window.close` / `app.quit` 使用自定义 menu item，并与原生红色关闭统一进入前端 dirty 检查：按全部 Tab 的 current/back/forward 聚合后显示应用内非阻塞对话框；取消保持窗口与进程，确认或无 dirty 时只提交一次窗口销毁，macOS 主窗口实际销毁后应用进程必须退出。Rust 不复制文档状态。
+- 首次启动 `zh-CN`，可即时切换 `en-US`。Shell、设置、代码控件、viewer、应用内/右键菜单随 React locale 更新；Rust 通过 `set_native_menu_locale(locale)` 重建应用自有原生菜单。macOS 自动补入的编辑与窗口管理项目由包内 `zh-Hans/en` 本地化资源覆盖，跟随系统为该应用选择的语言并在重启后完整生效；不遍历标题或调用私有 API 强改系统项目。
+- 原生菜单包含应用、文件、编辑、显示、窗口和帮助。19 个固定小型 action ID 送给前端，含 `file.reveal` 和当前页查找 `edit.find`；Undo/Redo/Cut/Copy/Paste/Select All 使用 Tauri 预定义命令。`window.close` / `app.quit` 使用自定义 menu item，并与原生红色关闭统一进入前端 dirty 检查：按全部 Tab 的 current/back/forward 聚合后显示应用内非阻塞对话框；取消保持窗口与进程，确认或无 dirty 时只提交一次窗口销毁，macOS 主窗口实际销毁后应用进程必须退出。Rust 不复制文档状态。
 - 应用内“更多”菜单暴露新建 Markdown/文本、打开文件/工作区、Quick Open、保存/另存为、显示当前文件和设置等当前动作；工作区树另有根/目录新建、独立折叠、复制路径、关闭工作区、文件/目录 reveal 与移到废纸篓。
-- “更多 → 关于笔记空间”与原生关于/帮助入口复用同一双语对话框，显示产品简介及完整 GitHub 仓库地址 `https://github.com/Ysclmml/notespace`。用户点击后通过既有系统浏览器入口打开，不后台请求仓库、不改变正文或导航；打开失败在对话框内提示并允许重试。
+- “更多 → 关于笔记空间”与原生关于 `app.about` 打开双语产品信息，显示当前版本、简介及完整 GitHub 仓库地址 `https://github.com/Ysclmml/notespace`。仓库链接只在用户点击后通过系统浏览器打开；About 的「检查更新」由用户明确触发固定 GitHub API 请求。更新状态使用固定高度区域，未检查、检查中、成功、无发布、新版本、失败和长提示不会改变弹窗外框高度；打开或检查失败仍可重试，不改变正文或导航。
+- 启动更新检查默认开启，可在通用设置中关闭；只查询 GitHub `Ysclmml/notespace` 最新稳定发布。发现新版时可稍后提醒、只跳过该版本，或由用户点击打开经过校验的发布页；不自动下载/安装，不接受任意更新源。
+- “更多 → 使用帮助”与原生帮助 `help.open` 打开独立离线功能指南及当前快捷键速查；焦点约束、Esc 与恢复焦点，不创建正文。更多菜单和原生文件菜单统一一个导出父项，HTML/PDF 为二级选择，继续使用既有导出确认流程。
 - 自定义右键在编辑器、链接、只读代码、标签和工作区树目标上处理右键/Control-click。可视 Markdown 除 Undo/Redo/Cut/Copy/Paste/Select All 外，提供正文/标题、引用、列表、常用格式、代码块、分割线和表格；表格内再提供行列增删与删除表格。根、文件和目录菜单保持已有动作；标签增加保持打开、向右分屏、移到其他组与关闭。
 - 页面 capture 层默认阻止 WebView 平台菜单，但不停止事件传播，因此应用自定义菜单仍正常。只有显式标记的顶部工具栏放行平台菜单；菜单/对话框和确认期间不放行。debug 原生“显示 → 开发者工具”直接由 Rust 打开 DevTools，release 隐藏，不增加 invoke 或前端 action ID。
-- `markdown-workspace.settings.v1` 存储九项 UI/保存/启动偏好；`markdown-workspace.workspaces.v1` 存储打开/最近工作区、最近文件、活动根和每根隐藏项偏好；`markdown-workspace.session.v1` 存储有界的路径、分组/标签和数值阅读位置。三者都是可丢弃的本机便利状态，损坏或不可用时回退，不影响正文编辑。
+- `markdown-workspace.settings.v1` 存储十三项 UI/保存/启动/快捷键偏好；`markdown-workspace.workspaces.v1` 存储打开/最近工作区、最近文件、活动根和每根隐藏项偏好；`markdown-workspace.session.v1` 存储有界的路径、分组/标签和数值阅读位置；`markdown-workspace.favorites.v1` 只存最多 100 个收藏路径；`markdown-workspace.search-history.v1` 按 `searchHistoryLimit` 只存默认 15、可配 1–30 条成功搜索条件，不存结果或正文。搜索结果、滚动和最后激活项仅保留在当前运行内存。以上均是可丢弃的本机便利状态，损坏或不可用时回退，不影响正文编辑；关闭收藏分组不会改写收藏路径。
 
-| 偏好                   | 默认值    | 归一化/作用域                                           |
-| ---------------------- | --------- | ------------------------------------------------------- |
-| `locale`               | `zh-CN`   | `zh-CN` / `en-US`；含原生菜单                           |
-| `startupBehavior`      | `restore` | `restore` / `empty`；下一次启动生效，空白模式保留最近项 |
-| `editorFontSize`       | 16 px     | 12–28 px；Markdown 与代码/文本主表面                    |
-| `contentWidth`         | 920 px    | 640–1600 px；Markdown 画布和欢迎页                      |
-| `showCodeLineNumbers`  | `true`    | fenced code、代码/文本和只读预览                        |
-| `codeWrap`             | `true`    | fenced code、代码/文本和只读预览                        |
-| `showTypingHints`      | `true`    | Markdown 可视模式 fence 补全                            |
-| `autoSaveMode`         | `manual`  | `manual` / `afterDelay`；关闭仍看 dirty                 |
-| `autoSaveDelaySeconds` | 5 秒      | 1–300 秒；仅 `afterDelay` 生效                          |
+| 偏好                    | 默认值     | 归一化/作用域                                            |
+| ----------------------- | ---------- | -------------------------------------------------------- |
+| `locale`                | `zh-CN`    | `zh-CN` / `en-US`；含原生菜单                            |
+| `startupBehavior`       | `restore`  | `restore` / `empty`；下一次启动生效，空白模式保留最近项  |
+| `editorFontSize`        | 16 px      | 12–28 px；Markdown 与代码/文本主表面                     |
+| `contentWidth`          | 920 px     | 640–1600 px；Markdown 画布和欢迎页                       |
+| `showCodeLineNumbers`   | `true`     | fenced code、代码/文本和只读预览                         |
+| `codeWrap`              | `true`     | fenced code、代码/文本和只读预览                         |
+| `showTypingHints`       | `true`     | Markdown 可视模式 fence 补全                             |
+| `showFavorites`         | `true`     | 文件侧栏收藏分组可见性；隐藏不删除收藏                   |
+| `checkUpdatesOnStartup` | `true`     | 启动时查询固定 GitHub 最新发布；可关闭，不自动安装       |
+| `searchHistoryLimit`    | 15 条      | 1–30 条；降低后立即裁剪已存的搜索条件                    |
+| `autoSaveMode`          | `manual`   | `manual` / `afterDelay`；关闭仍看 dirty                  |
+| `autoSaveDelaySeconds`  | 5 秒       | 1–300 秒；仅 `afterDelay` 生效                           |
+| `shortcuts`             | 默认格式键 | 平台 Mod、动作白名单、冲突检查、清除/恢复；详见 ADR-0017 |
 
 ## 4. 编辑模型
 
@@ -210,7 +233,7 @@ NoteSpace（笔记空间）是一个“像 Typora 一样编辑、像浏览器一
 
 - `⌘F` / `Ctrl+F`、原生编辑菜单和应用菜单进入当前活动页查找，不搜索其他 Tab 或整个工作区。
 - 可视 Markdown 正文、Markdown 源码和普通 CodeMirror 代码/文本均支持普通文本匹配、结果计数、前后匹配与循环；Enter/Shift-Enter 前后定位，Esc 退出。查找状态仅属当前编辑表面，不写正文、不标 dirty、不进 Undo 或持久化导航历史。
-- 可视查找消费渲染后的可见文本，源码查找消费源码文本；二者不承诺相同匹配数量，也不引入全文索引、正则搜索或替换框架。
+- 可视查找消费渲染后的可见文本，源码查找消费源码文本；二者不承诺相同匹配数量。查找栏可展开字面替换；单项/全部替换作为正常编辑事务，全部替换一次 Undo，IME/增长/Base64 防护保留；只读浮层不允许替换。不引入全文索引、正则或跨文件替换框架。
 - 链接地址编辑使用可换行的多行控件与合适的弹层宽度，完整地址可查看和修改；长 URL 不应被固定单行宽度裁切，不改变原有打开/复制/编辑链接语义。
 
 ### 4.8 当前文档统计
@@ -398,16 +421,22 @@ interface WorkspaceHistoryState {
 
 Rust 负责原生 chooser、目录枚举、轻量文件监听/元数据检查、工作区内文件创建、系统文件管理器定位、受边界约束的系统废纸篓移动、文件预检/读取、局部预览、原子保存、截图写入和原生菜单。前端不使用浏览器文件系统 API，也不把图片或文件正文编码成巨型 Base64 IPC。
 
-当前只有 21 个命令（新增 `search_workspaces` 与 `export_html`）：
+当前只有 27 个命令（导出见 ADR-0017，模板见 ADR-0018，更新检查见 ADR-0019，文件关联见 ADR-0020）：
 
 ```text
 pick_workspace() -> WorkspaceSelection | null
 pick_document() -> DocumentSelection | null
 pick_image_directory(locale?) -> string | null
 list_workspace(rootPath, showHidden?) -> WorkspaceNode[]
-search_workspaces(workspaces, query, caseSensitive) -> WorkspaceSearchResponse
-export_html(suggestedFileName, html, excludedPaths) -> ExportHtmlResult | null
+search_workspaces(workspaces, query, caseSensitive, useRegex, fileFilter?) -> WorkspaceSearchResponse
+check_for_update() -> UpdateCheckResult
+export_html(suggestedFileName, html, excludedPaths, images?, allowRemoteImages?) -> ExportHtmlResult | null
+export_pdf(suggestedFileName, html, excludedPaths, images?, allowRemoteImages?) -> ExportHtmlResult | null
+list_document_templates() -> DocumentTemplateLibrary
+read_document_template(path) -> CustomDocumentTemplate & { markdown: string }
+save_document_template(name, content) -> CustomDocumentTemplate
 open_document(path) -> DocumentOpenResult
+take_opened_document_paths() -> string[]
 inspect_documents(paths) -> DocumentInspection[]
 watch_filesystem(workspaceRoots, documentPaths) -> void
 open_external_url(url) -> void
@@ -424,16 +453,35 @@ prepare_local_image(path) -> string
 set_native_menu_locale(locale) -> void
 ```
 
-参数名按 Tauri `camelCase` 边界表示。`save_clipboard_image` 由 Rust 直接读取系统剪贴板，只接收文档路径和可选图片目录，不传图片 bytes/Base64。`clipboard_has_image` 用于未命名粘贴的 Save As 前置检查；`prepare_local_image` 仅准备实际显示文件的 asset 访问。`set_native_menu_locale` 只接受 `zh-CN/en-US` 并重建菜单。新增功能时再新增类型和测试，不建设全仓库 schema 生成器。
+参数名按 Tauri `camelCase` 边界表示。`search_workspaces` 的 `useRegex` 只控制正文匹配，`fileFilter` 是独立、忽略大小写的工作区相对路径/文件名正则；两者继续由 Rust 在既有预算内扫描磁盘正文。搜索历史仅由前端保存条件，不新增扫描命令。`check_for_update` 只请求固定 GitHub latest release API，返回当前/最新版本、经过校验的发布页与 `available/upToDate/noPublishedRelease` 状态，不接收 URL、文档或路径。`take_opened_document_paths` 只清空读取原生有界路径队列，不传正文；关联文件仍由 `open_document` 完成预检。`save_clipboard_image` 由 Rust 直接读取系统剪贴板，只接收文档路径和可选图片目录，不传图片 bytes/Base64。`clipboard_has_image` 用于未命名粘贴的 Save As 前置检查；`prepare_local_image` 仅准备实际显示文件的 asset 访问。`set_native_menu_locale` 只接受 `zh-CN/en-US` 并重建菜单。新增功能时再新增类型和测试，不建设全仓库 schema 生成器。
 
-`open_external_url` 只接受带有效主机的 HTTP/HTTPS URL，通过平台默认浏览器入口打开；拒绝其它 scheme，不拼接 shell 命令，不建立内置网络客户端，也不读取目标网页或上传文档。
+`open_external_url` 只接受带有效主机的 HTTP/HTTPS URL，通过平台默认浏览器入口打开；拒绝其它 scheme，不拼接 shell 命令，本命令不读取目标网页或上传文档。更新检查的网络客户端仅存在于 `check_for_update`，端点、超时、响应大小和发布页主机/路径均固定。
 
-前端 adapter 与命令一一对应，并可选监听原生动作和文件路径事件：
+前端 adapter 与命令一一对应，并可选监听原生动作、文件系统变化和关联文件信号：
 
 ```ts
 interface DesktopAdapter {
+  checkForUpdate?(): Promise<UpdateCheckResult>;
+  listDocumentTemplates?(): Promise<DocumentTemplateLibrary>;
+  readDocumentTemplate?(
+    path: string,
+  ): Promise<CustomDocumentTemplate & { markdown: string }>;
+  saveDocumentTemplate?(name: string, content: string): Promise<CustomDocumentTemplate>;
   searchWorkspaces?: WorkspaceSearch;
-  exportHtml?(suggestedFileName: string, html: string, excludedPaths: readonly string[]): Promise<{path: string; bytesWritten: number} | null>;
+  exportHtml?(
+    suggestedFileName: string,
+    html: string,
+    excludedPaths: readonly string[],
+    images?: readonly { id: string; source: string }[],
+    allowRemoteImages?: boolean,
+  ): Promise<{ path: string; bytesWritten: number } | null>;
+  exportPdf?(
+    suggestedFileName: string,
+    html: string,
+    excludedPaths: readonly string[],
+    images?: readonly { id: string; source: string }[],
+    allowRemoteImages?: boolean,
+  ): Promise<{ path: string; bytesWritten: number } | null>;
   pickWorkspace(): Promise<WorkspaceSelection | null>;
   pickDocument(): Promise<DocumentSelection | null>;
   openExternalUrl?(url: string): Promise<void>;
@@ -478,8 +526,13 @@ interface DesktopAdapter {
   ): Promise<SavedClipboardImage>;
   setNativeMenuLocale?(locale: "zh-CN" | "en-US"): Promise<void>;
   listenNativeMenuAction?(listener: (id: NativeMenuActionId) => void): Promise<Unlisten>;
+  listenOpenedDocumentPaths?(
+    listener: (paths: readonly string[]) => void,
+  ): Promise<Unlisten>;
 }
 ```
+
+`opened-document-paths-available` 只是提示前端读取队列，事件 payload 不含文件路径或正文。adapter 在注册监听后立即调用一次 `take_opened_document_paths()`，后续信号触发串行 drain；Shell 再按队列顺序调用既有 `openDocument(path)`。原生队列最多 32 条、单路径最多 4096 字符，重复待处理路径和非 Markdown 后缀不进入队列。
 
 ### 7.1 枚举、打开和预检
 
@@ -487,6 +540,7 @@ interface DesktopAdapter {
 - 受支持类型包括 txt/log/config、JSON/YAML/TOML/XML/HTML/CSS、JS/TS、Python、Rust、Java、C/C++/C#、Go、Shell、SQL、Ruby/PHP/Swift/Kotlin/Lua/Dart/Scala/Groovy/Perl、Protobuf、GraphQL 等普通 UTF-8 文件。高亮未知时可退回 text。
 - Rust 以固定 64 KiB 缓冲扫描总字节、UTF-8、最长物理行和大型 data-image marker。
 - 原生 editable open 返回与所读正文匹配的 `diskRevision`；读期间文件身份/版本变化会失败，不把不一致的正文与版本当作基线。blocked 仍不返回正文。TypeScript 的可选 revision 保持 Demo/旧 adapter 兼容，不表示正常原生打开省略版本。
+- 桌面包只声明 `.md/.markdown` 的编辑关联。系统通过启动参数或 macOS `RunEvent::Opened` 传入的文件按前台新标签顺序打开；应用不修改系统默认处理器，不自动打开父目录工作区，也不绕过本节预检。
 
 | 分类         | 当前条件                                                  | 前端行为                                |
 | ------------ | --------------------------------------------------------- | --------------------------------------- |
@@ -550,7 +604,7 @@ interface DesktopAdapter {
 src/
 ├─ app/
 │  ├─ i18n/                # zh-CN/en-US 同键字典
-│  ├─ settings/            # 九项 AppSettings 与 localStorage
+│  ├─ settings/            # 十三项 AppSettings 与 localStorage
 │  ├─ shell/               # 主画布、多工作区、菜单、预览组装
 │  └─ state/               # sessions / tabs / navigation / relocation reducer
 ├─ features/
@@ -560,12 +614,15 @@ src/
 │  ├─ editor-groups/       # 扁平编辑组、标签拖动、统一分隔线
 │  ├─ external-changes/    # 路径通知、元数据同步、冲突提示条
 │  ├─ find/                # 当前页查找投影、匹配导航与双语查找栏
+│  ├─ favorites/           # 有界路径收藏、可见性标题交互与失效状态
 │  ├─ navigation/          # Markdown 链接、本地引用、Tab/history
 │  ├─ session-restore/     # 有界浏览元数据白名单、fresh disk 恢复
 │  ├─ settings/            # 设置对话框
+│  ├─ update/              # 当前/最新版本状态、跳过版本与提示弹窗
+│  ├─ workspace-search/    # 自绘范围、正文/路径正则、最近条件与磁盘结果
 │  ├─ viewer/              # Mermaid/图片 zoom、pan、Fit
 │  └─ workspace/           # 文件树、Outline、workspace history
-└─ infrastructure/tauri/   # 21 命令 adapter、原生菜单/文件路径事件 listener
+└─ infrastructure/tauri/   # 27 命令 adapter、原生菜单/文件路径事件 listener
 ```
 
 Shell 当前是小型编排层；第二个真实消费者出现前不抽取通用 command bus、pane registry 或资产框架。应用状态使用 React reducer/context，不引入 Redux。
@@ -583,10 +640,13 @@ src-tauri/src/
 ├─ commands/filesystem.rs # notify watcher、版本元数据与外部变化检查
 ├─ commands/clipboard_image.rs # 原生剪贴板读取、图片写入、路径与单文件准备
 ├─ commands/workspace_search.rs # 多根磁盘文本搜索与扫描预算
+├─ commands/update_check.rs # 固定 GitHub latest release 查询与版本比较
 ├─ commands/html_export.rs # 独立导出选择器、目标保护与原子写入
+├─ commands/document_templates.rs # 当前应用用户数据目录下有界 Markdown 模板库
 ├─ infrastructure/mod.rs # 当前空命名空间；不承载通用 adapter 框架
-├─ native_menu.rs        # zh-CN/en-US 菜单、15 个 action ID、custom close/quit
-└─ lib.rs                # 精确注册 21 个 invoke command 与 menu/filesystem event
+├─ native_menu.rs        # zh-CN/en-US 菜单、19 个 action ID、custom close/quit
+├─ opened_documents.rs   # 启动参数/macOS Opened 文件路径有界队列
+└─ lib.rs                # 精确注册 27 个 invoke command 与原生事件
 ```
 
 命令保持薄；文件预检、局部读取、原子保存和资产写入用临时目录单测。不要引入 Ruby、服务端或巨型 IPC schema。
@@ -620,7 +680,10 @@ src-tauri/src/
 - Mermaid：缓存/失败重试、字体测量屏障、图表局部文字样式、默认 flowchart 标签预留位置及画布扩展、未知布局回退；实际 TD/LR/带子图中文回路检查裁切与标签/节点相交。
 - workspace history/shell：多根文件树同时显示且独立折叠、根层级标识/活动状态、最近项上限、损坏 storage、延迟恢复合并用户动作、全部失效候选清理、独立文件、根/子目录创建、复制路径与关闭工作区；隐藏偏好每根隔离/默认关闭并递归生效，重目录仍排除。
 - 浏览恢复：白名单及数量/长度边界、无正文/未命名/选中文本/历史、fresh disk、缺失或 blocked 路径跳过、共享 session/独立视图、空白启动保留最近项、元数据关闭刷新和取消关闭、用户新建/打开后迟到恢复失效。
-- 菜单/i18n/settings：中英文同键、15 个原生 action ID（含 `edit.find`）、应用内历史 dirty 对话框、自定义 close/quit、取消保持窗口/进程、主窗口销毁后退出进程、结构/表格/工作区/标签右键、仅顶部工具栏例外的平台菜单策略、debug 原生 DevTools、九项设置归一化和恢复默认。
+- 菜单/i18n/settings：中英文同键、19 个原生 action ID（含 `edit.find`）、应用内历史 dirty 对话框、自定义 close/quit、取消保持窗口/进程、主窗口销毁后退出进程、结构/表格/工作区/标签右键、仅顶部工具栏例外的平台菜单策略、debug 原生 DevTools、十三项设置归一化和恢复默认；macOS 自动编辑/窗口项目使用包内本地化资源；收藏右键菜单必须明确选择关闭且不清路径，启动更新检查可关闭。
+- 全文搜索：自绘全部根/单根范围的鼠标与键盘操作、清晰 SVG 箭头、长路径和范围切换迟到保护；普通/正则正文、独立路径筛选、Unicode/大小写、无效表达式和既有 Rust 扫描预算，始终排除未保存正文；紧凑历史只显示查询文字，默认 15、可配 1–30 条成功条件，覆盖去重、立即裁剪、清空、坏存储与只回填不自动搜索；结果跳转后重开恢复内存结果、滚动和最后激活项且不重复扫描，退出应用不保留结果。
+- 文件关联：打包元数据含 `.md/.markdown`、Editor 与 Markdown 类型；启动参数/macOS Opened 队列的后缀、去重、32 条/4096 字符边界，冷启动首次 drain、后续信号、顺序前台打开与监听卸载。
+- 更新检查：固定 GitHub latest release 端点、稳定语义版本比较、404/失败/限时/响应上限、拒绝重定向与非仓库发布页；启动开关、只跳过一个版本、About 手动检查、固定状态区和用户手势打开。
 - 编辑分组：斜体预览替换、双击/编辑固定、各组活动 Tab 和打开焦点、内部标签拖放；向右分屏保留原 Tab ID/current/view/history/dirty、复用右邻组和可激活空左组；共享正文/独立视图与 IME、最后 dirty 引用关闭和放弃后重读；过期打开不能复活关闭/移组的 Tab 或抢回焦点。
 - 当前页查找与编辑细节：可视/源码/代码、中文、无匹配、循环、Esc，不写正文/dirty/Undo；代码块失焦后旧活动选区清理，长链接多行编辑保持完整 URL。
 - 图片链接：实际来源 Tab 相对路径、普通/内联路径、无行号、远程后缀解析、加载失败和关闭返回，且不改变已有编辑组/正文/dirty。
@@ -628,7 +691,7 @@ src-tauri/src/
 - 保存完整性：Save As `excludedPaths` 逐层传递并在 Rust 写前拒绝；保存错误在 dirty 状态持续可见。
 - 外部文件：合成目录新增/修改/删除/重命名、隐藏与重目录过滤、独立文件原子替换；监听去重/限时批处理、聚焦/兜底重试及卸载清理。共享干净正文重载且位置/历史保持，dirty/missing/unreadable/blocked 保留缓冲区并暂停普通保存，重载/覆盖确认可取消；原版本恢复清提示不清草稿。
 - 外部变化竞态：正文/版本/引用守卫、原所有者关闭后同路径重开、迟到保存不误标新会话 dirty、closed clean 缓存刷新及源码锚点；新树刷新/隐藏偏好不被旧成功或失败覆盖。Rust 版本检查在写前/rename 前拒绝变化，读取正文与返回 revision 一致。
-- Rust：扩展枚举、预检分类、10 MiB 普通多行、blocked 无正文、±20/前 80 行预览、原子保存、Save As 冲突、工作区内 create-new、跨平台 reveal 参数、废纸篓成功/根与根外拒绝/失败保持、截图和原生菜单。
+- Rust：扩展枚举、预检分类、10 MiB 普通多行、blocked 无正文、±20/前 80 行预览、原子保存、Save As 冲突、工作区内 create-new、跨平台 reveal 参数、废纸篓成功/根与根外拒绝/失败保持、截图、原生菜单、磁盘正则搜索与固定 GitHub 更新检查。
 
 ### 12.2 桌面 smoke
 
@@ -637,11 +700,13 @@ src-tauri/src/
 - 两个工作区树同时显示并独立折叠、活动根切换、聚合 Quick Open、独立文件打开；各根隐藏开关默认关闭、独立保持、重目录仍过滤；在根/子目录新建并 reveal，复制根/文件/目录路径并关闭一个工作区。
 - `restore` 重启恢复路径/分组/固定状态与阅读位置，但显示新磁盘正文；`empty` 不自动打开旧根/页，最近项仍可手动打开；保存/取消关闭和恢复期间主动打开不会被旧状态覆盖。
 - Markdown 链接、back/forward、可视/源码语义定位、浮层→普通右编辑组；已有右组时新代码引用直接复用并定位行、编辑/固定页保留，无第三辅助栏。
-- 中文/英文原生菜单、自定义结构/表格/工作区右键、整段历史 dirty 的应用内关闭/退出对话框；取消保持窗口/进程，确认后窗口与 macOS 进程都结束；文件/目录废纸篓取消、成功及失败保持；manual/afterDelay 保存；真实系统截图成功/失败路径。
+- 中文/英文原生菜单及 macOS 自动编辑/窗口项目、自定义结构/表格/工作区右键、整段历史 dirty 的应用内关闭/退出对话框；取消保持窗口/进程，确认后窗口与 macOS 进程都结束；文件/目录废纸篓取消、成功及失败保持；manual/afterDelay 保存；真实系统截图成功/失败路径。
 - 宽表格横向滚动、列宽拖动不 dirty、网格插入、行列增删、保存重开。
 - Mermaid/图片 viewer、外部 URL 和最终 production bundle。
 - 标签右键向右分屏移动原页、可保留空左组继续打开、物理拖放、双击固定、点击不同组后从树打开；共享文档关闭/放弃后的重读；无行号图片链接与失败回退；窄窗口内活动编辑组可见。
 - 当前页 `⌘F` / `Ctrl+F` 在可视/源码/代码中定位中文和普通文本、循环、Esc 返回且不 dirty；代码块转入正文后无旧活动选区，长链接可完整多行查看/编辑。
+- `Cmd/Ctrl+Shift+F` 的自绘范围在全部根/单根间切换，正文普通/正则和路径筛选结果正确，未保存编辑不出现；点击结果后重开恢复结果、滚动和最后点击项，历史数量设置可裁剪到 1–30；隐藏收藏分组后记录仍在，设置重新开启可恢复。
+- 联网时由 About 手动检查固定 GitHub 发布；检查前后和长状态文本不改变弹窗外框高度，启动开关、稍后提醒、只跳过当前版本和用户点击发布页符合预期。断网/失败不阻断本地编辑且不尝试自动下载或安装。
 - 使用合成工作区在外部新建/修改/删除文件，观察树刷新与干净正文重载；制造 dirty 冲突并取消/确认重载或覆盖，缺失文件保持可读缓冲区且只提供 Save As。检查独立文件、失去焦点后恢复及删除/重建目录，不使用真实用户文档作为写入测试数据。
 
 ### 12.3 门禁
@@ -665,7 +730,7 @@ src-tauri/src/
 
 ## 14. 扩展路线
 
-1. P1：大目录性能、反向链接、数学与 PDF/图像导出。当前页查找、工作区磁盘全文搜索、静态 HTML 导出、轻量外部变化与受保护的重载/保存已经实现；不扩展持久索引或批量文件修改。
+1. P1：大目录性能、反向链接、数学、其他平台 PDF 与图像导出。当前页查找替换、工作区磁盘全文搜索/高亮/正则筛选/最近条件、可分享 HTML、macOS PDF、格式快捷键设置、收藏/专注/模板、Markdown 文件关联、固定 GitHub 更新提示与轻量外部变化属于本基线；不扩展持久索引、批量文件修改或自动更新器。
 2. P2：Git diff/history 等明确的本地增强。
 3. P3：知识图谱、AI 检索与引用；需单独隐私决策。
 
@@ -689,3 +754,8 @@ ADR-0011 接受扁平水平编辑分组；ADR-0013 将右侧引用统一为普�
 - [ADR-0014：外部文件变化与受保护的重载/保存](decisions/0014-external-filesystem-changes.md)
 - [ADR-0015：可靠截图粘贴与每工作区图片位置](decisions/0015-workspace-clipboard-images.md)
 - [ADR-0016：工作区搜索、HTML 导出与恢复提示](decisions/0016-workspace-search-html-export-and-restore-notice.md)
+- [ADR-0017：写作工具与可分享导出](decisions/0017-writing-tools-and-shareable-exports.md)
+- [ADR-0018：收藏分组、全局搜索与本地模板库](decisions/0018-organized-favorites-global-search-and-local-templates.md)
+- [ADR-0019：搜索筛选、收藏显示与 GitHub 更新检查](decisions/0019-search-favorites-and-github-update-checks.md)
+- [ADR-0020：搜索历史、收藏关闭菜单与 Markdown 文件关联](decisions/0020-search-history-favorites-menu-and-markdown-associations.md)
+- [ADR-0021：全文搜索会话与桌面界面本地化收尾](decisions/0021-search-session-and-desktop-ui-localization.md)

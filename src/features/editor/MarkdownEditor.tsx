@@ -32,6 +32,9 @@ import type { PreviewVisual } from "../viewer/model";
 import { FindBar } from "../find/FindBar";
 import { codeFindDecorations, codeMirrorFindTarget } from "../find/codeMirrorFind";
 import { usePageFind } from "../find/usePageFind";
+import { matchFormattingShortcut } from "../shortcuts/shortcuts";
+import { formattingIsBlocked, useFormattingShortcuts } from "./useFormattingShortcuts";
+import { runSourceFormatting } from "./sourceFormatting";
 import "./MarkdownEditor.css";
 
 export interface SelectionRange {
@@ -219,7 +222,11 @@ function editorExtensions(
     drawSelection(),
     highlightActiveLine(),
     EditorView.lineWrapping,
-    keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
+    keymap.of([
+      ...defaultKeymap.filter((binding) => binding.key !== "Mod-i"),
+      ...historyKeymap,
+      indentWithTab,
+    ]),
     syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
     syntaxHighlighting(paperHighlightStyle),
     paperEditorTheme,
@@ -306,6 +313,11 @@ function SourceMarkdownEditorInstance({
   initialView,
   reveal,
 }: MarkdownEditorProps) {
+  const shortcuts = useFormattingShortcuts();
+  const shortcutsRef = useRef(shortcuts);
+  useLayoutEffect(() => {
+    shortcutsRef.current = shortcuts;
+  }, [shortcuts]);
   const hostRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const syncValueRef = useRef<(nextValue: string) => void>(() => {});
@@ -414,7 +426,20 @@ function SourceMarkdownEditorInstance({
     });
     const view = new EditorView({ state, parent: host });
     viewRef.current = view;
-    findTargetRef.current = codeMirrorFindTarget(view);
+    findTargetRef.current = codeMirrorFindTarget(
+      view,
+      () => composing || Boolean(pendingExternalValue),
+    );
+    refreshFind();
+    const onFormattingKeyDown = (event: KeyboardEvent) => {
+      if (!view.hasFocus || composing || formattingIsBlocked(event)) return;
+      const action = matchFormattingShortcut(event, shortcutsRef.current);
+      if (!action) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      runSourceFormatting(view, action);
+    };
+    host.addEventListener("keydown", onFormattingKeyDown, true);
     const applyExternalValue = (nextValue: string) => {
       const change = sharedTextChange(view.state.doc.toString(), nextValue);
       if (!change) return;
@@ -499,6 +524,7 @@ function SourceMarkdownEditorInstance({
       syncValueRef.current = () => {};
       viewRef.current = null;
       findTargetRef.current = null;
+      host.removeEventListener("keydown", onFormattingKeyDown, true);
       view.destroy();
     };
   }, [findTargetRef, refreshFind]);

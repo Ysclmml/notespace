@@ -7,6 +7,10 @@ import { markdownHeadingSlug } from "../workspace/outlineModel";
 export interface HtmlExportOptions {
   title: string;
   documentPath?: string;
+  /** Used by the portable-export preparation step, never by the editor. */
+  imageSource?: (source: string | null, original: string) => string;
+  mermaidMarkup?: (source: string) => string;
+  portable?: boolean;
 }
 
 // Only the fields consumed by the renderer are needed. The actual syntax tree is
@@ -53,9 +57,15 @@ ul, ol { padding-left: 1.7em; } li { padding-left: .15em; } li > p { margin: .4e
 .task { list-style: none; } .task input { margin-right: .5em; }
 .unresolved-image { display: inline-block; padding: .5em .8em; border: 1px dashed #adb7c9; border-radius: 6px; color: #586171; }
 .mermaid-label { font-size: .8em; color: #586171; margin-bottom: -.7em; }
+.mermaid-diagram { margin: 1.4em 0; text-align: center; }
+.mermaid-diagram > svg { max-width: 100%; height: auto; }
+.mermaid-diagram foreignObject p { margin: 0; padding: 0; line-height: inherit; }
+.mermaid-diagram foreignObject code { font-size: inherit; padding: 0; }
 .raw-html { white-space: pre-wrap; } .footnotes { font-size: .9em; border-top: 1px solid #dce1e9; margin-top: 2em; }
 @media (max-width: 600px) { body { padding: 20px 16px 40px; } h1 { font-size: 1.8em; } }
-@media print { body { padding: 0; } main { max-width: none; } pre { white-space: pre-wrap; } pre code { white-space: pre-wrap; } img, tr, pre { break-inside: avoid; } }
+@page { size: A4; margin: 18mm; }
+@media print { :is(h1,h2,h3,h4,h5,h6):has(+ pre.long-code) { break-before: page; } pre.long-code { break-inside: auto; } }
+@media print { body { padding: 0; font-size: 11pt; } main { max-width: none; } h1,h2,h3,h4,h5,h6 { break-after: avoid; } p, pre { orphans: 3; widows: 3; } pre, pre code { white-space: pre-wrap; overflow-wrap: anywhere; } pre { overflow: visible; padding: 0; border: 0; border-radius: 0; background: transparent; } img, tr, pre, .mermaid-diagram { break-inside: avoid; } img { max-height: 240mm; object-fit: contain; } .mermaid-diagram > svg { max-height: 240mm; } .table-scroll { overflow: visible; } table { width: 100%; table-layout: fixed; } th,td { min-width: 0; padding: .4em .5em; } thead { display: table-header-group; } }
 `;
 
 function escapeHtml(value: string): string {
@@ -190,13 +200,15 @@ export function buildHtmlExport(content: string, options: HtmlExportOptions): st
   }
 
   function image(node: MarkdownNode, definition = node): string {
-    const source = exportUrl(definition.url ?? "", options.documentPath, true);
+    const original = definition.url ?? "";
+    const resolved = exportUrl(original, options.documentPath, true);
+    const source = options.imageSource?.(resolved, original) ?? resolved;
     const alt = escapeHtml(node.alt ?? "");
     if (!source) {
       return `<span class="unresolved-image" role="img" aria-label="${alt || "Image"}">${alt ? `${alt} — ` : ""}${escapeHtml(definition.url ?? "")}</span>`;
     }
     const title = definition.title ? ` title="${escapeHtml(definition.title)}"` : "";
-    return `<img src="${escapeHtml(source)}" alt="${alt}"${title} loading="lazy" referrerpolicy="no-referrer">`;
+    return `<img src="${escapeHtml(source)}" alt="${alt}"${title} loading="eager" referrerpolicy="no-referrer">`;
   }
 
   function render(node: MarkdownNode): string {
@@ -252,12 +264,16 @@ export function buildHtmlExport(content: string, options: HtmlExportOptions): st
       }
       case "code": {
         const language = node.lang?.trim() ?? "";
+        if (language.toLowerCase() === "mermaid" && options.mermaidMarkup) {
+          return options.mermaidMarkup(node.value ?? "");
+        }
         const className = language ? ` class="language-${escapeHtml(language)}"` : "";
         const label =
           language.toLowerCase() === "mermaid"
             ? '<p class="mermaid-label">Mermaid · 源码 / source</p>'
             : "";
-        return `${label}<pre><code${className}>${escapeHtml(node.value ?? "")}\n</code></pre>\n`;
+        const longCode = (node.value ?? "").split("\n", 42).length > 40;
+        return `${label}<pre${longCode ? ' class="long-code"' : ""}><code${className}>${escapeHtml(node.value ?? "")}\n</code></pre>\n`;
       }
       case "html":
         return `<code class="raw-html">${escapeHtml(node.value ?? "")}</code>`;
@@ -318,5 +334,5 @@ export function buildHtmlExport(content: string, options: HtmlExportOptions): st
   const notesHtml = notes.length
     ? `<section class="footnotes"><ol>${notes.join("")}</ol></section>`
     : "";
-  return `<!doctype html>\n<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="referrer" content="no-referrer"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src file: http: https:; style-src 'unsafe-inline'; script-src 'none'; base-uri 'none'; form-action 'none'"><title>${escapeHtml(options.title)}</title><style>${EXPORT_STYLES}</style></head><body><main>${body}${notesHtml}</main></body></html>\n`;
+  return `<!doctype html>\n<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="referrer" content="no-referrer"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${options.portable ? "data:" : "file: http: https:"}; style-src 'unsafe-inline'; script-src 'none'; base-uri 'none'; form-action 'none'"><title>${escapeHtml(options.title)}</title><style>${EXPORT_STYLES}</style></head><body><main>${body}${notesHtml}</main></body></html>\n`;
 }

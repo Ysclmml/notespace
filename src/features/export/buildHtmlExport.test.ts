@@ -61,6 +61,7 @@ describe("buildHtmlExport", () => {
       `\`\`\`text\n${lines}\n\`\`\`\n\n\`\`\`mermaid\nflowchart TD\n A[中文] --> B[结束]\n\`\`\``,
     );
     expect(document.querySelector("code.language-text")?.textContent).toBe(`${lines}\n`);
+    expect(document.querySelector("pre.long-code > code.language-text")).not.toBeNull();
     expect(document.querySelector("code.language-mermaid")?.textContent).toContain(
       "A[中文] --> B[结束]",
     );

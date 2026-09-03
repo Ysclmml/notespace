@@ -10,7 +10,9 @@ function SettingsSummary() {
   return (
     <output aria-label="settings-summary">
       {settings.locale}/{settings.editorFontSize}/{String(settings.codeWrap)}/
-      {settings.autoSaveMode}/{settings.autoSaveDelaySeconds}/{settings.startupBehavior}
+      {settings.autoSaveMode}/{settings.autoSaveDelaySeconds}/{settings.startupBehavior}/
+      {String(settings.showFavorites)}/{settings.searchHistoryLimit}/
+      {String(settings.checkUpdatesOnStartup)}
     </output>
   );
 }
@@ -26,6 +28,12 @@ describe("SettingsDialog", () => {
         </AppSettingsProvider>,
       );
       const messages = translations[locale];
+      expect(
+        screen.getByText(messages["settings.showFavoritesDescription"]),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText(messages["settings.checkUpdatesOnStartupDescription"]),
+      ).toBeInTheDocument();
       const startup = screen.getByRole("combobox", {
         name: messages["settings.startupBehavior"],
       });
@@ -38,6 +46,28 @@ describe("SettingsDialog", () => {
       ).toBeInTheDocument();
       fireEvent.change(startup, { target: { value: "empty" } });
       expect(screen.getByLabelText("settings-summary")).toHaveTextContent("/empty");
+
+      const showFavorites = screen.getByRole("checkbox", {
+        name: messages["settings.showFavorites"],
+      });
+      expect(showFavorites).toBeChecked();
+      fireEvent.click(showFavorites);
+      expect(showFavorites).not.toBeChecked();
+      const searchHistoryLimit = screen.getByRole("spinbutton", {
+        name: messages["settings.searchHistoryLimit"],
+      });
+      expect(searchHistoryLimit).toHaveValue(15);
+      fireEvent.change(searchHistoryLimit, { target: { value: "18" } });
+      expect(searchHistoryLimit).toHaveValue(18);
+      const checkUpdates = screen.getByRole("checkbox", {
+        name: messages["settings.checkUpdatesOnStartup"],
+      });
+      expect(checkUpdates).toBeChecked();
+      fireEvent.click(checkUpdates);
+      expect(checkUpdates).not.toBeChecked();
+      expect(screen.getByLabelText("settings-summary")).toHaveTextContent(
+        "/empty/false/18/false",
+      );
     },
   );
 
@@ -69,12 +99,12 @@ describe("SettingsDialog", () => {
     });
     fireEvent.click(screen.getByRole("checkbox", { name: "Wrap Long Code Lines" }));
     expect(screen.getByLabelText("settings-summary")).toHaveTextContent(
-      "en-US/20/false/afterDelay/300",
+      "en-US/20/false/afterDelay/300/restore/true/15/true",
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Reset to Defaults" }));
     expect(screen.getByLabelText("settings-summary")).toHaveTextContent(
-      "zh-CN/16/true/manual/5",
+      "zh-CN/16/true/manual/5/restore/true/15/true",
     );
     expect(screen.getByRole("dialog", { name: "设置" })).toBeVisible();
   });
@@ -89,5 +119,26 @@ describe("SettingsDialog", () => {
 
     fireEvent.keyDown(window, { key: "Escape" });
     expect(onClose).toHaveBeenCalledOnce();
+  });
+
+  it("keeps Tab and Shift+Tab inside the dialog instead of reaching background controls", () => {
+    const onClose = vi.fn();
+    render(
+      <AppSettingsProvider initialSettings={{ locale: "en-US" }} storage={null}>
+        <button type="button">Background control</button>
+        <SettingsDialog onClose={onClose} open />
+        <input aria-label="Background editor" />
+      </AppSettingsProvider>,
+    );
+    const close = screen.getByRole("button", { name: "Close" });
+    const reset = screen.getByRole("button", { name: "Reset to Defaults" });
+    expect(close).toHaveFocus();
+    expect(fireEvent.keyDown(close, { key: "Tab", shiftKey: true })).toBe(false);
+    expect(reset).toHaveFocus();
+    expect(fireEvent.keyDown(reset, { key: "Tab" })).toBe(false);
+    expect(close).toHaveFocus();
+    expect(screen.getByRole("button", { name: "Background control" })).not.toHaveFocus();
+    expect(screen.getByRole("textbox", { name: "Background editor" })).not.toHaveFocus();
+    expect(onClose).not.toHaveBeenCalled();
   });
 });

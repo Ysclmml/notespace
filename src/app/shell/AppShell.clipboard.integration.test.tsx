@@ -275,7 +275,7 @@ describe("AppShell screenshot paste with real Markdown editors", () => {
       expect(visualView.state.doc.firstChild?.lastChild?.type.name).toBe("image");
       expect(container.querySelector(".tab-rail__dirty")).toBeInTheDocument();
 
-      fireEvent.keyDown(window, { key: "s", metaKey: true });
+      fireEvent.keyDown(window, { key: "s", ctrlKey: true });
       await waitFor(() => expect(saveDocument).toHaveBeenCalledOnce());
       const savedText = adapter.contents.get(NOTE)!;
       expect(savedText).toContain(IMAGE_MARKDOWN);
@@ -318,7 +318,7 @@ describe("AppShell screenshot paste with real Markdown editors", () => {
       CodeMirrorView.findFromDOM(container.querySelector<HTMLElement>(".cm-editor")!),
     ).toBe(view);
     expect(container.querySelector(".tab-rail__dirty")).toBeInTheDocument();
-    fireEvent.keyDown(window, { key: "s", metaKey: true });
+    fireEvent.keyDown(window, { key: "s", ctrlKey: true });
     await waitFor(() => expect(saveDocument).toHaveBeenCalledOnce());
     expect(adapter.contents.get(NOTE)).toBe(ORIGINAL + IMAGE_MARKDOWN);
     await waitFor(() => expect(container.querySelector(".tab-rail__dirty")).toBeNull());

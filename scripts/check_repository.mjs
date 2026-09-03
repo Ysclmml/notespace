@@ -134,6 +134,33 @@ const problems = [];
 let textFiles = 0;
 let markdownFiles = 0;
 
+try {
+  const packageVersion = JSON.parse(
+    readFileSync(join(repositoryRoot, "package.json"), "utf8"),
+  ).version;
+  const bundleVersion = JSON.parse(
+    readFileSync(join(repositoryRoot, "src-tauri", "tauri.conf.json"), "utf8"),
+  ).version;
+  const cargoManifest = readFileSync(
+    join(repositoryRoot, "src-tauri", "Cargo.toml"),
+    "utf8",
+  );
+  const cargoVersion = cargoManifest.match(/^version\s*=\s*"([^"]+)"$/m)?.[1];
+  if (
+    typeof packageVersion !== "string" ||
+    typeof bundleVersion !== "string" ||
+    !cargoVersion ||
+    packageVersion !== bundleVersion ||
+    packageVersion !== cargoVersion
+  ) {
+    problems.push(
+      `version-consistency [version] package=${String(packageVersion)} tauri=${String(bundleVersion)} cargo=${String(cargoVersion)}`,
+    );
+  }
+} catch (error) {
+  problems.push(`version-consistency [version] ${String(error)}`);
+}
+
 for (const relativePath of paths) {
   const text = readTrackedText(relativePath);
   if (text === null) continue;

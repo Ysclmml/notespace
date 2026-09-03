@@ -20,6 +20,9 @@ export type EditorContextMenuCommand =
   | "heading1"
   | "heading2"
   | "heading3"
+  | "heading4"
+  | "heading5"
+  | "heading6"
   | "blockquote"
   | "bulletList"
   | "orderedList"
@@ -530,6 +533,9 @@ export async function executeEditorContextMenuCommand(
     command === "heading1" ||
     command === "heading2" ||
     command === "heading3" ||
+    command === "heading4" ||
+    command === "heading5" ||
+    command === "heading6" ||
     command === "blockquote" ||
     command === "bulletList" ||
     command === "orderedList" ||

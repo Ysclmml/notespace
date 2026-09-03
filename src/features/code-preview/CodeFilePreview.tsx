@@ -287,6 +287,7 @@ export function CodeFilePreview({
   const hostRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const syncContentRef = useRef<(nextContent: string) => void>(() => {});
+  const findCompositionRef = useRef<() => boolean>(() => false);
   const livePropsRef = useRef<LivePreviewProps>({ editable, onChange, onViewChange });
   const currentConfigRef = useRef<InitialPreviewConfig>({
     codeWrap,
@@ -335,6 +336,7 @@ export function CodeFilePreview({
     let composing = false;
     let compositionFrame = 0;
     let pendingExternalContent: { base: string; value: string } | null = null;
+    findCompositionRef.current = () => composing || Boolean(pendingExternalContent);
     const reportView = (view: EditorView) => {
       const selection = view.state.selection.main;
       livePropsRef.current.onViewChange?.({
@@ -390,7 +392,7 @@ export function CodeFilePreview({
     });
     const view = new EditorView({ state, parent: host });
     viewRef.current = view;
-    findTargetRef.current = codeMirrorFindTarget(view);
+    findTargetRef.current = codeMirrorFindTarget(view, () => findCompositionRef.current());
     refreshFind();
     const applyExternalContent = (nextContent: string) => {
       const change = sharedTextChange(view.state.doc.toString(), nextContent);
@@ -487,7 +489,9 @@ export function CodeFilePreview({
     view.dispatch({
       effects: compartments.editable.reconfigure(editableExtensions(editable)),
     });
-  }, [compartments, editable]);
+    findTargetRef.current = codeMirrorFindTarget(view, () => findCompositionRef.current());
+    refreshFind();
+  }, [compartments, editable, findTargetRef, refreshFind]);
 
   useEffect(() => {
     const view = viewRef.current;

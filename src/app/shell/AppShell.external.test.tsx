@@ -140,14 +140,14 @@ describe("AppShell external files", () => {
   it("allows Save As to a previously closed clean cached path", async () => {
     const adapter = await setup();
     fireEvent.click(screen.getByRole("button", { name: "关闭 note.md" }));
-    fireEvent.keyDown(window, { key: "n", metaKey: true });
+    fireEvent.keyDown(window, { key: "n", ctrlKey: true });
     const input = await screen.findByRole("textbox");
     fireEvent.change(input, { target: { value: "# New document" } });
     vi.spyOn(adapter, "saveDocumentAs").mockImplementation(async () => {
       adapter.files.set(PATH, { text: "# New document", revision: "saved-as" });
       return { path: PATH, bytesWritten: 14, diskRevision: "saved-as" };
     });
-    fireEvent.keyDown(window, { key: "s", metaKey: true });
+    fireEvent.keyDown(window, { key: "s", ctrlKey: true });
     await screen.findByRole("button", { name: "关闭 note.md" });
     expect(screen.getByRole("textbox")).toHaveValue("# New document");
     expect(screen.queryByLabelText("未保存")).toBeNull();
@@ -163,7 +163,7 @@ describe("AppShell external files", () => {
       return { path, bytesWritten: content.length, diskRevision: "late-save" };
     });
     fireEvent.change(screen.getByRole("textbox"), { target: { value: "# Saved draft" } });
-    fireEvent.keyDown(window, { key: "s", metaKey: true });
+    fireEvent.keyDown(window, { key: "s", ctrlKey: true });
     await waitFor(() => expect(finishSave).toBeDefined());
     fireEvent.click(screen.getByRole("button", { name: "关闭 note.md" }));
     fireEvent.click(await screen.findByRole("button", { name: "放弃更改并关闭标签页" }));
@@ -221,7 +221,7 @@ describe("AppShell external files", () => {
     const adapter = await setup();
     fireEvent.change(screen.getByRole("textbox"), { target: { value: "# My draft" } });
     adapter.files.set(PATH, { text: "# External", revision: "two" });
-    fireEvent.keyDown(window, { key: "s", metaKey: true });
+    fireEvent.keyDown(window, { key: "s", ctrlKey: true });
     const banner = await screen.findByLabelText("外部文件变化");
     expect(adapter.files.get(PATH)?.text).toBe("# External");
     const overwrite = await within(banner).findByRole("button", {
@@ -243,7 +243,7 @@ describe("AppShell external files", () => {
     const banner = await screen.findByLabelText("外部文件变化");
     expect(within(banner).getByText(/文件已在外部删除或移动/)).toBeInTheDocument();
     expect(screen.getByRole("textbox")).toHaveValue("# Original");
-    fireEvent.keyDown(window, { key: "s", metaKey: true });
+    fireEvent.keyDown(window, { key: "s", ctrlKey: true });
     expect(adapter.saveDocument).not.toHaveBeenCalled();
     expect(within(banner).getByRole("button", { name: "另存为…" })).toBeEnabled();
     expect(adapter.files.has(PATH)).toBe(false);

@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { AppSettingsProvider } from "../../app/settings";
+import { DEFAULT_SHORTCUTS } from "../shortcuts/shortcuts";
 import { VisualMarkdownEditor } from "../editor/VisualMarkdownEditor";
 import {
   installCodeMirrorDomMeasurementStubs,
@@ -24,6 +25,39 @@ beforeEach(() => {
 });
 
 describe("EditorContextMenu", () => {
+  it("shows customized platform shortcuts, cleared bindings and headings through level six", () => {
+    vi.spyOn(navigator, "platform", "get").mockReturnValue("Win32");
+    const surface = document.createElement("div");
+    surface.className = "ProseMirror";
+    surface.contentEditable = "true";
+    document.body.append(surface);
+    render(
+      <AppSettingsProvider
+        storage={null}
+        initialSettings={{
+          shortcuts: { ...DEFAULT_SHORTCUTS, heading1: "Mod+Shift+1", heading4: null },
+        }}
+      >
+        <EditorContextMenu
+          open
+          onClose={vi.fn()}
+          position={{ x: 20, y: 20 }}
+          target={surface}
+        />
+      </AppSettingsProvider>,
+    );
+    fireEvent.pointerEnter(screen.getByRole("menuitem", { name: "段落" }));
+    expect(
+      screen.getByRole("menuitem", { name: /^一级标题/ }).querySelector("kbd"),
+    ).toHaveTextContent("Ctrl+Shift+1");
+    expect(
+      screen.getByRole("menuitem", { name: "四级标题" }).querySelector("kbd"),
+    ).toBeNull();
+    expect(
+      screen.getByRole("menuitem", { name: /^六级标题/ }).querySelector("kbd"),
+    ).toHaveTextContent("Ctrl+6");
+    surface.remove();
+  });
   it("offers image-only actions with the clicked SVG image's original reference and local path", async () => {
     const surface = document.createElement("div");
     surface.className = "ProseMirror";
@@ -319,7 +353,7 @@ describe("EditorContextMenu", () => {
       </AppSettingsProvider>,
     );
     fireEvent.pointerEnter(screen.getByRole("menuitem", { name: "段落" }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "二级标题" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: /^二级标题/ }));
     await waitFor(() =>
       expect(paragraphEditor.container.querySelector(".ProseMirror h2")).toHaveTextContent(
         "右键正文",

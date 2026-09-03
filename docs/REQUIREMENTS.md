@@ -1,18 +1,34 @@
 # NoteSpace（笔记空间）需求基线
 
-状态：Approved baseline 1.3（ADR-0016，产品版本 0.1.1）
+状态：Approved baseline 1.8（ADR-0021，NoteSpace 0.2.0）
 
-日期：2026-09-03
+日期：2026-09-04
 
-ADR-0016 补充工作区磁盘全文搜索、静态 HTML 导出和失效恢复路径提示；保留既有数据与导航规则。新功能遵循以下验收：
+ADR-0016 补充工作区磁盘全文搜索、HTML 导出和失效恢复路径提示；ADR-0017 进一步接受写作工具与含图片/Mermaid 的可分享 HTML、macOS PDF。保留既有数据与导航规则。新功能遵循以下验收：
 
-| ID | 状态 | 验收 |
-| --- | --- | --- |
-| `RESTORE-NOTICE-001` | Done | 失效工作区/文件显示完整路径与重试/选择文件夹/移除记录；只改变便利元数据，不关闭现有标签或创建/删除磁盘内容，迟到结果不覆盖用户操作。 |
-| `SEARCH-WORKSPACE-001` | Done | 左侧入口与 Cmd/Ctrl+Shift+F，提交后读取多根磁盘文本；大小写、CJK、隐藏/后缀/重目录/symlink规则、无持久索引。有限文件/字节/深度/200匹配行；截断、跳过、不可读根不伪装为完整无结果。结果在活动分屏按临时标签策略打开并定位，不丢dirty或抢迟到焦点。 |
-| `EXPORT-HTML-001` | Done | 从最新内存Markdown生成完整静态HTML，GFM、代码、资源引用与UTF-8正确；危险标记/协议不执行，不读编辑器DOM/网络。原生chooser取消或写失败保持原文件；拒绝覆盖已开文件、非HTML目标与符号链接；原子写入，不清dirty。 |
+ADR-0018 接受文件页收藏分组、右键收藏、独立全文搜索、离线功能指南、本地自定义模板和导出二级菜单，更新相应入口但不放松既有数据边界。
 
-导出暂不支持 source-only 文档；当前正文在解析前检查 8 MiB UTF-8 上限（含打开后增长的 normal 文档），超限清晰提示且不进入解析。Mermaid 保留源码，不打包图片。普通本地引用转换为 file URI，未命名页相对资源无法解析时显示地址提示。新增 `search_workspaces(workspaces, query, caseSensitive)` 返回有限行结果及覆盖状态，`export_html(suggestedFileName, html, excludedPaths)` 返回 path/bytesWritten 或取消 null；原生菜单新增 `edit.findWorkspace`、`file.exportHtml`，共 15 项前端 action。
+ADR-0019 接受应用自绘搜索范围、可选正文正则、独立路径/文件名正则、收藏显示设置和固定 GitHub 最新发布检查；不改变磁盘搜索、收藏数据与文档本地优先边界。
+
+ADR-0020 接受最多 12 条本机搜索条件历史、需要明确选择的收藏关闭菜单，以及打包应用的 `.md/.markdown` 文件关联；不保存搜索结果/正文，不接管系统默认应用，关联文件仍走既有预检和前台标签流程。
+
+ADR-0021 将搜索历史改为默认 15、可配 1–30 条，并接受搜索结果跳转后在本次运行内恢复结果/滚动/最后点击项、紧凑历史与清晰范围图标；同时补齐 macOS 系统自动菜单本地化资源和 About 固定更新状态区。它不持久化搜索结果、不重复后台扫描，也不改变更新源。
+
+| ID                     | 状态 | 验收                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| ---------------------- | ---- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `RESTORE-NOTICE-001`   | Done | 失效工作区/文件显示完整路径与重试/选择文件夹/移除记录；只改变便利元数据，不关闭现有标签或创建/删除磁盘内容，迟到结果不覆盖用户操作。                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `SEARCH-WORKSPACE-001` | Done | 工具栏独立弹窗与 Cmd/Ctrl+Shift+F，带清晰 SVG 箭头的应用自绘范围默认全部已打开工作区且可限制单根；正文默认字面匹配，可选正则/大小写，另有独立的相对路径/文件名正则。最近项紧凑显示查询文字，默认 15、可配 1–30 条成功条件，可回填/清空，回填不自动扫描，失效单根回退全部当前根。提交后只读取多根磁盘文本，不含未保存修改；CJK、隐藏/后缀/重目录/symlink 规则、无持久索引。有限文件/字节/深度/200 匹配行；无效正则、截断、跳过、不可读根不伪装为完整无结果。结果在活动分屏按临时标签策略打开并定位；重开搜索恢复本次运行内的结果、滚动与最后点击项且不重新扫盘，不丢 dirty 或抢迟到焦点。 |
+| `EXPORT-HTML-001`      | Done | 最新内存 Markdown 生成自带样式/图片/静态 Mermaid 的离线单文件 HTML；GFM/代码/UTF-8 正确，不执行原始 HTML/脚本、不读编辑器 DOM。联网图片逐次勾选；无声缺图禁止；取消/失败保持原文，原子目标保护，不清 dirty。                                                                                                                                                                                                                                                                                                                                                                             |
+| `EXPORT-PDF-001`       | Done | macOS 原生 A4 分页 PDF，文字可选择，包含图片/图表；禁脚本独立导出视图，临时文件清理与原子目标保护；其他平台入口禁用且说明。                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| `EDIT-SHORTCUTS-001`   | Done | 可视/源码格式键一致；默认 Mod+1…6/0/B/I/E/Shift+X/Shift+B/Alt+C，Mac Cmd 与 Windows Ctrl 区分；设置可搜动作、录入、检查冲突、清除/恢复，IME/弹窗/代码不误触。                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `FIND-REPLACE-001`     | Done | 当前可编辑页单项/全部字面替换；全部一次 Undo、只读禁用、预算与 IME/内嵌图防护；不做跨文件替换。                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `FILES-FAVORITES-001`  | Done | 星标/文件右键与文件页顶部折叠收藏组，最多 100 路径且不存正文；显示设置默认开，标题右键/Control-click 打开菜单，只有选择「关闭收藏」才隐藏；普通左键/文件行不误触，设置可恢复显示且不清收藏。不随关闭标签消失，关闭工作区后独立打开，失效标记且可重试/取消，成功 Save As 迁移。                                                                                                                                                                                                                                                                                                           |
+| `FILE-ASSOCIATION-001` | Done | 打包应用注册 `.md/.markdown` Editor 关联并出现在系统「打开方式」中，不静默接管默认应用；启动参数/macOS Opened 经 32 条有界队列传递路径，按顺序以前台独立标签走既有预检，不传正文或隐式打开父工作区。                                                                                                                                                                                                                                                                                                                                                                                     |
+| `VIEW-FOCUS-001`       | Done | Mod+Shift+Enter 收起界面且转回编辑器；保持选区/Undo/分组，Esc 按弹窗/查找优先退出；工作区搜索可见。                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `DOC-TEMPLATES-001`    | Done | 会议/周报/技术方案双语模板在活动组新建 dirty 未命名 Markdown，取消无变更且不覆盖原文。                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `UPDATE-CHECK-001`     | Done | About 显示当前版本并可手动检查；更新状态区高度固定，检查中、结果和长错误不改变外框。默认启动检查可关闭，固定读取 GitHub `Ysclmml/notespace` latest release，跳过仅作用一个版本，发布页只由用户点击打开。失败不阻断本地功能；不自动下载/安装、不接受任意更新源、不上传文档或路径。                                                                                                                                                                                                                                                                                                        |
+
+导出暂不支持 source-only 文档；解析前检查 8 MiB UTF-8 正文预算。图片最多 128 个、单图 16 MiB、总计 48 MiB、最终 HTML 80 MiB；Mermaid 最多 64 图、每图 SVG 4 MiB。未命名页相对图片无法解析、图片缺失/超限或图表失败时明确拒绝，不生成缺图分享文件。联网图片默认不获取，只有当前导出勾选后执行有界 GET，无用户 cookie/上传/后台抓取。Rust 只向产物编码图片，不把图片数据返回 JS 或写入 Markdown。两个导出命令均返回 path/bytesWritten 或取消 null，不递归分享其他文档。原生菜单共 19 项前端 action。
 
 本文件保存稳定需求 ID，供实现、测试和上下文压缩后继续执行。优先级：MVP、P1、Later。状态：Active、Deferred、Done。
 
@@ -22,89 +38,95 @@ ADR-0013 明确取代 ADR-0007/0011 的独立只读辅助栏、分屏复制标�
 
 ## 1. 当前产品需求
 
-| ID                          | 状态 | 需求                                             | 验收摘要                                                                                   |
-| --------------------------- | ---- | ------------------------------------------------ | ------------------------------------------------------------------------------------------ |
-| `DATA-SOURCE-001`           | Done | Markdown/文本文件是唯一持久化正文                | 不保存 ProseMirror JSON；渲染、Outline、预览和最近项不参与正文落盘                         |
-| `DATA-ROUNDTRIP-001`        | Done | 未编辑 Markdown 保存零差异                       | 模式切换不 dirty；首次可视编辑后允许等价规范化                                             |
-| `WORKSPACE-OPEN-001`        | Done | 用户可选择本地目录作为工作区                     | 原生 chooser；侧栏展示目录与支持的文本文件                                                 |
-| `WORKSPACE-MULTI-001`       | Done | 一个窗口可同时打开并显示多个工作区根             | 文件侧栏同时显示各根/树并标明活动根；各根独立折叠；Quick Open 聚合全部根                   |
-| `WORKSPACE-RECENT-001`      | Done | 保存打开/最近工作区、最近文件和活动根元数据      | restore 合并新开根并清除失效记录；empty 不自动打开，最近项仍保留                           |
-| `SESSION-RESTORE-001`       | Done | 启动可恢复浏览或打开空白窗口                     | 默认 restore；保存路径/组/标签/固定状态/数值视图，fresh disk；无正文或历史                 |
-| `WORKSPACE-TREE-001`        | Done | 每个工作区树支持展开目录和打开文件               | 多根同时可见且独立折叠；Unicode/空格路径可用；列出支持的 Markdown/文本                     |
-| `WORKSPACE-HIDDEN-001`      | Done | 根右键可独立切换是否显示隐藏文件/目录            | 默认 off、每根持久化、递归用于子树；VCS/依赖/构建缓存及 symlink 仍排除                     |
-| `WORKSPACE-ROOT-STYLE-001`  | Done | 工作区根区别于普通子目录                         | 明确根标识/层级间距，保留折叠可访问名称与活动根状态                                        |
-| `WORKSPACE-CREATE-FILE-001` | Done | 可在工作区根或现有子目录新建 UTF-8 文本文件      | 无扩展名补 `.md`；常见显式后缀保留；成功刷新树并前台打开；同名文件不覆盖                   |
-| `WORKSPACE-CLOSE-001`       | Done | 工作区根可从当前窗口关闭                         | 只移出打开集合；保留最近项、已开 Tab 和磁盘文件                                            |
-| `WORKSPACE-TEXT-001`        | Done | 常见 UTF-8 代码/文本文件可在主 Tab 编辑          | CodeMirror 高亮、正常行号、dirty、保存/另存为；不显示 Markdown 可视/源码切换               |
-| `DOC-OPEN-001`              | Done | 文件树、内部链接和原生单文件 chooser 可打开文档  | 进入已有 session 或创建新 session；独立文件不要求属于工作区                                |
-| `DOC-NEW-001`               | Done | 可新建未命名 Markdown 或纯文本                   | 内存 `untitled://` session；Markdown 默认可视，文本进入 CodeMirror                         |
-| `DOC-SAVE-001`              | Done | `⌘S` 保存当前可编辑文档                          | 成功清 dirty；失败保留 dirty、旧文件和可见错误                                             |
-| `DOC-SAVE-AS-001`           | Done | 未命名文件首次保存及已有文件另存为               | 写盘前排除其他已开 session 路径；成功后迁移 session 与全部历史引用                         |
-| `SAVE-MODE-001`             | Done | 默认手动保存并在关闭 dirty 内容时提示            | 不自动写盘；Tab/window/quit 检查 current/back/forward 引用且允许取消                       |
-| `SAVE-AUTOSAVE-001`         | Done | 可选停止输入后自动保存已有路径文档               | 延迟 1–300 秒；继续输入重排；未命名跳过；迟到任务不覆盖；失败仍 dirty                      |
-| `DOC-CLOSE-DIRTY-001`       | Done | 关闭 Tab、窗口或应用不得静默丢失 dirty 正文      | 全历史聚合未保存标记；应用内对话框统一覆盖 Tab/原生 close/quit 且可取消                    |
-| `EDIT-LIVE-001`             | Done | 普通 Markdown 默认真可视编辑                     | 光标经过标题、列表、链接和表格时不自动展开源码                                             |
-| `EDIT-MODE-001`             | Done | 可视与源码是显式的 Tab 级模式                    | 工具栏/`⌘/` 切换；`sourceOnly` 强制源码；文本文件不显示切换                                |
-| `EDIT-SEMANTIC-POS-001`     | Done | 可视/源码切换尽量停在同一语义区域                | 标题、附近文本、进度逐级回退；不写正文，不承诺像素或 offset 一致                           |
-| `EDIT-SYNC-001`             | Done | 可视正文变更同步更新待保存 Markdown              | 输入后立即 `⌘S` 不漏字；权威正文禁止 200 ms 防抖                                           |
-| `EDIT-IME-001`              | Done | 中文 IME composition 稳定                        | composition 中不重建相关装饰，不重复提交                                                   |
-| `EDIT-UNDO-001`             | Done | Undo/Redo 只撤销正文编辑                         | 与浏览 back/forward 相互独立                                                               |
-| `EDIT-TABLE-001`            | Done | GFM 表格在可视模式直接编辑且宽表格内部滚动       | Tab/Shift-Tab；列宽可拖但 view-only，不写 Markdown；源码模式才显示管道语法                 |
-| `EDIT-TABLE-TOOLS-001`      | Done | 可视网格、工具栏和右键支持表格结构操作           | 选择尺寸插表；增删行列/删除表格可 Undo；中英文菜单完整                                     |
-| `EDIT-CODEBLOCK-001`        | Done | fenced code 使用浅色稳定代码块                   | 语言选择在左、Copy 在右且始终可见；弹层不被裁切                                            |
-| `EDIT-CODE-LINES-001`       | Done | 代码块和代码/文本表面默认显示正常行号            | 顺序 gutter 可读；active line 不出现深色块；可关闭                                         |
-| `EDIT-CODE-WRAP-001`        | Done | 代码长行换行可配置                               | 同一设置影响可视 code block、代码/文本主 Tab 和只读预览                                    |
-| `EDIT-CODE-SELECTION-001`   | Done | 代码选区保持清晰可读且失焦不残留活动选区         | token 可辨认；转入代码块外正文输入后清理旧活动选区，不修改正文/Undo                        |
-| `EDIT-LINK-FIELD-001`       | Done | 长链接地址可完整查看与编辑                       | 多行换行控件，不因固定单行宽度裁切，保留原链接打开/复制/编辑语义                           |
-| `SEARCH-PAGE-001`           | Done | 当前活动页面支持文本查找                         | Cmd/Ctrl+F；可视/源码/代码，计数/前后/循环/Esc，不修改正文/dirty/Undo                      |
-| `DOC-STATISTICS-001`        | Done | 底部当前文档字数、字符及行数随正文更新           | 中文逐字/英文数字连续计词，统一源码口径；120 ms 防抖/分片/有界弱缓存，不额外读盘、不 dirty |
-| `STATUS-LOCAL-001`          | Done | 明确本地文件标识，不误称网络离线                 | “本地文件”说明读写方式；网络连接与保存状态不由该静态标识推断                               |
-| `EDIT-FENCE-HINT-001`       | Done | 可视模式提供 Typora 式 fence 语言补全            | 三个反引号加 prefix 触发最多 8 个本地候选；上下键、Enter/Tab、Esc 和点击可用               |
-| `EDIT-LIST-ALIGN-001`       | Done | 有序/无序列表 marker 与首行文字对齐              | 换行沿正文缩进；marker 不漂移或挤压文字                                                    |
-| `NAV-TAB-001`               | Done | 支持多个浏览器式主 Tab                           | 激活、关闭、dirty 标记、同文件 session 复用                                                |
-| `NAV-GROUP-001`             | Done | 标签右键向右移动原页、各组独立标签与活动状态     | 默认左侧单组；复用右邻组、不复制 Tab，可留空左组；保留历史/正文/编辑器                     |
-| `NAV-PREVIEW-TAB-001`       | Done | 文件树单击临时预览、双击固定                     | 预览文件名斜体；每组最多一个；编辑自动固定；不覆盖已固定/dirty 内容                        |
-| `NAV-GROUP-FOCUS-001`       | Done | 新打开文件进入当前聚焦编辑组                     | 捕获读取起点；关闭/移组/新导航后的迟到结果不覆盖、不复活、不夺焦点                         |
-| `WORKSPACE-FOLLOW-001`      | Done | 当前编辑文件在所属树中展开并突出显示             | 最长匹配根；仅滚动侧栏；相同路径编辑不反复打断手动折叠；hover/selection 清楚               |
-| `NAV-HISTORY-001`           | Done | 窗口级前进/后退可跨 Tab 与编辑组                 | 恢复文档/位置；不重复记录 focus，关闭/删除过滤，最多 200 项，不复制正文                    |
-| `NAV-LINK-001`              | Done | Markdown 普通点击按源标签固定状态跳转            | 预览原位，固定/编辑后新预览，同页 anchor 原位；`⌘`/中键后台，`⌘⇧` 前台                     |
-| `NAV-LINK-PATH-001`         | Done | 独立文件/未收录树的显式 Markdown 路径可跳转      | 相对/绝对/file URL、编码、跨根；失败保持当前页，非 MD 专用预览                             |
-| `NAV-ANCHOR-001`            | Done | 支持 heading anchor                              | 重复标题 slug 行为固定并有测试                                                             |
-| `NAV-LOCAL-REF-001`         | Done | 内联代码/链接的本地 `path.ext:line` 可预览并打开 | 有界只读浮层，以及当前/右邻普通编辑组；完整文件可编辑/保存                                 |
-| `NAV-ROUTING-PRIORITY-001`  | Done | Markdown 文档路由优先于本地引用预览              | `.md/.markdown` 不被 preview parser 截获，完整保留 Tab disposition                         |
-| `NAV-AUX-PANE-001`          | Done | 右侧引用统一为普通编辑组，不再创建辅助栏         | 已有右组复用；临时页替换、固定/dirty 保留；最右来源不被覆盖、不增加第三辅助栏              |
-| `OUTLINE-001`               | Done | 当前 Markdown 可显示标题大纲                     | 点击滚动并聚焦标题；文本文件不显示 Markdown Outline                                        |
-| `ASSET-PASTE-001`           | Done | 粘贴截图自动落盘并插入链接                       | 写入成功后才修改正文；未命名文档先 Save As；失败正文不变                                   |
-| `ASSET-ALT-001`             | Done | 图片 Markdown 语义往返不丢失                     | 可视编辑后保留原始 `src`、`alt` 和 `title`                                                 |
-| `ASSET-BASE64-001`          | Done | 产品不主动生成内嵌 Base64 图片                   | 保存结果使用相对文件 URI，跨卷时使用文件 URI                                               |
-| `WORKSPACE-IMAGE-DIR-001`   | Done | 每个工作区独立设置截图目录                       | 根右键双语入口；默认文档同目录或指定现存目录，最长根归属、取消不变、不移动已有图片         |
-| `DIAGRAM-MERMAID-001`       | Done | Mermaid 可文内预览                               | production CSP 下清晰可读；失败不切换整个文档                                              |
-| `DIAGRAM-VIEWER-001`        | Done | Mermaid/大图可放大、平移、Fit                    | Esc 返回原块；SVG 保持矢量                                                                 |
-| `IMAGE-LINK-001`            | Done | 图片链接无需行号即可打开专门查看器               | 本地/file/HTTP(S) 图片地址，缩放/平移/Fit/100%；失败可关闭，不改变Tab或dirty               |
-| `IMAGE-CONTEXT-001`         | Done | 图片使用专属右键，支持预览/复制/本地定位         | 不显示通用段落菜单或整图蓝色选择；查看器只读；Mermaid 只提供图表动作                       |
-| `IMAGE-REFERENCE-EDIT-001`  | Done | 可视修改图片地址、替代文字及标题                 | 多行模态框、单次可撤销事务；取消/相同值不 dirty，不移动或修改原图片                        |
-| `IMAGE-MISSING-001`         | Done | 失效图片在可视正文保留可操作占位                 | 无 alt 也显示失败和完整路径；可编辑或撤销式删除引用，占位本身不改正文，原文件不变          |
-| `ABOUT-REPOSITORY-001`      | Done | 关于软件显示产品 GitHub 仓库                     | 应用内/原生入口一致，点击完整仓库地址交给系统浏览器；失败双语提示，不后台访问或改正文      |
-| `FILE-PREFLIGHT-001`        | Done | Rust 在正文进入 WebView 前轻量预检               | 固定缓冲统计 size/UTF-8/最长行/data-image                                                  |
-| `FILE-LARGE-001`            | Done | 约 10 MiB 普通多行 Markdown 可编辑               | `sourceOnly`，不运行昂贵投影                                                               |
-| `SAFE-DATAURI-001`          | Done | 大型 data-image/病态长行不得卡死编辑器           | 文件正文不返回 JS；大粘贴不创建 transaction                                                |
-| `FILE-SAVE-001`             | Done | 保存采用同目录临时文件原子替换                   | 故障时旧文件完整；成功时新文件完整                                                         |
-| `FILE-EXTERNAL-001`         | Done | 检测外部磁盘变化并安全更新已打开文档             | 元数据未变不读正文；干净 session 重载，共享视图/历史保持，dirty 不自动覆盖                 |
-| `WORKSPACE-EXTERNAL-001`    | Done | 外部新增/修改/删除后刷新对应文件树               | 工作区/独立文件监听、聚焦与 30 秒兜底；隐藏/类型过滤不变，旧刷新不覆盖新结果               |
-| `DOC-EXTERNAL-CONFLICT-001` | Done | 草稿及缺失/不可读/blocked 文件保留内存缓冲区     | 双语提示条暂停普通手动/自动保存；重载丢草稿或覆盖先确认；missing 仅 Save As                |
-| `SAVE-REVISION-001`         | Done | 保存检查读取基线，拒绝未确认的外部版本变化       | 写前/rename 前核对 expectedRevision；轻量 best-effort，不是锁或原子 CAS                    |
-| `FILE-REVEAL-001`           | Done | 根、目录、文件和当前已保存文档可在文件管理器定位 | macOS 文件 reveal/目录 open；Windows/Linux 合理映射；不经过 shell                          |
-| `FILE-COPY-PATH-001`        | Done | 根、目录和文件可复制绝对路径                     | 一次右键复制精确路径；不修改文件、Tab 或工作区状态                                         |
-| `FILE-TRASH-001`            | Done | 工作区内文件/目录可经确认移到系统废纸篓          | 根/根外/不存在拒绝；取消或失败保持；成功刷新树并清理对应 session/history                   |
-| `OPS-OFFLINE-001`           | Done | 本地功能离线可用、无账户、无遥测                 | 没有文档上传；图片链接不做悬浮网络探测，点击查看时才加载该目标                             |
-| `OPS-BUILD-001`             | Done | macOS 可运行 Tauri 桌面应用                      | 自动门禁、debug `.app`/DMG、ad-hoc 签名验证和隔离核心 UI smoke 通过                        |
-| `OPS-CONTEXT-001`           | Done | 新代理不依赖聊天恢复项目                         | 先读 AGENTS、DESIGN、REQUIREMENTS、适用 ADR；本地交接可选                                  |
-| `I18N-UI-001`               | Done | 界面默认 `zh-CN`，可即时切换 `en-US`             | Shell、设置、代码控件、viewer、自定义菜单和原生菜单同步切换                                |
-| `MENU-CONTEXT-001`          | Done | 编辑/表格/工作区/标签使用本地化自定义右键菜单    | 按目标裁剪并保留选择；默认禁用浏览器菜单，仅顶部工具栏例外                                 |
-| `MENU-DEVTOOLS-001`         | Done | debug 顶部原生视图菜单可打开开发者工具           | 中英文；release 隐藏；不新增 invoke，确认期间页面默认菜单仍禁止                            |
-| `MENU-APP-001`              | Done | 顶部“更多”和工作区文件动作本地化                 | 新建/reveal、折叠、复制路径、关闭工作区、移到废纸篓等当前动作可见                          |
-| `MENU-NATIVE-001`           | Done | macOS 原生菜单中英文可切换                       | 15 个前端 action 含 file.reveal/edit.find；编辑项预定义；close/quit 经 dirty               |
-| `SETTINGS-PERSIST-001`      | Done | 界面、编辑、保存与启动偏好持久化                 | 九项含 manual/afterDelay、1–300 秒延迟和 restore/empty；损坏值归一化                       |
+| ID                  | 状态 | 验收                                                                                                                                                                                                                                        |
+| ------------------- | ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `HELP-OFFLINE-001`  | Done | 更多和原生帮助打开独立双语功能指南/当前快捷键；不复用关于、不联网、不改正文，支持焦点约束与 Esc。                                                                                                                                           |
+| `DOC-TEMPLATES-002` | Done | 自定义普通 Markdown 在当前应用用户数据 templates 目录惰性读取；128 篇/1024 枚举项/256 KiB，直属非 symlink、有界 UTF-8/Base64 预检。保存内存副本且 create-new 不覆盖；选用创建 dirty 未命名页，取消不变，提供刷新/文件夹入口与图片路径提醒。 |
+| `EXPORT-MENU-001`   | Done | 一个导出父项、HTML/PDF 二级入口；平台禁用与键盘/IME 处理一致，不绕过导出确认和原文保护。                                                                                                                                                    |
+
+| ID                          | 状态 | 需求                                             | 验收摘要                                                                                    |
+| --------------------------- | ---- | ------------------------------------------------ | ------------------------------------------------------------------------------------------- |
+| `DATA-SOURCE-001`           | Done | Markdown/文本文件是唯一持久化正文                | 不保存 ProseMirror JSON；渲染、Outline、预览和最近项不参与正文落盘                          |
+| `DATA-ROUNDTRIP-001`        | Done | 未编辑 Markdown 保存零差异                       | 模式切换不 dirty；首次可视编辑后允许等价规范化                                              |
+| `WORKSPACE-OPEN-001`        | Done | 用户可选择本地目录作为工作区                     | 原生 chooser；侧栏展示目录与支持的文本文件                                                  |
+| `WORKSPACE-MULTI-001`       | Done | 一个窗口可同时打开并显示多个工作区根             | 文件侧栏同时显示各根/树并标明活动根；各根独立折叠；Quick Open 聚合全部根                    |
+| `WORKSPACE-RECENT-001`      | Done | 保存打开/最近工作区、最近文件和活动根元数据      | restore 合并新开根并清除失效记录；empty 不自动打开，最近项仍保留                            |
+| `SESSION-RESTORE-001`       | Done | 启动可恢复浏览或打开空白窗口                     | 默认 restore；保存路径/组/标签/固定状态/数值视图，fresh disk；无正文或历史                  |
+| `WORKSPACE-TREE-001`        | Done | 每个工作区树支持展开目录和打开文件               | 多根同时可见且独立折叠；Unicode/空格路径可用；列出支持的 Markdown/文本                      |
+| `WORKSPACE-HIDDEN-001`      | Done | 根右键可独立切换是否显示隐藏文件/目录            | 默认 off、每根持久化、递归用于子树；VCS/依赖/构建缓存及 symlink 仍排除                      |
+| `WORKSPACE-ROOT-STYLE-001`  | Done | 工作区根区别于普通子目录                         | 明确根标识/层级间距，保留折叠可访问名称与活动根状态                                         |
+| `WORKSPACE-CREATE-FILE-001` | Done | 可在工作区根或现有子目录新建 UTF-8 文本文件      | 无扩展名补 `.md`；常见显式后缀保留；成功刷新树并前台打开；同名文件不覆盖                    |
+| `WORKSPACE-CLOSE-001`       | Done | 工作区根可从当前窗口关闭                         | 只移出打开集合；保留最近项、已开 Tab 和磁盘文件                                             |
+| `WORKSPACE-TEXT-001`        | Done | 常见 UTF-8 代码/文本文件可在主 Tab 编辑          | CodeMirror 高亮、正常行号、dirty、保存/另存为；不显示 Markdown 可视/源码切换                |
+| `DOC-OPEN-001`              | Done | 文件树、内部链接和原生单文件 chooser 可打开文档  | 进入已有 session 或创建新 session；独立文件不要求属于工作区                                 |
+| `DOC-NEW-001`               | Done | 可新建未命名 Markdown 或纯文本                   | 内存 `untitled://` session；Markdown 默认可视，文本进入 CodeMirror                          |
+| `DOC-SAVE-001`              | Done | `⌘S` 保存当前可编辑文档                          | 成功清 dirty；失败保留 dirty、旧文件和可见错误                                              |
+| `DOC-SAVE-AS-001`           | Done | 未命名文件首次保存及已有文件另存为               | 写盘前排除其他已开 session 路径；成功后迁移 session 与全部历史引用                          |
+| `SAVE-MODE-001`             | Done | 默认手动保存并在关闭 dirty 内容时提示            | 不自动写盘；Tab/window/quit 检查 current/back/forward 引用且允许取消                        |
+| `SAVE-AUTOSAVE-001`         | Done | 可选停止输入后自动保存已有路径文档               | 延迟 1–300 秒；继续输入重排；未命名跳过；迟到任务不覆盖；失败仍 dirty                       |
+| `DOC-CLOSE-DIRTY-001`       | Done | 关闭 Tab、窗口或应用不得静默丢失 dirty 正文      | 全历史聚合未保存标记；应用内对话框统一覆盖 Tab/原生 close/quit 且可取消                     |
+| `EDIT-LIVE-001`             | Done | 普通 Markdown 默认真可视编辑                     | 光标经过标题、列表、链接和表格时不自动展开源码                                              |
+| `EDIT-MODE-001`             | Done | 可视与源码是显式的 Tab 级模式                    | 工具栏/`⌘/` 切换；`sourceOnly` 强制源码；文本文件不显示切换                                 |
+| `EDIT-SEMANTIC-POS-001`     | Done | 可视/源码切换尽量停在同一语义区域                | 标题、附近文本、进度逐级回退；不写正文，不承诺像素或 offset 一致                            |
+| `EDIT-SYNC-001`             | Done | 可视正文变更同步更新待保存 Markdown              | 输入后立即 `⌘S` 不漏字；权威正文禁止 200 ms 防抖                                            |
+| `EDIT-IME-001`              | Done | 中文 IME composition 稳定                        | composition 中不重建相关装饰，不重复提交                                                    |
+| `EDIT-UNDO-001`             | Done | Undo/Redo 只撤销正文编辑                         | 与浏览 back/forward 相互独立                                                                |
+| `EDIT-TABLE-001`            | Done | GFM 表格在可视模式直接编辑且宽表格内部滚动       | Tab/Shift-Tab；列宽可拖但 view-only，不写 Markdown；源码模式才显示管道语法                  |
+| `EDIT-TABLE-TOOLS-001`      | Done | 可视网格、工具栏和右键支持表格结构操作           | 选择尺寸插表；增删行列/删除表格可 Undo；中英文菜单完整                                      |
+| `EDIT-CODEBLOCK-001`        | Done | fenced code 使用浅色稳定代码块                   | 语言选择在左、Copy 在右且始终可见；弹层不被裁切                                             |
+| `EDIT-CODE-LINES-001`       | Done | 代码块和代码/文本表面默认显示正常行号            | 顺序 gutter 可读；active line 不出现深色块；可关闭                                          |
+| `EDIT-CODE-WRAP-001`        | Done | 代码长行换行可配置                               | 同一设置影响可视 code block、代码/文本主 Tab 和只读预览                                     |
+| `EDIT-CODE-SELECTION-001`   | Done | 代码选区保持清晰可读且失焦不残留活动选区         | token 可辨认；转入代码块外正文输入后清理旧活动选区，不修改正文/Undo                         |
+| `EDIT-LINK-FIELD-001`       | Done | 长链接地址可完整查看与编辑                       | 多行换行控件，不因固定单行宽度裁切，保留原链接打开/复制/编辑语义                            |
+| `SEARCH-PAGE-001`           | Done | 当前活动页面支持文本查找                         | Cmd/Ctrl+F；可视/源码/代码，计数/前后/循环/Esc，不修改正文/dirty/Undo                       |
+| `DOC-STATISTICS-001`        | Done | 底部当前文档字数、字符及行数随正文更新           | 中文逐字/英文数字连续计词，统一源码口径；120 ms 防抖/分片/有界弱缓存，不额外读盘、不 dirty  |
+| `STATUS-LOCAL-001`          | Done | 明确本地文件标识，不误称网络离线                 | “本地文件”说明读写方式；网络连接与保存状态不由该静态标识推断                                |
+| `EDIT-FENCE-HINT-001`       | Done | 可视模式提供 Typora 式 fence 语言补全            | 三个反引号加 prefix 触发最多 8 个本地候选；上下键、Enter/Tab、Esc 和点击可用                |
+| `EDIT-LIST-ALIGN-001`       | Done | 有序/无序列表 marker 与首行文字对齐              | 换行沿正文缩进；marker 不漂移或挤压文字                                                     |
+| `NAV-TAB-001`               | Done | 支持多个浏览器式主 Tab                           | 激活、关闭、dirty 标记、同文件 session 复用                                                 |
+| `NAV-GROUP-001`             | Done | 标签右键向右移动原页、各组独立标签与活动状态     | 默认左侧单组；复用右邻组、不复制 Tab，可留空左组；保留历史/正文/编辑器                      |
+| `NAV-PREVIEW-TAB-001`       | Done | 文件树单击临时预览、双击固定                     | 预览文件名斜体；每组最多一个；编辑自动固定；不覆盖已固定/dirty 内容                         |
+| `NAV-GROUP-FOCUS-001`       | Done | 新打开文件进入当前聚焦编辑组                     | 捕获读取起点；关闭/移组/新导航后的迟到结果不覆盖、不复活、不夺焦点                          |
+| `WORKSPACE-FOLLOW-001`      | Done | 当前编辑文件在所属树中展开并突出显示             | 最长匹配根；仅滚动侧栏；相同路径编辑不反复打断手动折叠；hover/selection 清楚                |
+| `NAV-HISTORY-001`           | Done | 窗口级前进/后退可跨 Tab 与编辑组                 | 恢复文档/位置；不重复记录 focus，关闭/删除过滤，最多 200 项，不复制正文                     |
+| `NAV-LINK-001`              | Done | Markdown 普通点击按源标签固定状态跳转            | 预览原位，固定/编辑后新预览，同页 anchor 原位；`⌘`/中键后台，`⌘⇧` 前台                      |
+| `NAV-LINK-PATH-001`         | Done | 独立文件/未收录树的显式 Markdown 路径可跳转      | 相对/绝对/file URL、编码、跨根；失败保持当前页，非 MD 专用预览                              |
+| `NAV-ANCHOR-001`            | Done | 支持 heading anchor                              | 重复标题 slug 行为固定并有测试                                                              |
+| `NAV-LOCAL-REF-001`         | Done | 内联代码/链接的本地 `path.ext:line` 可预览并打开 | 有界只读浮层，以及当前/右邻普通编辑组；完整文件可编辑/保存                                  |
+| `NAV-ROUTING-PRIORITY-001`  | Done | Markdown 文档路由优先于本地引用预览              | `.md/.markdown` 不被 preview parser 截获，完整保留 Tab disposition                          |
+| `NAV-AUX-PANE-001`          | Done | 右侧引用统一为普通编辑组，不再创建辅助栏         | 已有右组复用；临时页替换、固定/dirty 保留；最右来源不被覆盖、不增加第三辅助栏               |
+| `OUTLINE-001`               | Done | 当前 Markdown 可显示标题大纲                     | 点击滚动并聚焦标题；文本文件不显示 Markdown Outline                                         |
+| `ASSET-PASTE-001`           | Done | 粘贴截图自动落盘并插入链接                       | 写入成功后才修改正文；未命名文档先 Save As；失败正文不变                                    |
+| `ASSET-ALT-001`             | Done | 图片 Markdown 语义往返不丢失                     | 可视编辑后保留原始 `src`、`alt` 和 `title`                                                  |
+| `ASSET-BASE64-001`          | Done | 产品不主动生成内嵌 Base64 图片                   | 保存结果使用相对文件 URI，跨卷时使用文件 URI                                                |
+| `WORKSPACE-IMAGE-DIR-001`   | Done | 每个工作区独立设置截图目录                       | 根右键双语入口；默认文档同目录或指定现存目录，最长根归属、取消不变、不移动已有图片          |
+| `DIAGRAM-MERMAID-001`       | Done | Mermaid 可文内预览                               | production CSP 下清晰可读；失败不切换整个文档                                               |
+| `DIAGRAM-VIEWER-001`        | Done | Mermaid/大图可放大、平移、Fit                    | Esc 返回原块；SVG 保持矢量                                                                  |
+| `IMAGE-LINK-001`            | Done | 图片链接无需行号即可打开专门查看器               | 本地/file/HTTP(S) 图片地址，缩放/平移/Fit/100%；失败可关闭，不改变Tab或dirty                |
+| `IMAGE-CONTEXT-001`         | Done | 图片使用专属右键，支持预览/复制/本地定位         | 不显示通用段落菜单或整图蓝色选择；查看器只读；Mermaid 只提供图表动作                        |
+| `IMAGE-REFERENCE-EDIT-001`  | Done | 可视修改图片地址、替代文字及标题                 | 多行模态框、单次可撤销事务；取消/相同值不 dirty，不移动或修改原图片                         |
+| `IMAGE-MISSING-001`         | Done | 失效图片在可视正文保留可操作占位                 | 无 alt 也显示失败和完整路径；可编辑或撤销式删除引用，占位本身不改正文，原文件不变           |
+| `ABOUT-REPOSITORY-001`      | Done | 关于软件显示版本与产品 GitHub 仓库               | 应用内/原生入口一致；仓库地址只在点击后交给系统浏览器，固定更新检查由手动按钮或启动设置触发 |
+| `FILE-PREFLIGHT-001`        | Done | Rust 在正文进入 WebView 前轻量预检               | 固定缓冲统计 size/UTF-8/最长行/data-image                                                   |
+| `FILE-LARGE-001`            | Done | 约 10 MiB 普通多行 Markdown 可编辑               | `sourceOnly`，不运行昂贵投影                                                                |
+| `SAFE-DATAURI-001`          | Done | 大型 data-image/病态长行不得卡死编辑器           | 文件正文不返回 JS；大粘贴不创建 transaction                                                 |
+| `FILE-SAVE-001`             | Done | 保存采用同目录临时文件原子替换                   | 故障时旧文件完整；成功时新文件完整                                                          |
+| `FILE-EXTERNAL-001`         | Done | 检测外部磁盘变化并安全更新已打开文档             | 元数据未变不读正文；干净 session 重载，共享视图/历史保持，dirty 不自动覆盖                  |
+| `WORKSPACE-EXTERNAL-001`    | Done | 外部新增/修改/删除后刷新对应文件树               | 工作区/独立文件监听、聚焦与 30 秒兜底；隐藏/类型过滤不变，旧刷新不覆盖新结果                |
+| `DOC-EXTERNAL-CONFLICT-001` | Done | 草稿及缺失/不可读/blocked 文件保留内存缓冲区     | 双语提示条暂停普通手动/自动保存；重载丢草稿或覆盖先确认；missing 仅 Save As                 |
+| `SAVE-REVISION-001`         | Done | 保存检查读取基线，拒绝未确认的外部版本变化       | 写前/rename 前核对 expectedRevision；轻量 best-effort，不是锁或原子 CAS                     |
+| `FILE-REVEAL-001`           | Done | 根、目录、文件和当前已保存文档可在文件管理器定位 | macOS 文件 reveal/目录 open；Windows/Linux 合理映射；不经过 shell                           |
+| `FILE-COPY-PATH-001`        | Done | 根、目录和文件可复制绝对路径                     | 一次右键复制精确路径；不修改文件、Tab 或工作区状态                                          |
+| `FILE-TRASH-001`            | Done | 工作区内文件/目录可经确认移到系统废纸篓          | 根/根外/不存在拒绝；取消或失败保持；成功刷新树并清理对应 session/history                    |
+| `OPS-OFFLINE-001`           | Done | 本地功能离线可用、无账户、无遥测                 | 没有文档/路径上传；图片点击、导出逐次授权图片和固定 GitHub 更新检查之外不增加网络活动       |
+| `OPS-BUILD-001`             | Done | macOS 可运行 Tauri 桌面应用                      | 自动门禁、debug `.app`/DMG、ad-hoc 签名验证和隔离核心 UI smoke 通过                         |
+| `OPS-CONTEXT-001`           | Done | 新代理不依赖聊天恢复项目                         | 先读 AGENTS、DESIGN、REQUIREMENTS、适用 ADR；本地交接可选                                   |
+| `I18N-UI-001`               | Done | 界面默认 `zh-CN`，可即时切换 `en-US`             | 应用自有界面/菜单同步切换；macOS 自动编辑/窗口项目用包内本地化并随系统应用语言在重启后生效  |
+| `MENU-CONTEXT-001`          | Done | 编辑/表格/工作区/标签使用本地化自定义右键菜单    | 按目标裁剪并保留选择；默认禁用浏览器菜单，仅顶部工具栏例外                                  |
+| `MENU-DEVTOOLS-001`         | Done | debug 顶部原生视图菜单可打开开发者工具           | 中英文；release 隐藏；不新增 invoke，确认期间页面默认菜单仍禁止                             |
+| `MENU-APP-001`              | Done | 顶部“更多”和工作区文件动作本地化                 | 新建/reveal、折叠、复制路径、关闭工作区、移到废纸篓等当前动作可见                           |
+| `MENU-NATIVE-001`           | Done | macOS 原生菜单中英文完整                         | 19 个前端 action 含 file.reveal/edit.find；系统自动项随包本地化；close/quit 经 dirty        |
+| `SETTINGS-PERSIST-001`      | Done | 界面、编辑、保存与启动偏好持久化                 | 十三项含 1–30 搜索历史、收藏/启动更新、manual/afterDelay 和 restore/empty；损坏值归一化     |
 
 ### 1.1 编辑与保存的精确语义
 
@@ -158,13 +180,13 @@ ADR-0013 明确取代 ADR-0007/0011 的独立只读辅助栏、分屏复制标�
 
 ### 1.4 国际化、菜单与设置
 
-- 默认 locale 为 `zh-CN`，可切换 `en-US`。切换立即更新 Shell、设置、代码控件、viewer、应用内菜单、自定义右键菜单，并调用 `set_native_menu_locale(locale)` 重建原生菜单。
-- 原生菜单只发送当前 15 个小型 action ID：`file.new`、`file.open`、`workspace.open`、`file.save`、`file.saveAs`、`file.reveal`、`file.exportHtml`、`edit.find`、`edit.findWorkspace`、`app.settings`、`app.quit`、`view.toggleSource`、`view.toggleSidebar`、`window.close`、`help.open`。编辑菜单的 Undo/Redo/Cut/Copy/Paste/Select All 使用 Tauri 预定义命令；Rust 不复制前端文档状态。
+- 默认 locale 为 `zh-CN`，可切换 `en-US`。切换立即更新 Shell、设置、代码控件、viewer、应用内菜单、自定义右键菜单，并调用 `set_native_menu_locale(locale)` 重建应用自有原生菜单。macOS 自动插入的编辑/窗口管理项目由应用包内 `zh-Hans/en` 本地化资源提供，遵循系统为该应用选择的语言并在重启后完整生效；不以标题遍历或私有 API 替换。
+- 原生菜单只发送当前 19 个小型 action ID：`file.new`、`file.open`、`workspace.open`、`file.save`、`file.saveAs`、`file.reveal`、`file.exportHtml`、`file.exportPdf`、`file.newTemplate`、`edit.find`、`edit.findWorkspace`、`app.settings`、`app.quit`、`view.toggleSource`、`view.toggleSidebar`、`view.toggleFocus`、`window.close`、`help.open`、`app.about`。编辑菜单的 Undo/Redo/Cut/Copy/Paste/Select All 使用 Tauri 预定义命令；Rust 不复制前端文档状态。
 - `window.close` 和 `app.quit` 是自定义项：前端调用当前 Tauri 窗口的 close，`onCloseRequested` 再检查所有被 Tab current/history 引用的 dirty session并显示应用内非阻塞对话框；用户取消时阻止销毁并保持窗口和应用进程，确认或无 dirty 时只销毁一次窗口。macOS 主窗口销毁后应用进程必须实际退出，不能留下只能强制结束的后台进程。
 - 自定义右键菜单在 capture phase 捕获编辑器/链接/只读代码/工作区树上的右键或 Control-click，避免破坏现有选择或先触发普通打开。菜单采用紧凑、分组清晰的 macOS/Typora 风格，并有明确 hover、禁用、快捷键和子菜单状态。可写表面包含编辑、普通 Markdown 结构和表格动作；链接增加打开、在新 Tab 打开、复制链接；只读代码只显示复制/全选；标签提供保持打开/向右分屏/移组/关闭。根/文件菜单沿用既有能力。默认阻止平台右键但不停止自定义事件，仅显式顶部工具栏例外；菜单/对话框和确认期间不例外。点击外部、滚动、缩放或 Esc 关闭自定义菜单。
 - debug 原生视图菜单以本地 Rust 调用打开开发者工具，release 不显示该项；不新增前端应用 action 或 invoke。Tauri 主窗口关闭原生文件拖放捕获，把应用内部 HTML5 标签拖动交给 WebView；不新增外部文件拖放功能。
-- 设置键 `markdown-workspace.settings.v1` 包含 locale、编辑器字号、正文宽度、代码行号、代码换行、输入提示、`autoSaveMode`、`autoSaveDelaySeconds` 和 `startupBehavior` 九项。默认 `zh-CN`、16 px、920 px、开、开、开、`manual`、5 秒、`restore`；字号 12–28 px，正文宽度 640–1600 px，延迟 1–300 秒，启动模式只接受 `restore/empty`。
-- 设置和工作区历史都是本机便利状态：不改写文档、不标 dirty、不进入浏览 history/Undo；损坏、越界或 storage 不可用时回退到可用状态。
+- 设置键 `markdown-workspace.settings.v1` 包含 locale、编辑器字号、正文宽度、代码行号、代码换行、输入提示、收藏显示、启动更新检查、搜索历史数量、`autoSaveMode`、`autoSaveDelaySeconds`、`startupBehavior` 和 `shortcuts` 十三项。默认 `zh-CN`、16 px、920 px、五项布尔开关开启、15 条搜索历史、`manual`、5 秒、`restore` 与 ADR-0017 默认格式键；字号 12–28 px，正文宽度 640–1600 px，搜索历史 1–30 条，延迟 1–300 秒，启动模式只接受 `restore/empty`。降低搜索历史数量立即裁剪已存记录；隐藏收藏不改收藏路径；关闭启动检查不影响 About 手动检查。
+- 设置、工作区历史和最近搜索条件都是本机便利状态：不改写文档、不标 dirty、不进入浏览 history/Undo；搜索历史不保存结果或正文，损坏、越界或 storage 不可用时回退到可用状态。搜索结果、滚动和最后激活项只在本次运行内存中保留，退出应用后丢弃。
 
 ### 1.5 启动浏览恢复与当前页查找
 
@@ -174,7 +196,19 @@ ADR-0013 明确取代 ADR-0007/0011 的独立只读辅助栏、分屏复制标�
 - 恢复期间用户新建/打开/导航使迟到标签结果失效；工作区恢复仍合并新开的根。恢复结束后才开始元数据去抖保存，关闭/pagehide 尽力刷新；确认关闭或卸载后不提交旧结果。取消 dirty 关闭不丢当前状态，恢复便利元数据不能替代保存或关闭确认。
 - `⌘F` / `Ctrl+F` 或编辑菜单查找当前活动页，可视正文、Markdown 源码和普通代码均支持普通文本匹配、计数、前后定位/循环、Enter/Shift-Enter 与 Esc 退出。它是本地视图投影，不改正文、dirty 或 Undo，不进行跨工作区全文搜索；可视与源码基于各自文本，不要求匹配数量一致。
 
-### 1.6 外部文件变化与冲突处理
+### 1.6 全文搜索、收藏显示、Markdown 关联与更新检查
+
+- `Cmd/Ctrl+Shift+F` 使用应用自绘的单选范围控件选择全部已打开工作区或一个当前根；支持箭头/Home/End/Enter/Space/Esc、点击外部关闭和完整长路径提示。范围变化使旧请求结果失效，关闭的根不得继续进入搜索。
+- 正文查询默认字面匹配，可选择大小写或开启 Rust 正则；独立文件筛选始终是忽略大小写的相对路径/文件名正则，不与正文查询拼接。正文最多 512 字符，筛选最多 256 字符；无效表达式分别报错且不伪装成零结果。只扫描磁盘正文，未保存编辑绝不参与；沿用 32 根、20,000 项、5,000 文件、2 MiB 单文件、64 MiB 总量、64 层和 200 匹配行上限。
+- `markdown-workspace.search-history.v1` 按 `searchHistoryLimit` 保存默认 15、可配 1–30 条成功返回的完整搜索条件并按最近使用排序、去重；降低上限立即裁剪。不保存结果、上下文或正文。选择历史只回填表单，不自动扫描；原单根未打开时回退全部当前根。用户可清空，损坏或 storage 不可用时安全回退为空。
+- 搜索结果点击后关闭弹窗并打开目标，同时记住最后激活项与结果区滚动位置；本次运行内再次打开直接恢复表单和结果，不重新调用 `search_workspaces`。隐藏期间不得保留遮罩、焦点陷阱或键盘拦截；新提交替换旧会话，应用退出后结果会话丢弃。
+- `showFavorites` 默认 `true`。标题普通左键只折叠/展开，右键或 Control-click 打开收藏菜单且阻止侧栏菜单；只有明确选择「关闭收藏」才隐藏，收藏文件行不触发关闭。关闭只改变 UI 设置，`markdown-workspace.favorites.v1`、磁盘文件、标签和失效收藏均保持，可从设置重新显示。
+- 桌面包声明 `.md/.markdown`、Editor、`text/markdown` 与标准 Markdown UTI，使 NoteSpace 出现在系统「打开方式」中；是否成为默认应用由系统和用户决定。启动参数及 macOS `RunEvent::Opened` 只将受支持文件路径送入最多 32 条、单路径最多 4096 字符的去重队列；前端先监听再 drain，按顺序以前台独立标签调用既有打开流程，不隐式打开父目录工作区或传输正文。
+- `checkUpdatesOnStartup` 默认 `true` 且可关闭；关闭不禁用 About 手动检查。检查只 GET `https://api.github.com/repos/Ysclmml/notespace/releases/latest`，10 秒总超时、1 MiB 响应上限、不跟随重定向，比较稳定语义版本。404 显示无发布，网络/响应错误可重试且不阻断本地功能。
+- About 显示当前版本；新版本弹窗显示当前/最新版本。「跳过」仅记录当前命中的一个版本，更高版本仍提示；「稍后」不跳过。发布 URL 必须属于 `https://github.com/Ysclmml/notespace/releases/...`，并且只在用户点击后交给系统浏览器。
+- 不自动下载/安装或替换应用，不接受任意更新端点，不发送文档正文、工作区/文件路径、收藏、模板、最近项、账户或遥测。除导出逐次授权的联网图片、用户点击的远程图片和本固定更新检查外，无后台网络活动。
+
+### 1.7 外部文件变化与冲突处理
 
 - Rust 使用固定 `notify 8.2.0`，递归监听已打开工作区根；独立文件若未被根覆盖，监听其父目录且不递归。文档路径来自 Tab current/back/forward 的真实引用，不包含未命名页或仅剩 closed clean 缓存。
 - 原生事件按 150 ms 合并，只发送路径；前端去重后 250 ms 刷新，连续通知最多等待 1 秒提交一批。监听配置完成后检查一次，重新聚焦/可见时检查，每 30 秒兜底检查并重配监听；失败保持可重试，旧订阅/卸载不能清除新配置或提交迟到结果。
@@ -185,7 +219,7 @@ ADR-0013 明确取代 ADR-0007/0011 的独立只读辅助栏、分屏复制标�
 - 重载丢弃 dirty 草稿前必须明确确认；覆盖磁盘始终确认，并且仅针对有可用 revision 的 modified 状态。确认后仍核对原引用、预期正文与基线；期间新编辑/保存/关闭/迁移使旧结果失效。missing 只提供 Save As，不隐式重建文件；不可读/blocked 可重试或 Save As。
 - 文件恢复原基线时可清提示但不清本地草稿。成功安全保存更新 diskRevision 并清外部提示，期间的新编辑仍 dirty。版本/外部状态只存内存，浏览恢复仍只记录路径/视图，不保存正文或冲突快照。
 - 已关闭、无引用的 clean session 重新打开必须采用新磁盘读取；源码锚点同样按新正文计算。被其他 Tab/current/back/forward 引用的共享或 dirty 正文，不因普通打开被磁盘结果静默替换。
-- 不新增网络、云同步、三方合并、文件锁服务、重命名身份跟踪、正文快照或崩溃恢复引擎。原生检测与跨平台参数单测不能替代实际桌面通知验收，验收须保留对应修订的真实执行证据。
+- 除 ADR-0017 的逐次导出授权和 ADR-0019 的固定 GitHub 更新检查外，不新增网络；也不新增云同步、三方合并、文件锁服务、重命名身份跟踪、正文快照或崩溃恢复引擎。原生检测与跨平台参数单测不能替代实际桌面通知验收，验收须保留对应修订的真实执行证据。
 
 ## 2. 三项实用护栏
 
@@ -252,16 +286,22 @@ ADR-0013 明确取代 ADR-0007/0011 的独立只读辅助栏、分屏复制标�
 
 ## 4. 当前 Tauri 接口
 
-当前共 21 个命令（新增命令参数与约束见 ADR-0016）：
+当前共 27 个命令（参数与约束见 ADR-0016、ADR-0017、ADR-0018、ADR-0019、ADR-0020、ADR-0021）：
 
 ```text
 pick_workspace()
 pick_document()
 pick_image_directory(locale?)
 list_workspace(rootPath, showHidden?)
-search_workspaces(workspaces, query, caseSensitive)
-export_html(suggestedFileName, html, excludedPaths)
+search_workspaces(workspaces, query, caseSensitive, useRegex, fileFilter?)
+check_for_update()
+export_html(suggestedFileName, html, excludedPaths, images?, allowRemoteImages?)
+export_pdf(suggestedFileName, html, excludedPaths, images?, allowRemoteImages?)
+list_document_templates()
+read_document_template(path)
+save_document_template(name, content)
 open_document(path)
+take_opened_document_paths()
 inspect_documents(paths)
 watch_filesystem(workspaceRoots, documentPaths)
 open_external_url(url)
@@ -278,22 +318,25 @@ prepare_local_image(path)
 set_native_menu_locale(locale)
 ```
 
-新增原生事件 `filesystem-changed: { paths: string[] }`，只传路径而非正文。`watch_filesystem([], [])` 清理订阅；前端 Demo 可不实现 watcher/inspection，原生 adapter 精确转发路径和可选保存前提。
+原生事件 `filesystem-changed: { paths: string[] }` 只传变化路径；`opened-document-paths-available` 只通知前端 drain，不在事件中传路径或正文。`watch_filesystem([], [])` 清理订阅；前端 Demo 可不实现 watcher/inspection/文件关联，原生 adapter 精确转发路径和可选保存前提。
 
 | ID                      | 接口要求                                                                                                                                               |
 | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `IPC-WORKSPACE-001`     | chooser/list 返回简洁 serde 结构；listWorkspace(rootPath, showHidden?) 默认隐藏过滤且递归生效；多根编排留在前端                                        |
 | `IPC-PICK-DOCUMENT-001` | `pick_document` 返回可选 path/name；取消不是错误                                                                                                       |
 | `IPC-DOCUMENT-001`      | open 返回 editable/blocked union；原生 editable 携带 `normal/sourceOnly`、`markdown/text`、language 和一致 diskRevision；blocked 无正文                |
+| `IPC-OPENED-PATHS-001`  | take_opened_document_paths 清空读取最多 32 条 `.md/.markdown` 路径；单路径 4096 字符、待处理去重，事件 payload 不含路径/正文，打开仍走 open_document   |
 | `IPC-INSPECT-001`       | inspect_documents(paths) 返回 path、present/missing/unreadable 和可用 revision；检查元数据/可读性，不传正文                                            |
 | `IPC-WATCH-001`         | watch_filesystem(workspaceRoots, documentPaths) 替换轻量订阅；filesystem-changed 只含 paths；空集合清理，事件/配置有界                                 |
+| `IPC-SEARCH-001`        | search_workspaces 的 useRegex 只控制正文，fileFilter 是独立相对路径/文件名正则；无效表达式分开报错，扫描预算和未保存正文排除不变                       |
+| `IPC-UPDATE-001`        | check_for_update 无参数，只访问固定 GitHub latest release API；10 秒/1 MiB/无重定向，校验稳定版本及 github.com 仓库发布路径，不接收或上传文档路径      |
 | `IPC-CREATE-FILE-001`   | create 接收 root/directory/fileName；父目录必须位于根内、后缀受支持且 `create_new` 不覆盖；返回现有 open union                                         |
 | `IPC-REVEAL-001`        | reveal 仅接受现存文件/目录；macOS/Windows/Linux 使用无 shell 的系统文件管理器命令，返回 void 或小型错误                                                |
 | `IPC-TRASH-001`         | trash 接收 `workspaceRoot + path`；只允许根的严格后代且目标存在为文件/目录，调用系统废纸篓；根/根外/不存在拒绝                                         |
 | `IPC-PREVIEW-001`       | preview 接收原始 reference 与当前文档路径，固定缓冲读取局部 UTF-8 行，返回 path/language/startLine/targetLine/content                                  |
 | `IPC-SAVE-001`          | 原生 save/Save As 返回 path/bytesWritten/diskRevision；save 检查 expectedRevision；Save As 取消 null，excludedPaths 写前拒绝已打开目标；同目录原子保存 |
 | `IPC-ASSET-001`         | Rust 直接读系统剪贴板；只接收 `documentPath/directoryPath?`，返回路径/URI/尺寸；另有图片存在检查、目录选择和单文件访问准备，不传 bytes/Base64          |
-| `IPC-MENU-001`          | locale 仅为 `zh-CN/en-US`；Rust 重建原生菜单，15 个小型 action ID（含 file.reveal、edit.find 和自定义 close/quit）通知前端                             |
+| `IPC-MENU-001`          | locale 仅为 `zh-CN/en-US`；Rust 重建原生菜单，19 个小型 action ID（含 file.reveal、edit.find 和自定义 close/quit）通知前端                             |
 | `IPC-LEAN-001`          | 不预生成未来命令、错误码全集、巨型 schema 或通用事件总线                                                                                               |
 
 ## 5. 性能与体验目标
@@ -319,20 +362,21 @@ ADR-0010 补充验收：根/目录/文件同级与外部空白菜单的位置语
 
 ## 6. P1 / Later
 
-| ID                     | 优先级 | 状态     | 内容                                                                 |
-| ---------------------- | ------ | -------- | -------------------------------------------------------------------- |
-| `NAV-SPLIT-001`        | P1     | Done     | ADR-0013 统一右侧编辑组与原 Tab 右移；不含额外辅助栏或任意 pane tree |
-| `NAV-RECENT-001`       | P1     | Done     | 最近路径及可选标签/组/数值视图恢复；无正文快照或持久导航历史         |
-| `TEXT-EDIT-001`        | P1     | Done     | 受支持代码/文本在主 Tab 编辑、保存和另存为                           |
-| `SEARCH-WORKSPACE-001` | P1     | Done     | 有限工作区磁盘全文搜索；Quick Open 高级排序仍后置                     |
-| `LINK-BACKREF-001`     | P1     | Deferred | 反向链接、断链和重命名修复                                           |
-| `EDIT-MATH-001`        | P1     | Deferred | 数学渲染                                                             |
-| `EXPORT-001`           | P1     | Deferred | PDF/SVG/PNG 导出；静态 HTML 已由 EXPORT-HTML-001 实现                  |
-| `I18N-POLISH-001`      | P1     | Deferred | 少量 chooser、窗口标题、帮助动作等收尾                               |
-| `GIT-001`              | Later  | Deferred | diff、历史与冲突工具                                                 |
-| `GRAPH-001`            | Later  | Deferred | 文档图谱                                                             |
-| `AI-001`               | Later  | Deferred | 工作区检索、引用与问答；需单独隐私决策                               |
-| `PLUGIN-001`           | Later  | Deferred | 两个真实扩展需求出现后再定义插件 API                                 |
+| ID                     | 优先级 | 状态     | 内容                                                                    |
+| ---------------------- | ------ | -------- | ----------------------------------------------------------------------- |
+| `NAV-SPLIT-001`        | P1     | Done     | ADR-0013 统一右侧编辑组与原 Tab 右移；不含额外辅助栏或任意 pane tree    |
+| `NAV-RECENT-001`       | P1     | Done     | 最近路径及可选标签/组/数值视图恢复；无正文快照或持久导航历史            |
+| `TEXT-EDIT-001`        | P1     | Done     | 受支持代码/文本在主 Tab 编辑、保存和另存为                              |
+| `SEARCH-WORKSPACE-001` | P1     | Done     | 有限磁盘全文搜索、自绘范围、双正则及最近条件；Quick Open 高级排序仍后置 |
+| `FILE-ASSOCIATION-001` | P1     | Done     | macOS 包注册 Markdown 后缀并接收打开请求；其他平台热启动单实例仍后置    |
+| `LINK-BACKREF-001`     | P1     | Deferred | 反向链接、断链和重命名修复                                              |
+| `EDIT-MATH-001`        | P1     | Deferred | 数学渲染                                                                |
+| `EXPORT-001`           | P1     | Deferred | 其他平台 PDF/SVG/PNG；分享 HTML 与 macOS PDF 属于当前基线               |
+| `I18N-POLISH-001`      | P1     | Deferred | 少量 chooser、窗口标题等收尾                                            |
+| `GIT-001`              | Later  | Deferred | diff、历史与冲突工具                                                    |
+| `GRAPH-001`            | Later  | Deferred | 文档图谱                                                                |
+| `AI-001`               | Later  | Deferred | 工作区检索、引用与问答；需单独隐私决策                                  |
+| `PLUGIN-001`           | Later  | Deferred | 两个真实扩展需求出现后再定义插件 API                                    |
 
 以下不属于当前路线：任意/递归 pane/grid、IDE/LSP/debug/build/run、正文/崩溃快照恢复或原生窗口布局快照、项目数据库、云最近项，以及 baseline 0.1 的资产 journal、HMAC/nonce、193 MiB IPC、14 flags、Ruby 验证器和 Hosted CI 前置门禁。有限路径/分组/数值视图恢复、当前页查找以及轻量外部文件变化已经属于 baseline 1.1，不应再列为 Deferred；外部自动合并和重命名跟踪仍不在当前范围。
 
@@ -372,18 +416,22 @@ ADR-0010 补充验收：根/目录/文件同级与外部空白菜单的位置语
 | `AC-EXTERNAL-LINK-001`     | HTTP/HTTPS 正文/hover/源码点击交给系统浏览器；拒绝非网页协议，启动失败本地化，正文/Tab/轨迹不变，图片预览优先                  |
 | `AC-CONTEXT-MENU-001`      | 编辑选择不丢；结构/表格/链接/只读/工作区/标签按目标裁剪；双语且一次右键触发；浏览器默认菜单仅顶部工具栏例外，确认期间禁用      |
 | `AC-DIRTY-CLOSE-001`       | 编辑历史页后导航：Tab 仍标 dirty；应用内对话框可取消 Tab/红色关闭/退出，确认才丢弃且窗口销毁后进程退出                         |
-| `AC-NATIVE-MENU-001`       | 中英文原生菜单含 file.reveal/edit.find；close/quit 进入同一 dirty 流程；确认或无 dirty 后主窗口销毁且 macOS 进程退出           |
+| `AC-NATIVE-MENU-001`       | 中英文自有原生菜单含 file.reveal/edit.find；macOS 自动编辑/窗口项使用包内本地化；close/quit 走 dirty 且窗口销毁后进程退出      |
 | `AC-CODEBLOCK-001`         | 中英文下浅色 code block、行号、语言选择、常显 Copy、换行设置正常                                                               |
 | `AC-CODE-BLUR-001`         | 代码块选中后转入外部正文输入，不残留旧活动选区；代码内容与 Undo 不变                                                           |
 | `AC-LONG-LINK-001`         | 长 URL 在链接编辑浮层完整换行显示/编辑；保存链接、复制与打开语义不变，不被窄字段截断                                           |
 | `AC-IMAGE-CONTEXT-001`     | 文内图片/只读查看器/Mermaid 右键按目标裁剪，复制地址/Markdown 保留原语义，本地定位作用于图片，失败提示不越窗且不 dirty         |
 | `AC-IMAGE-EDIT-001`        | 图片长地址、alt/title 修改可 Undo/Redo，取消/原值不改正文，失效目标拒绝旧提交；模态阻止后台命令，关闭后可正常退出应用          |
 | `AC-IMAGE-MISSING-001`     | 本地准备失败/加载失败均显示占位，空 alt 与行内图片可操作；删除只作用目标并可 Undo/Redo，长路径换行，旧加载结果不覆盖新地址     |
-| `AC-ABOUT-REPOSITORY-001`  | 中英文关于对话框展示完整 GitHub URL，点击与中键调用系统浏览器，失败保留弹窗可重试；模态不触发后台命令，关闭恢复焦点            |
+| `AC-ABOUT-REPOSITORY-001`  | 中英文关于对话框展示当前版本与完整 GitHub URL；仓库/发布页仅由点击打开，失败保留弹窗可重试；模态不触发编辑命令，关闭恢复焦点   |
+| `AC-UPDATE-CHECK-001`      | 固定 GitHub latest API 的新版/相同/无发布/失败正确；About 状态高度稳定；启动开关、单版本跳过/稍后和用户手势打开发布页符合边界  |
+| `AC-SEARCH-REGEX-001`      | 自绘范围、正文/路径正则正确；历史默认 15、可配 1–30 且立即裁剪；结果跳转后重开恢复内存结果/滚动/最后点击且不再次搜盘           |
+| `AC-FAVORITES-VISIBLE-001` | 收藏标题右键/Control-click 只打开菜单，选择关闭后才隐藏；普通左键/文件行不误触，设置重新显示且路径、状态、磁盘文件未丢失       |
+| `AC-FILE-ASSOCIATION-001`  | 包内声明 md/markdown Editor 关联；冷启动与后续 macOS Opened、多文件顺序、队列边界和监听清理正确，仍走既有预检/前台标签         |
 | `AC-DOC-STATISTICS-001`    | 中文逐字/连续英文数字计词；切页、编辑、Undo/Redo、干净外部重载更新，含字符与行数详情；分片/缓存不额外读盘或 dirty              |
 | `AC-FIND-PAGE-001`         | Cmd/Ctrl+F 与原生编辑菜单定位当前可视/源码/代码页；中文、无匹配、循环、Enter/Shift-Enter/Esc，不改变正文/dirty/Undo            |
 | `AC-FENCE-LIST-001`        | 输入三个反引号加 `pyt` 出现 python 等候选；上下键 + Enter/Tab 创建并可 Undo，Esc/关闭设置隐藏；列表 marker 对齐                |
-| `AC-I18N-SETTINGS-001`     | 默认中文，新增查找/隐藏项/启动设置双语同步；九项持久化，恢复默认回到中文/16/920/三项开启/manual/5 秒/restore                   |
+| `AC-I18N-SETTINGS-001`     | 默认中文，新增搜索历史数量双语同步；十三项持久化，恢复默认含中文/16/920/15 条/五项布尔开关开启/manual/5 秒/restore             |
 | `AC-ASSET-001`             | 键盘/右键粘贴后文件存在并正确引用；失败/取消/过期时正文不变；未命名文档先 Save As，迁移插入可 Undo；空剪贴板不删除选区         |
 | `AC-WORKSPACE-IMAGE-001`   | 默认 Markdown 同级目录，每根可选现存目录并记忆；嵌套根独立、失效目录报错、不迁移旧图；隐藏/外部目录实际图片先授权再加载        |
 | `AC-BASE64-001`            | 约 10 MiB data-image 粘贴/文件均不进入 editor transaction                                                                      |

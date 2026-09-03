@@ -1,0 +1,64 @@
+.export-dialog {
+  box-sizing: border-box;
+  width: min(540px, calc(100vw - 48px));
+  max-height: calc(100vh - 64px);
+  overflow: auto;
+  padding: 26px;
+  border: 1px solid var(--line-200);
+  border-radius: 12px;
+  color: var(--ink-950);
+  background: var(--paper-1);
+  box-shadow: 0 18px 60px #0002;
+  font: 13px/1.65 var(--font-ui);
+}
+.export-dialog h2 {
+  font-size: 19px;
+  margin: 0 0 18px;
+}
+.export-dialog__format {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.export-dialog select {
+  min-width: 130px;
+  padding: 6px;
+  background: var(--paper-2);
+  color: inherit;
+  border: 1px solid var(--line-200);
+  border-radius: 5px;
+}
+.export-dialog__remote {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 12px 0;
+}
+.export-dialog__remote input {
+  margin-top: 5px;
+}
+.export-dialog__note {
+  color: var(--ink-600);
+  font-size: 12px;
+}
+.export-dialog footer {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding-top: 12px;
+}
+.export-dialog button {
+  border: 1px solid var(--line-200);
+  padding: 8px 14px;
+  border-radius: 6px;
+  background: var(--paper-2);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.export-dialog .export-dialog__submit {
+  color: white;
+  background: #5265d8;
+  border-color: #5265d8;
+}

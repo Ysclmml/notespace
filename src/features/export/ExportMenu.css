@@ -1,0 +1,19 @@
+.export-menu > button {
+  width: 100%;
+}
+.export-menu__submenu {
+  display: grid;
+  margin: 2px 0 5px 12px;
+  padding-left: 6px;
+  border-left: 1px solid var(--line-300);
+}
+.export-menu__submenu small {
+  color: var(--ink-500);
+  font-size: 11px;
+  font-weight: 400;
+}
+.export-menu button:focus-visible {
+  outline: 2px solid var(--accent-500);
+  outline-offset: -2px;
+  background: var(--accent-100);
+}

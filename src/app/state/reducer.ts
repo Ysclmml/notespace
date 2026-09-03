@@ -120,7 +120,7 @@ function sessionsWithDocument(
     text: document.text,
     diskMtimeMs: document.diskMtimeMs,
     diskRevision: document.diskRevision,
-    dirty: false,
+    dirty: document.path.startsWith("untitled://") && document.initialDirty === true,
     mode: document.mode,
     kind: document.kind ?? "markdown",
     language: document.language ?? "markdown",

@@ -4,14 +4,18 @@ import { useI18n } from "../../app/i18n";
 import {
   AUTO_SAVE_DELAY_MAX_SECONDS,
   AUTO_SAVE_DELAY_MIN_SECONDS,
+  SEARCH_HISTORY_LIMIT_MAX,
+  SEARCH_HISTORY_LIMIT_MIN,
   useAppSettings,
   type AppLocale,
   type AutoSaveMode,
   type StartupBehavior,
 } from "../../app/settings";
+import { shortcutLabels } from "../shortcuts/labels";
+import { ShortcutSettings } from "./ShortcutSettings";
 import "./SettingsDialog.css";
 
-type SettingsSection = "general" | "editor" | "appearance";
+type SettingsSection = "general" | "editor" | "appearance" | "shortcuts";
 
 export interface SettingsDialogProps {
   readonly open: boolean;
@@ -52,6 +56,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   const { t } = useI18n();
   const { settings, updateSettings, setLocale, resetSettings } = useAppSettings();
   const [section, setSection] = useState<SettingsSection>("general");
+  const dialogRef = useRef<HTMLElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const returnFocusRef = useRef<HTMLElement | null>(null);
   const titleId = useId();
@@ -64,7 +69,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     closeButtonRef.current?.focus();
 
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
+      if (event.key !== "Escape" || event.defaultPrevented || event.isComposing) return;
       event.preventDefault();
       onClose();
     };
@@ -85,6 +90,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     { id: "general", label: t("settings.general"), symbol: "•••" },
     { id: "editor", label: t("settings.editor"), symbol: "Aa" },
     { id: "appearance", label: t("settings.appearance"), symbol: "◐" },
+    { id: "shortcuts", label: shortcutLabels[settings.locale].title, symbol: "⌘" },
   ];
 
   return (
@@ -98,6 +104,34 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
         aria-labelledby={titleId}
         aria-modal="true"
         className="settings-dialog"
+        onKeyDown={(event) => {
+          if (
+            event.key !== "Tab" ||
+            event.defaultPrevented ||
+            event.nativeEvent.isComposing
+          )
+            return;
+          const dialog = dialogRef.current;
+          if (!dialog) return;
+          const fields = [
+            ...dialog.querySelectorAll<HTMLElement>(
+              'button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])',
+            ),
+          ].filter((field) => !field.closest('[hidden], [inert], [aria-hidden="true"]'));
+          const first = fields[0];
+          const last = fields.at(-1);
+          if (!first || !last) return;
+          const active = document.activeElement;
+          if (
+            !dialog.contains(active) ||
+            (event.shiftKey ? active === first : active === last)
+          ) {
+            event.preventDefault();
+            event.stopPropagation();
+            (event.shiftKey ? last : first).focus();
+          }
+        }}
+        ref={dialogRef}
         role="dialog"
       >
         <header className="settings-dialog__titlebar">
@@ -141,6 +175,8 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
           >
             <h3>{sections.find((item) => item.id === section)?.label}</h3>
 
+            {section === "shortcuts" ? <ShortcutSettings /> : null}
+
             {section === "general" ? (
               <div className="settings-group">
                 <label className="settings-field">
@@ -175,6 +211,42 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                     <option value="empty">{t("settings.startupEmpty")}</option>
                   </select>
                 </label>
+                <SwitchRow
+                  checked={settings.showFavorites}
+                  description={t("settings.showFavoritesDescription")}
+                  label={t("settings.showFavorites")}
+                  onChange={(showFavorites) => updateSettings({ showFavorites })}
+                />
+                <label className="settings-field">
+                  <span className="settings-field__copy">
+                    <strong>{t("settings.searchHistoryLimit")}</strong>
+                    <small>{t("settings.searchHistoryLimitDescription")}</small>
+                  </span>
+                  <span className="settings-number">
+                    <input
+                      aria-label={t("settings.searchHistoryLimit")}
+                      max={SEARCH_HISTORY_LIMIT_MAX}
+                      min={SEARCH_HISTORY_LIMIT_MIN}
+                      onChange={(event) =>
+                        updateSettings({
+                          searchHistoryLimit: Number(event.currentTarget.value),
+                        })
+                      }
+                      step="1"
+                      type="number"
+                      value={settings.searchHistoryLimit}
+                    />
+                    <span>{t("settings.searchHistoryItems")}</span>
+                  </span>
+                </label>
+                <SwitchRow
+                  checked={settings.checkUpdatesOnStartup}
+                  description={t("settings.checkUpdatesOnStartupDescription")}
+                  label={t("settings.checkUpdatesOnStartup")}
+                  onChange={(checkUpdatesOnStartup) =>
+                    updateSettings({ checkUpdatesOnStartup })
+                  }
+                />
                 <label className="settings-field">
                   <span className="settings-field__copy">
                     <strong>{t("settings.autoSaveMode")}</strong>

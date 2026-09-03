@@ -12,6 +12,7 @@ import { createPortal } from "react-dom";
 import { useI18n } from "../../app/i18n";
 import { FolderIcon } from "../../app/shell/icons";
 import type { WorkspaceNode } from "../../infrastructure/tauri/desktopAdapter";
+import { favoriteLabels, isFavorite } from "../favorites/favorites";
 import { normalizeWorkspaceFileName } from "./workspaceFileName";
 import "./WorkspaceTree.css";
 
@@ -22,6 +23,8 @@ export interface WorkspaceTreeProps {
   readonly rootActive?: boolean;
   readonly showHidden?: boolean;
   readonly activePath?: string;
+  readonly favoritePaths?: readonly string[];
+  readonly onToggleFavorite?: (path: string) => void;
   readonly onOpen: (path: string) => void;
   readonly onOpenPermanent?: (path: string) => void;
   readonly onOpenInNewTab?: (path: string) => void;
@@ -497,6 +500,8 @@ export function WorkspaceTree({
   onOpen,
   onOpenPermanent,
   onOpenInNewTab,
+  favoritePaths = [],
+  onToggleFavorite,
   onActivateWorkspace,
   onCloseWorkspace,
   onShowHiddenChange,
@@ -512,7 +517,7 @@ export function WorkspaceTree({
   contextMenuRequest,
   onContextMenuRequestHandled,
 }: WorkspaceTreeProps) {
-  const { t } = useI18n();
+  const { locale, t } = useI18n();
   const resolvedAriaLabel = ariaLabel ?? t("workspace.tree");
   const [contextMenu, setContextMenu] = useState<TreeContextMenu | null>(null);
   const [creating, setCreating] = useState<CreatingEntry | null>(null);
@@ -653,6 +658,16 @@ export function WorkspaceTree({
           { label: t("workspace.open"), action: () => onOpen(menuPath) },
           ...(onOpenInNewTab
             ? [{ label: t("workspace.openNewTab"), action: () => onOpenInNewTab(menuPath) }]
+            : []),
+          ...(onToggleFavorite
+            ? [
+                {
+                  label: isFavorite(favoritePaths, menuPath)
+                    ? favoriteLabels[locale].remove
+                    : favoriteLabels[locale].addFile,
+                  action: () => onToggleFavorite(menuPath),
+                },
+              ]
             : []),
         ]
       : [];

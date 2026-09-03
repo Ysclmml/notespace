@@ -1,7 +1,13 @@
-import { StateEffect, StateField } from "@codemirror/state";
+import { isolateHistory } from "@codemirror/commands";
+import { EditorState, StateEffect, StateField, Transaction } from "@codemirror/state";
 import { Decoration, EditorView, type DecorationSet } from "@codemirror/view";
 
-import { findTextMatches, type FindMatch, type PageFindTarget } from "./pageFind";
+import {
+  findTextMatches,
+  replacementIsSafe,
+  type FindMatch,
+  type PageFindTarget,
+} from "./pageFind";
 
 export const setCodeFindMatches = StateEffect.define<{
   readonly matches: readonly FindMatch[];
@@ -30,7 +36,10 @@ export const codeFindDecorations = StateField.define<DecorationSet>({
   provide: (field) => EditorView.decorations.from(field),
 });
 
-export function codeMirrorFindTarget(view: EditorView): PageFindTarget {
+export function codeMirrorFindTarget(
+  view: EditorView,
+  isComposing: () => boolean = () => false,
+): PageFindTarget {
   return {
     matches: (query) => findTextMatches(view.state.doc.toString(), query),
     highlight(matches, current, reveal) {
@@ -45,5 +54,31 @@ export function codeMirrorFindTarget(view: EditorView): PageFindTarget {
       });
     },
     focus: () => view.focus(),
+    ...(view.state.facet(EditorState.readOnly)
+      ? {}
+      : {
+          replace(matches: readonly FindMatch[], replacement: string) {
+            if (view.state.facet(EditorState.readOnly)) return "readonly" as const;
+            if (view.composing || isComposing()) return "composing" as const;
+            if (!replacementIsSafe(view.state.doc.toString(), matches, replacement)) {
+              return "blocked" as const;
+            }
+            const changes = matches
+              .filter(
+                ({ from, to }) => view.state.doc.sliceString(from, to) !== replacement,
+              )
+              .map(({ from, to }) => ({ from, to, insert: replacement }));
+            if (changes.length) {
+              view.dispatch({
+                changes,
+                annotations: [
+                  Transaction.userEvent.of("input.replace"),
+                  isolateHistory.of("full"),
+                ],
+              });
+            }
+            return "replaced" as const;
+          },
+        }),
   };
 }

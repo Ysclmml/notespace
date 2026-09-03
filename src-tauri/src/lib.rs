@@ -2,6 +2,7 @@ mod application;
 mod commands;
 mod infrastructure;
 mod native_menu;
+mod opened_documents;
 
 fn should_exit_after_window_event(label: &str, event: &tauri::WindowEvent) -> bool {
     label == "main" && matches!(event, tauri::WindowEvent::Destroyed)
@@ -9,8 +10,9 @@ fn should_exit_after_window_event(label: &str, event: &tauri::WindowEvent) -> bo
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let app = tauri::Builder::default()
         .manage(commands::filesystem::FileSystemWatchState::default())
+        .manage(opened_documents::OpenedDocumentQueue::from_launch_arguments())
         .menu(native_menu::build_default_native_menu)
         .on_menu_event(native_menu::handle_native_menu_event)
         .on_window_event(|window, event| {
@@ -24,7 +26,12 @@ pub fn run() {
             commands::pick_image_directory,
             commands::list_workspace,
             commands::workspace_search::search_workspaces,
+            commands::update_check::check_for_update,
             commands::html_export::export_html,
+            commands::pdf_export::export_pdf,
+            commands::document_templates::list_document_templates,
+            commands::document_templates::read_document_template,
+            commands::document_templates::save_document_template,
             commands::open_document,
             commands::filesystem::inspect_documents,
             commands::filesystem::watch_filesystem,
@@ -40,9 +47,11 @@ pub fn run() {
             commands::clipboard_has_image,
             commands::prepare_local_image,
             commands::set_native_menu_locale,
+            opened_documents::take_opened_document_paths,
         ])
-        .run(tauri::generate_context!())
-        .expect("failed to run NoteSpace");
+        .build(tauri::generate_context!())
+        .expect("failed to build NoteSpace");
+    app.run(opened_documents::handle_run_event);
 }
 
 #[cfg(test)]

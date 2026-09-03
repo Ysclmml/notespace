@@ -2,6 +2,7 @@ use super::{
     display_path, is_ignored_workspace_directory, is_supported_text_path, relative_display_path,
     BackendError, BackendResult, LineScanner, Utf8StreamValidator, SCAN_BUFFER_BYTES,
 };
+use regex::{Regex, RegexBuilder};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::fs::{self, File};
@@ -10,6 +11,7 @@ use std::path::{Path, PathBuf};
 
 const MAX_ROOTS: usize = 32;
 const MAX_QUERY_CHARS: usize = 512;
+const MAX_FILE_FILTER_CHARS: usize = 256;
 const MAX_PATH_BYTES: usize = 16 * 1024;
 const SNIPPET_CHARS: usize = 240;
 
@@ -29,6 +31,7 @@ pub struct WorkspaceSearchMatch {
     pub root_path: String,
     pub line: usize,
     pub column: usize,
+    pub match_length: usize,
     pub snippet: String,
 }
 
@@ -70,9 +73,18 @@ pub async fn search_workspaces(
     workspaces: Vec<WorkspaceSearchRoot>,
     query: String,
     case_sensitive: bool,
+    use_regex: bool,
+    file_filter: Option<String>,
 ) -> BackendResult<WorkspaceSearchResponse> {
     tauri::async_runtime::spawn_blocking(move || {
-        search_with_limits(workspaces, &query, case_sensitive, SearchLimits::default())
+        search_with_limits(
+            workspaces,
+            &query,
+            case_sensitive,
+            use_regex,
+            file_filter.as_deref(),
+            SearchLimits::default(),
+        )
     })
     .await
     .map_err(|_| BackendError::new("workspaceSearchFailed", "workspace search task failed"))?
@@ -89,14 +101,30 @@ struct SearchScan {
 
 struct SearchScope<'a> {
     roots: &'a HashSet<PathBuf>,
-    needle: &'a str,
-    case_sensitive: bool,
+    content: &'a ContentMatcher,
+    file_filter: Option<&'a Regex>,
+}
+
+enum ContentMatcher {
+    Literal {
+        needle: String,
+        case_sensitive: bool,
+    },
+    Regex(Regex),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct MatchSpan {
+    start: usize,
+    end: usize,
 }
 
 fn search_with_limits(
     workspaces: Vec<WorkspaceSearchRoot>,
     query: &str,
     case_sensitive: bool,
+    use_regex: bool,
+    file_filter: Option<&str>,
     limits: SearchLimits,
 ) -> BackendResult<WorkspaceSearchResponse> {
     if workspaces.len() > MAX_ROOTS
@@ -115,6 +143,7 @@ fn search_with_limits(
             "search for a single line of at most 512 characters",
         ));
     }
+    let file_filter = compile_file_filter(file_filter)?;
     let mut scan = SearchScan {
         response: WorkspaceSearchResponse::default(),
         entries: 0,
@@ -126,6 +155,7 @@ fn search_with_limits(
     if query.trim().is_empty() {
         return Ok(scan.response);
     }
+    let content = compile_content_matcher(query, case_sensitive, use_regex)?;
 
     let mut roots = Vec::new();
     for workspace in workspaces {
@@ -139,16 +169,10 @@ fn search_with_limits(
         }
     }
     let root_paths: HashSet<_> = roots.iter().map(|(path, _)| path.clone()).collect();
-    let needle = if case_sensitive {
-        query.to_owned()
-    } else {
-        lowercase_literal(query)
-    };
-
     let scope = SearchScope {
         roots: &root_paths,
-        needle: &needle,
-        case_sensitive,
+        content: &content,
+        file_filter: file_filter.as_ref(),
     };
     for (root, show_hidden) in roots {
         if scan.exhausted() {
@@ -230,12 +254,18 @@ impl SearchScan {
                     self.directory(root, &path, show_hidden, depth + 1, scope);
                 }
             } else if file_type.is_file() && is_supported_text_path(&path) {
-                self.file(root, &path, scope.needle, scope.case_sensitive);
+                let relative_path = relative_display_path(root, &path);
+                if scope
+                    .file_filter
+                    .is_none_or(|filter| filter.is_match(&relative_path))
+                {
+                    self.file(root, &path, relative_path, scope.content);
+                }
             }
         }
     }
 
-    fn file(&mut self, root: &Path, path: &Path, needle: &str, case_sensitive: bool) {
+    fn file(&mut self, root: &Path, path: &Path, relative_path: String, matcher: &ContentMatcher) {
         self.files += 1;
         let Some(text) = self.read_text(path) else {
             self.response.skipped_files += 1;
@@ -243,7 +273,7 @@ impl SearchScan {
         };
         self.response.searched_files += 1;
         for (index, line) in text.lines().enumerate() {
-            let Some(offset) = first_match_offset(line, needle, case_sensitive) else {
+            let Some(found) = matcher.first_non_empty(line) else {
                 continue;
             };
             if self.response.matches.len() == self.limits.matches {
@@ -254,11 +284,12 @@ impl SearchScan {
             }
             self.response.matches.push(WorkspaceSearchMatch {
                 path: display_path(path),
-                relative_path: relative_display_path(root, path),
+                relative_path: relative_path.clone(),
                 root_path: display_path(root),
                 line: index + 1,
-                column: line[..offset].encode_utf16().count() + 1,
-                snippet: make_snippet(line, offset),
+                column: line[..found.start].encode_utf16().count() + 1,
+                match_length: line[found.start..found.end].encode_utf16().count(),
+                snippet: make_snippet(line, found.start),
             });
         }
     }
@@ -306,18 +337,87 @@ fn lowercase_literal(value: &str) -> String {
     value.chars().flat_map(char::to_lowercase).collect()
 }
 
-fn first_match_offset(line: &str, needle: &str, case_sensitive: bool) -> Option<usize> {
+fn compile_content_matcher(
+    query: &str,
+    case_sensitive: bool,
+    use_regex: bool,
+) -> BackendResult<ContentMatcher> {
+    if !use_regex {
+        return Ok(ContentMatcher::Literal {
+            needle: if case_sensitive {
+                query.to_owned()
+            } else {
+                lowercase_literal(query)
+            },
+            case_sensitive,
+        });
+    }
+    RegexBuilder::new(query)
+        .case_insensitive(!case_sensitive)
+        .build()
+        .map(ContentMatcher::Regex)
+        .map_err(|error| BackendError::new("invalidSearchPattern", error.to_string()))
+}
+
+fn compile_file_filter(value: Option<&str>) -> BackendResult<Option<Regex>> {
+    let Some(pattern) = value.map(str::trim).filter(|pattern| !pattern.is_empty()) else {
+        return Ok(None);
+    };
+    if pattern.chars().count() > MAX_FILE_FILTER_CHARS {
+        return Err(BackendError::new(
+            "invalidFileFilter",
+            "file filter must contain at most 256 characters",
+        ));
+    }
+    RegexBuilder::new(pattern)
+        .case_insensitive(true)
+        .build()
+        .map(Some)
+        .map_err(|error| BackendError::new("invalidFileFilter", error.to_string()))
+}
+
+impl ContentMatcher {
+    fn first_non_empty(&self, line: &str) -> Option<MatchSpan> {
+        match self {
+            Self::Literal {
+                needle,
+                case_sensitive,
+            } => literal_match_span(line, needle, *case_sensitive),
+            Self::Regex(regex) => regex.find_iter(line).find_map(|found| {
+                (!found.is_empty()).then_some(MatchSpan {
+                    start: found.start(),
+                    end: found.end(),
+                })
+            }),
+        }
+    }
+}
+
+fn literal_match_span(line: &str, needle: &str, case_sensitive: bool) -> Option<MatchSpan> {
     if case_sensitive {
-        return line.find(needle);
+        let start = line.find(needle)?;
+        return Some(MatchSpan {
+            start,
+            end: start + needle.len(),
+        });
     }
     let folded = lowercase_literal(line);
-    let folded_offset = folded.find(needle)?;
-    let mut cursor = 0;
+    let folded_start = folded.find(needle)?;
+    let folded_end = folded_start + needle.len();
+    let mut folded_cursor = 0;
+    let mut original_start = None;
     for (offset, character) in line.char_indices() {
-        cursor += character.to_lowercase().map(char::len_utf8).sum::<usize>();
-        if cursor > folded_offset {
-            return Some(offset);
+        let next = folded_cursor + character.to_lowercase().map(char::len_utf8).sum::<usize>();
+        if original_start.is_none() && next > folded_start {
+            original_start = Some(offset);
         }
+        if next >= folded_end {
+            return Some(MatchSpan {
+                start: original_start?,
+                end: offset + character.len_utf8(),
+            });
+        }
+        folded_cursor = next;
     }
     None
 }
@@ -373,6 +473,8 @@ mod tests {
                 vec![self.root(false)],
                 query,
                 case_sensitive,
+                false,
+                None,
                 SearchLimits::default(),
             )
             .unwrap()
@@ -394,23 +496,213 @@ mod tests {
         assert_eq!(result.matches.len(), 2);
         assert_eq!(result.matches[0].line, 2);
         assert_eq!(result.matches[0].column, 7);
+        assert_eq!(result.matches[0].match_length, 5);
         assert_eq!(result.matches[0].snippet, "😀 中文 HELLO hello");
         assert_eq!(result.matches[0].relative_path, "学习.md");
         assert!(!result.truncated);
         let exact = fixture.search("HELLO", true);
         assert_eq!(exact.matches.len(), 1);
         assert_eq!(fixture.search("中文", false).matches[0].column, 4);
+        assert_eq!(fixture.search("中文", false).matches[0].match_length, 2);
         assert_eq!(fixture.search(".*", false).matches.len(), 1);
         assert_eq!(fixture.search("absent", false).matches.len(), 0);
     }
 
     #[test]
     fn case_expansion_keeps_original_byte_and_utf16_coordinates() {
-        assert_eq!(first_match_offset("İ 😀 MATCH", "match", false), Some(8));
-        assert_eq!(first_match_offset("中文 ÄBC", "äbc", false), Some(7));
+        assert_eq!(
+            literal_match_span("İ 😀 MATCH", "match", false),
+            Some(MatchSpan { start: 8, end: 13 })
+        );
+        assert_eq!(
+            literal_match_span("中文 ÄBC", "äbc", false),
+            Some(MatchSpan { start: 7, end: 11 })
+        );
         let fixture = Fixture::new();
         fixture.write("case.txt", "İ 😀 MATCH");
         assert_eq!(fixture.search("match", false).matches[0].column, 6);
+        let expanded = fixture.search("i", false);
+        assert_eq!(expanded.matches[0].column, 1);
+        assert_eq!(expanded.matches[0].match_length, 1);
+    }
+
+    #[test]
+    fn regex_search_reports_unicode_utf16_span_and_honors_case() {
+        let fixture = Fixture::new();
+        fixture.write("patterns.md", "😀 中文 Alpha42\nalpha-7\nALPHA900\n");
+        let insensitive = search_with_limits(
+            vec![fixture.root(false)],
+            r"alpha(?:\d+|-\d+)",
+            false,
+            true,
+            None,
+            SearchLimits::default(),
+        )
+        .unwrap();
+        assert_eq!(insensitive.matches.len(), 3);
+        assert_eq!(insensitive.matches[0].column, 7);
+        assert_eq!(insensitive.matches[0].match_length, 7);
+        assert_eq!(insensitive.matches[1].match_length, 7);
+        assert_eq!(insensitive.matches[2].match_length, 8);
+
+        let unicode = search_with_limits(
+            vec![fixture.root(false)],
+            "😀\\s+中文",
+            true,
+            true,
+            None,
+            SearchLimits::default(),
+        )
+        .unwrap();
+        assert_eq!(unicode.matches.len(), 1);
+        assert_eq!(unicode.matches[0].column, 1);
+        assert_eq!(unicode.matches[0].match_length, 5);
+
+        let sensitive = search_with_limits(
+            vec![fixture.root(false)],
+            r"alpha(?:\d+|-\d+)",
+            true,
+            true,
+            None,
+            SearchLimits::default(),
+        )
+        .unwrap();
+        assert_eq!(sensitive.matches.len(), 1);
+        assert_eq!(sensitive.matches[0].line, 2);
+        let literal = fixture.search(r"alpha\d+", false);
+        assert!(literal.matches.is_empty());
+
+        let serialized = serde_json::to_value(&insensitive.matches[0]).unwrap();
+        assert_eq!(serialized["matchLength"], 7);
+    }
+
+    #[test]
+    fn invalid_regex_and_file_filter_have_stable_error_codes() {
+        let fixture = Fixture::new();
+        for (query, use_regex, filter, expected) in [
+            ("[", true, None, "invalidSearchPattern"),
+            ("match", false, Some("["), "invalidFileFilter"),
+        ] {
+            assert_eq!(
+                search_with_limits(
+                    vec![fixture.root(false)],
+                    query,
+                    false,
+                    use_regex,
+                    filter,
+                    SearchLimits::default(),
+                )
+                .unwrap_err()
+                .code,
+                expected
+            );
+        }
+        assert_eq!(
+            search_with_limits(
+                vec![fixture.root(false)],
+                "",
+                false,
+                false,
+                Some(&"x".repeat(MAX_FILE_FILTER_CHARS + 1)),
+                SearchLimits::default(),
+            )
+            .unwrap_err()
+            .code,
+            "invalidFileFilter"
+        );
+    }
+
+    #[test]
+    fn zero_width_regex_results_are_skipped_in_favor_of_non_empty_matches() {
+        let fixture = Fixture::new();
+        fixture.write("zero.md", "bbb\n aa\nxxx\n");
+        let anchors = search_with_limits(
+            vec![fixture.root(false)],
+            "^",
+            false,
+            true,
+            None,
+            SearchLimits::default(),
+        )
+        .unwrap();
+        assert!(anchors.matches.is_empty());
+
+        let repeated = search_with_limits(
+            vec![fixture.root(false)],
+            "a*",
+            false,
+            true,
+            None,
+            SearchLimits::default(),
+        )
+        .unwrap();
+        assert_eq!(repeated.matches.len(), 1);
+        assert_eq!(repeated.matches[0].line, 2);
+        assert_eq!(repeated.matches[0].column, 2);
+        assert_eq!(repeated.matches[0].match_length, 2);
+        assert!(repeated.matches.iter().all(|found| found.match_length > 0));
+    }
+
+    #[test]
+    fn file_filter_is_trimmed_case_insensitive_and_runs_before_body_budgets() {
+        let fixture = Fixture::new();
+        fixture.write("a-bad.md", "x".repeat(1024 * 1024 + 1));
+        fixture.write("notes/keep.MD", "😀 match");
+        fixture.write("notes/also.txt", "match");
+        fixture.write("other/keep.md", "match");
+        let result = search_with_limits(
+            vec![fixture.root(false)],
+            "match",
+            false,
+            false,
+            Some(r"  ^NOTES/.*\.md$  "),
+            SearchLimits {
+                files: 2,
+                total_bytes: 16,
+                ..SearchLimits::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(result.searched_files, 1);
+        assert_eq!(result.skipped_files, 0);
+        assert_eq!(result.matches.len(), 1);
+        assert_eq!(result.matches[0].relative_path, "notes/keep.MD");
+        assert_eq!(result.matches[0].column, 4);
+        assert_eq!(result.matches[0].match_length, 5);
+        assert!(!result.truncated);
+
+        let capped = Fixture::new();
+        capped.write("a-filtered.md", "match\n".repeat(50));
+        capped.write("z-keep.md", "match");
+        let capped_result = search_with_limits(
+            vec![capped.root(false)],
+            "match",
+            false,
+            false,
+            Some("^z-keep\\.md$"),
+            SearchLimits {
+                files: 1,
+                total_bytes: 6,
+                ..SearchLimits::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(capped_result.searched_files, 1);
+        assert_eq!(capped_result.skipped_files, 0);
+        assert_eq!(capped_result.matches.len(), 1);
+        assert!(!capped_result.truncated);
+
+        let whitespace_filter = search_with_limits(
+            vec![fixture.root(false)],
+            "match",
+            false,
+            false,
+            Some("   "),
+            SearchLimits::default(),
+        )
+        .unwrap();
+        assert_eq!(whitespace_filter.searched_files, 3);
+        assert_eq!(whitespace_filter.skipped_files, 1);
     }
 
     #[test]
@@ -428,6 +720,8 @@ mod tests {
             vec![fixture.root(true)],
             "match",
             false,
+            false,
+            None,
             SearchLimits::default(),
         )
         .unwrap();
@@ -450,6 +744,8 @@ mod tests {
             vec![fixture.root(true), nested, fixture.root(false)],
             "match",
             false,
+            false,
+            None,
             SearchLimits::default(),
         )
         .unwrap();
@@ -488,6 +784,8 @@ mod tests {
             ],
             "match",
             false,
+            false,
+            None,
             SearchLimits::default(),
         )
         .unwrap();
@@ -522,6 +820,17 @@ mod tests {
         assert_eq!(result.matches.len(), 200);
         assert_eq!(result.searched_files, 1);
         assert!(result.truncated);
+        let regex = search_with_limits(
+            vec![fixture.root(false)],
+            "mat(?:ch)",
+            false,
+            true,
+            None,
+            SearchLimits::default(),
+        )
+        .unwrap();
+        assert_eq!(regex.matches.len(), 200);
+        assert!(regex.truncated);
         fixture.write("a.md", "match\n".repeat(199));
         let exactly = fixture.search("match", false);
         assert_eq!(exactly.matches.len(), 200);
@@ -548,8 +857,15 @@ mod tests {
                 ..SearchLimits::default()
             },
         ] {
-            let result =
-                search_with_limits(vec![fixture.root(false)], "match", false, limits).unwrap();
+            let result = search_with_limits(
+                vec![fixture.root(false)],
+                "match",
+                false,
+                false,
+                None,
+                limits,
+            )
+            .unwrap();
             assert!(result.truncated);
             assert!(result.matches.len() <= 2);
         }
@@ -558,6 +874,8 @@ mod tests {
             vec![fixture.root(false)],
             "match",
             false,
+            false,
+            None,
             SearchLimits {
                 depth: 0,
                 ..SearchLimits::default()
@@ -587,6 +905,8 @@ mod tests {
             vec![fixture.root(false)],
             &"a".repeat(513),
             false,
+            false,
+            None,
             SearchLimits::default()
         )
         .is_err());
@@ -594,6 +914,8 @@ mod tests {
             vec![fixture.root(false)],
             "two\nlines",
             false,
+            false,
+            None,
             SearchLimits::default()
         )
         .is_err());
@@ -601,6 +923,8 @@ mod tests {
             vec![fixture.root(false); 33],
             "match",
             false,
+            false,
+            None,
             SearchLimits::default()
         )
         .is_err());

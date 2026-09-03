@@ -31,6 +31,13 @@ import { AppSettingsProvider, type StartupBehavior } from "../settings";
 import { createViewState } from "../state";
 import { AppShell } from "./AppShell";
 import type { WorkspaceSearchResponse } from "../../features/workspace-search/types";
+import { SEARCH_HISTORY_STORAGE_KEY } from "../../features/workspace-search/searchHistory";
+import {
+  FAVORITES_STORAGE_KEY,
+  loadFavorites,
+  saveFavorites,
+} from "../../features/favorites/favorites";
+import { documentTemplates } from "../../features/templates/templates";
 
 vi.mock("@tauri-apps/api/window", () => ({
   getCurrentWindow: () => ({
@@ -108,6 +115,7 @@ class RestoreAdapter implements DesktopAdapter {
         relativePath: "alpha.md",
         line: 2,
         column: 3,
+        matchLength: 2,
         snippet: "中文查找内容",
       },
     ],
@@ -221,20 +229,24 @@ function rail(index: number) {
 }
 
 async function searchForFixture() {
-  fireEvent.keyDown(window, { key: "f", metaKey: true, shiftKey: true });
+  fireEvent.keyDown(window, { key: "f", ctrlKey: true, shiftKey: true });
   const search = await screen.findByRole("search");
   const input = within(search).getByRole("searchbox");
   fireEvent.change(input, { target: { value: "查找" } });
   fireEvent.submit(input.closest("form")!);
-  return within(search).findByRole("button", { name: /中文查找内容/ });
+  return within(search).findByRole("button", { name: /中文\s*查找\s*内容/ });
 }
 
 function exportHtml() {
   fireEvent.click(screen.getByRole("button", { name: "更多操作" }));
-  fireEvent.click(screen.getByRole("menuitem", { name: "导出 HTML…" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "导出" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: /^HTML…/ }));
+  fireEvent.click(screen.getByRole("button", { name: "选择保存位置并导出" }));
 }
 
 function clearBrowsingStorage() {
+  localStorage.removeItem(FAVORITES_STORAGE_KEY);
+  localStorage.removeItem(SEARCH_HISTORY_STORAGE_KEY);
   localStorage.removeItem(SESSION_SNAPSHOT_STORAGE_KEY);
   localStorage.removeItem(WORKSPACE_HISTORY_STORAGE_KEY);
 }
@@ -246,6 +258,360 @@ afterEach(() => {
 });
 
 describe("AppShell startup browsing", () => {
+  it("creates a dirty template in the focused group without replacing another document", async () => {
+    seedBrowsing();
+    const adapter = new RestoreAdapter();
+    setup(adapter);
+    const original = await screen.findByRole("textbox", { name: `Document body ${GAMMA}` });
+    fireEvent.click(screen.getByRole("button", { name: "更多操作" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "从模板新建" }));
+    fireEvent.click(screen.getByRole("button", { name: /工作周报 本周进展/ }));
+    const template = documentTemplates("zh-CN").find((item) => item.id === "weekly")!;
+    expect(
+      await screen.findByRole("textbox", {
+        name: "Document body untitled://工作周报-1.md",
+      }),
+    ).toHaveValue(template.markdown);
+    expect(
+      within(rail(2)).getByRole("button", { name: /工作周报-1.md 未保存/ }),
+    ).toBeInTheDocument();
+    expect(within(rail(2)).getByLabelText("未保存")).toBeInTheDocument();
+    expect(adapter.contents.get(GAMMA)).toBe("# Gamma on disk\n");
+    expect(original).toHaveValue("# Gamma on disk\n");
+    expect(screen.getByRole("button", { name: "收藏当前文件" })).toBeDisabled();
+  });
+
+  it("loads the custom library lazily, saves the current draft as a copy, and reads it into a new dirty tab", async () => {
+    seedBrowsing();
+    const draft = "# Current unsaved draft\n\nKeep the original document.\n";
+    const template = {
+      path: "/template-fixtures/Local copy.md",
+      title: "Local copy",
+      sizeBytes: draft.length,
+    };
+    const adapter = Object.assign(new RestoreAdapter(), {
+      listDocumentTemplates: vi.fn<NonNullable<DesktopAdapter["listDocumentTemplates"]>>(
+        async () => ({
+          directoryPath: "/template-fixtures",
+          templates: [],
+          skippedCount: 0,
+          truncated: false,
+        }),
+      ),
+      readDocumentTemplate: vi.fn<NonNullable<DesktopAdapter["readDocumentTemplate"]>>(
+        async () => ({ ...template, markdown: draft }),
+      ),
+      saveDocumentTemplate: vi.fn<NonNullable<DesktopAdapter["saveDocumentTemplate"]>>(
+        async () => template,
+      ),
+    });
+    const saveDocument = vi.spyOn(adapter, "saveDocument");
+    const saveDocumentAs = vi.spyOn(adapter, "saveDocumentAs");
+    setup(adapter);
+    const original = await screen.findByRole("textbox", { name: `Document body ${GAMMA}` });
+    fireEvent.change(original, { target: { value: draft } });
+    expect(adapter.listDocumentTemplates).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "更多操作" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "从模板新建" }));
+    const dialog = screen.getByRole("dialog", { name: "从模板新建" });
+    expect(within(dialog).getByRole("tab", { name: "内置模板" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    expect(adapter.listDocumentTemplates).not.toHaveBeenCalled();
+    fireEvent.click(within(dialog).getByRole("tab", { name: "自定义模板" }));
+    await within(dialog).findByText(
+      "还没有自定义模板。可以保存当前正文，或打开文件夹放入 Markdown 文件。",
+    );
+    expect(adapter.listDocumentTemplates).toHaveBeenCalledExactlyOnceWith();
+    expect(adapter.readDocumentTemplate).not.toHaveBeenCalled();
+    fireEvent.change(within(dialog).getByRole("textbox", { name: "模板名称" }), {
+      target: { value: template.title },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "保存模板" }));
+    await within(dialog).findByText("已保存模板“Local copy”。原文档保持不变。");
+    expect(adapter.saveDocumentTemplate).toHaveBeenCalledExactlyOnceWith(
+      template.title,
+      draft,
+    );
+    expect(adapter.listDocumentTemplates).toHaveBeenCalledTimes(1);
+    expect(adapter.readDocumentTemplate).not.toHaveBeenCalled();
+    expect(saveDocument).not.toHaveBeenCalled();
+    expect(saveDocumentAs).not.toHaveBeenCalled();
+    expect(adapter.contents.get(GAMMA)).toBe("# Gamma on disk\n");
+    expect(original).toHaveValue(draft);
+    expect(screen.getAllByRole("button", { name: /^关闭 .+\.md$/ })).toHaveLength(3);
+    expect(within(rail(2)).getByRole("button", { name: /gamma.md 未保存/ })).toBeVisible();
+
+    fireEvent.click(within(dialog).getByRole("button", { name: /Local copy.*Markdown/ }));
+    const copy = await screen.findByRole("textbox", {
+      name: "Document body untitled://Local copy-1.md",
+    });
+    expect(copy).toHaveValue(draft);
+    expect(adapter.readDocumentTemplate).toHaveBeenCalledExactlyOnceWith(template.path);
+    expect(adapter.openDocument).not.toHaveBeenCalledWith(template.path);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(
+      within(rail(2)).getByRole("button", { name: /Local copy-1.md 未保存/ }),
+    ).toBeVisible();
+    fireEvent.change(copy, { target: { value: "# Independent template document\n" } });
+    fireEvent.click(within(rail(2)).getByRole("button", { name: /gamma.md 未保存/ }));
+    expect(screen.getByRole("textbox", { name: `Document body ${GAMMA}` })).toHaveValue(
+      draft,
+    );
+    expect(adapter.contents.get(GAMMA)).toBe("# Gamma on disk\n");
+    expect(saveDocument).not.toHaveBeenCalled();
+    expect(saveDocumentAs).not.toHaveBeenCalled();
+  });
+
+  it("keeps built-in templates usable when the adapter has no custom-template methods", async () => {
+    setup(new RestoreAdapter(), "empty");
+    fireEvent.click(screen.getByRole("button", { name: "更多操作" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "从模板新建" }));
+    const dialog = screen.getByRole("dialog", { name: "从模板新建" });
+    fireEvent.click(within(dialog).getByRole("tab", { name: "自定义模板" }));
+    expect(
+      within(dialog).getByText("自定义模板需要桌面应用；浏览器演示可使用内置模板。"),
+    ).toBeVisible();
+    expect(within(dialog).queryByRole("button", { name: "保存模板" })).toBeNull();
+    fireEvent.click(within(dialog).getByRole("tab", { name: "内置模板" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: /会议记录 议题/ }));
+    expect(
+      await screen.findByRole("textbox", {
+        name: "Document body untitled://会议记录-1.md",
+      }),
+    ).toHaveValue(documentTemplates("zh-CN")[0]!.markdown);
+  });
+
+  it("keeps an empty custom template dirty and asks before closing without touching the source", async () => {
+    seedBrowsing();
+    const template = {
+      path: "/template-fixtures/Empty template.md",
+      title: "Empty template",
+      sizeBytes: 0,
+    };
+    const adapter = Object.assign(new RestoreAdapter(), {
+      listDocumentTemplates: vi.fn<NonNullable<DesktopAdapter["listDocumentTemplates"]>>(
+        async () => ({
+          directoryPath: "/template-fixtures",
+          templates: [template],
+          skippedCount: 0,
+          truncated: false,
+        }),
+      ),
+      readDocumentTemplate: vi.fn<NonNullable<DesktopAdapter["readDocumentTemplate"]>>(
+        async () => ({ ...template, markdown: "" }),
+      ),
+      saveDocumentTemplate: vi.fn<NonNullable<DesktopAdapter["saveDocumentTemplate"]>>(
+        async () => template,
+      ),
+    });
+    const saveDocument = vi.spyOn(adapter, "saveDocument");
+    const saveDocumentAs = vi.spyOn(adapter, "saveDocumentAs");
+    setup(adapter);
+    const original = await screen.findByRole("textbox", { name: `Document body ${GAMMA}` });
+    fireEvent.click(screen.getByRole("button", { name: "更多操作" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "从模板新建" }));
+    const dialog = screen.getByRole("dialog", { name: "从模板新建" });
+    fireEvent.click(within(dialog).getByRole("tab", { name: "自定义模板" }));
+    fireEvent.click(
+      await within(dialog).findByRole("button", { name: /Empty template.*Markdown/ }),
+    );
+    const empty = await screen.findByRole("textbox", {
+      name: "Document body untitled://Empty template-1.md",
+    });
+    expect(empty).toHaveValue("");
+    expect(
+      within(rail(2)).getByRole("button", { name: /Empty template-1.md 未保存/ }),
+    ).toBeVisible();
+    expect(original).toHaveValue("# Gamma on disk\n");
+    expect(adapter.contents.get(GAMMA)).toBe("# Gamma on disk\n");
+    fireEvent.click(
+      within(rail(2)).getByRole("button", { name: "关闭 Empty template-1.md" }),
+    );
+    const confirmation = screen.getByRole("alertdialog", { name: "有未保存的更改" });
+    expect(within(confirmation).getByText("Empty template-1.md")).toBeVisible();
+    fireEvent.click(within(confirmation).getByRole("button", { name: "取消" }));
+    expect(empty).toBeInTheDocument();
+    expect(adapter.saveDocumentTemplate).not.toHaveBeenCalled();
+    expect(saveDocument).not.toHaveBeenCalled();
+    expect(saveDocumentAs).not.toHaveBeenCalled();
+  });
+
+  it("cancels a template without creating a new tab and keeps focus mode view-only", async () => {
+    seedBrowsing();
+    setup(new RestoreAdapter());
+    const original = await screen.findByRole("textbox", { name: `Document body ${GAMMA}` });
+    fireEvent.click(screen.getByRole("button", { name: "更多操作" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "从模板新建" }));
+    fireEvent.click(screen.getByRole("button", { name: "取消" }));
+    expect(screen.getAllByRole("button", { name: /^关闭 .+\.md$/ })).toHaveLength(3);
+    fireEvent.keyDown(original, { key: "Enter", ctrlKey: true, shiftKey: true });
+    expect(original.closest(".app-shell")).toHaveClass("app-shell--focus");
+    fireEvent.keyDown(original, { key: ",", ctrlKey: true });
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(original.closest(".app-shell")).toHaveClass("app-shell--focus");
+    fireEvent.keyDown(original, { key: "Escape" });
+    expect(original.closest(".app-shell")).not.toHaveClass("app-shell--focus");
+    expect(screen.getByRole("textbox", { name: `Document body ${GAMMA}` })).toBe(original);
+    expect(within(rail(2)).queryByLabelText("未保存")).not.toBeInTheDocument();
+  });
+
+  it("persists favorite paths independently of tabs and keeps missing favorites removable", async () => {
+    seedBrowsing();
+    const adapter = new RestoreAdapter();
+    setup(adapter);
+    await screen.findByRole("textbox", { name: `Document body ${GAMMA}` });
+    fireEvent.click(screen.getByRole("button", { name: "收藏当前文件" }));
+    expect(loadFavorites()).toEqual([GAMMA]);
+    fireEvent.click(within(rail(2)).getByRole("button", { name: "关闭 gamma.md" }));
+    adapter.contents.delete(GAMMA);
+    const favorites = screen.getByRole("region", { name: "收藏" });
+    fireEvent.click(within(favorites).getByRole("button", { name: "gamma.md" }));
+    expect(await screen.findByText(/Missing fixture/)).toBeVisible();
+    expect(loadFavorites()).toEqual([GAMMA]);
+    fireEvent.click(within(favorites).getByRole("button", { name: "取消收藏 gamma.md" }));
+    expect(loadFavorites()).toEqual([]);
+    expect(within(favorites).getByText("还没有收藏的文件")).toBeVisible();
+  });
+
+  it("hides the Favorites group only after choosing its heading-menu action", async () => {
+    seedBrowsing();
+    saveFavorites([ALPHA]);
+    setup(new RestoreAdapter());
+    await screen.findByRole("textbox", { name: `Document body ${GAMMA}` });
+    const heading = within(screen.getByRole("region", { name: "收藏" })).getByRole(
+      "button",
+      { name: "折叠收藏" },
+    );
+
+    fireEvent.contextMenu(heading);
+    expect(screen.getByRole("region", { name: "收藏" })).toBeVisible();
+    expect(loadFavorites()).toEqual([ALPHA]);
+    fireEvent.click(screen.getByRole("menuitem", { name: "关闭收藏" }));
+    expect(screen.queryByRole("region", { name: "收藏" })).not.toBeInTheDocument();
+    expect(loadFavorites()).toEqual([ALPHA]);
+
+    fireEvent.keyDown(window, { key: ",", ctrlKey: true });
+    const settings = screen.getByRole("dialog");
+    const showFavorites = within(settings).getByRole("checkbox", { name: "显示收藏" });
+    expect(showFavorites).not.toBeChecked();
+    fireEvent.click(showFavorites);
+    expect(screen.getByRole("region", { name: "收藏" })).toBeVisible();
+    expect(loadFavorites()).toEqual([ALPHA]);
+  });
+
+  it("adds and removes a file-tree favorite without opening or changing the active document", async () => {
+    seedBrowsing();
+    const adapter = new RestoreAdapter();
+    setup(adapter);
+    const original = await screen.findByRole("textbox", { name: `Document body ${GAMMA}` });
+    const tree = screen.getByRole("list", { name: /工作区文件.*Session fixtures/ });
+    const file = within(tree).getByRole("button", { name: "alpha.md" });
+    const openCalls = adapter.openDocument.mock.calls.length;
+    fireEvent.contextMenu(file);
+    fireEvent.click(screen.getByRole("menuitem", { name: "添加到收藏" }));
+    const favorites = screen.getByRole("region", { name: "收藏" });
+    expect(within(favorites).getByRole("button", { name: "alpha.md" })).toBeVisible();
+    expect(loadFavorites()).toEqual([ALPHA]);
+    expect(screen.getByRole("textbox", { name: `Document body ${GAMMA}` })).toBe(original);
+    expect(original).toHaveValue("# Gamma on disk\n");
+    expect(adapter.openDocument).toHaveBeenCalledTimes(openCalls);
+    expect(screen.queryByLabelText("未保存")).toBeNull();
+    fireEvent.contextMenu(file);
+    fireEvent.click(screen.getByRole("menuitem", { name: "取消收藏" }));
+    expect(within(favorites).queryByRole("button", { name: "alpha.md" })).toBeNull();
+    expect(loadFavorites()).toEqual([]);
+    expect(adapter.contents.get(ALPHA)).toBe("# Alpha on disk\n");
+  });
+
+  it("opens a favorite as an independent file without reopening its closed recent workspace", async () => {
+    seedBrowsing();
+    saveFavorites([ALPHA]);
+    const adapter = new RestoreAdapter();
+    setup(adapter, "empty");
+    fireEvent.click(
+      within(screen.getByRole("region", { name: "收藏" })).getByRole("button", {
+        name: "alpha.md",
+      }),
+    );
+    expect(
+      await screen.findByRole("textbox", { name: `Document body ${ALPHA}` }),
+    ).toHaveValue("# Alpha on disk\n");
+    expect(adapter.openDocument).toHaveBeenCalledExactlyOnceWith(ALPHA);
+    expect(adapter.listWorkspace).not.toHaveBeenCalled();
+    expect(adapter.pickWorkspace).not.toHaveBeenCalled();
+    expect(loadWorkspaceHistory().openWorkspaces).toEqual([]);
+    expect(loadWorkspaceHistory().recentWorkspaces[0]?.path).toBe(ROOT);
+    expect(loadFavorites()).toEqual([ALPHA]);
+    fireEvent.click(screen.getByRole("button", { name: "全文搜索" }));
+    expect(
+      within(screen.getByRole("dialog")).getByText(
+        "先打开一个工作区，即可搜索其中的文档和代码。",
+      ),
+    ).toBeVisible();
+    expect(adapter.searchWorkspaces).not.toHaveBeenCalled();
+  });
+
+  it("trims stored search conditions immediately when the setting is lowered", async () => {
+    localStorage.setItem(
+      SEARCH_HISTORY_STORAGE_KEY,
+      JSON.stringify(
+        Array.from({ length: 20 }, (_, index) => ({
+          query: `query-${index}`,
+          scopePath: "",
+          caseSensitive: false,
+          useRegex: false,
+          fileFilter: "",
+          lastUsedAt: index,
+        })),
+      ),
+    );
+    const adapter = new RestoreAdapter();
+    setup(adapter, "empty");
+    await waitFor(() =>
+      expect(
+        JSON.parse(localStorage.getItem(SEARCH_HISTORY_STORAGE_KEY) ?? "[]"),
+      ).toHaveLength(15),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "更多操作" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: /^设置…/ }));
+    fireEvent.change(screen.getByRole("spinbutton", { name: "最近搜索数量" }), {
+      target: { value: "4" },
+    });
+    await waitFor(() =>
+      expect(
+        JSON.parse(localStorage.getItem(SEARCH_HISTORY_STORAGE_KEY) ?? "[]"),
+      ).toHaveLength(4),
+    );
+    expect(screen.queryByRole("dialog", { name: "工作区全文搜索" })).toBeNull();
+  });
+
+  it("requires per-export opt-in for online images and cancellation starts no export", async () => {
+    seedBrowsing();
+    const adapter = new RestoreAdapter();
+    setup(adapter);
+    await screen.findByRole("textbox", { name: `Document body ${GAMMA}` });
+    fireEvent.click(screen.getByRole("button", { name: "更多操作" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "导出" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: /^HTML…/ }));
+    expect(screen.getByRole("checkbox")).not.toBeChecked();
+    fireEvent.click(screen.getByRole("button", { name: "取消" }));
+    expect(adapter.exportHtml).not.toHaveBeenCalled();
+    exportHtml();
+    await waitFor(() => expect(adapter.exportHtml).toHaveBeenCalledTimes(1));
+    expect(adapter.exportHtml.mock.calls[0]?.[4]).toBe(false);
+    fireEvent.click(screen.getByRole("button", { name: "更多操作" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "导出" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: /^HTML…/ }));
+    fireEvent.click(screen.getByRole("checkbox"));
+    fireEvent.click(screen.getByRole("button", { name: "选择保存位置并导出" }));
+    await waitFor(() => expect(adapter.exportHtml).toHaveBeenCalledTimes(2));
+    expect(adapter.exportHtml.mock.calls[1]?.[4]).toBe(true);
+  });
+
   it("exposes unavailable roots and files, retries them, and forgets only recent records", async () => {
     seedBrowsing();
     const adapter = new RestoreAdapter();
@@ -281,19 +647,81 @@ describe("AppShell startup browsing", () => {
     expect(loadWorkspaceHistory().recentWorkspaces[0]?.path).toBe(ROOT);
   });
 
-  it("searches disk from the sidebar and opens a result in the focused split without replacing a kept page", async () => {
+  it("opens global content search from the toolbar with all open roots and only Files/Outline in the sidebar", async () => {
+    const snapshot = seedBrowsing();
+    const otherRoot = "/second-search-fixtures";
+    const closedRoot = "/closed-search-fixtures";
+    const first = { path: ROOT, name: "Session fixtures", lastOpenedAt: 1 };
+    const second = {
+      path: otherRoot,
+      name: "Second fixtures",
+      lastOpenedAt: 2,
+      showHidden: true,
+    };
+    saveSessionSnapshot({ ...snapshot, workspacePaths: [ROOT, otherRoot] });
+    saveWorkspaceHistory({
+      openWorkspaces: [first, second],
+      activeWorkspacePath: ROOT,
+      recentWorkspaces: [
+        first,
+        second,
+        { path: closedRoot, name: "Closed fixtures", lastOpenedAt: 0 },
+      ],
+      recentFiles: [],
+    });
+    const adapter = new RestoreAdapter();
+    adapter.contents.set(`${otherRoot}/second.md`, "# Another workspace\n");
+    setup(adapter);
+    await screen.findByRole("textbox", { name: `Document body ${GAMMA}` });
+    const sidebarTabs = within(screen.getByRole("tablist", { name: "侧栏内容" }));
+    expect(sidebarTabs.getAllByRole("tab").map((tab) => tab.textContent)).toEqual([
+      "文件",
+      "大纲",
+    ]);
+    expect(screen.getByRole("button", { name: /快速打开/ })).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "全文搜索" }));
+    const dialog = screen.getByRole("dialog");
+    const scope = within(dialog).getByRole("combobox", { name: "搜索范围" });
+    expect(scope).toHaveTextContent("全部已打开的工作区 (2)");
+    expect(within(dialog).getByText(/磁盘正文，不包含未保存的修改/)).toBeVisible();
+    expect(within(dialog).queryByText(/按文件名查找.*快速打开/)).toBeNull();
+    const input = within(dialog).getByRole("searchbox");
+    fireEvent.change(input, { target: { value: "查找" } });
+    fireEvent.submit(input.closest("form")!);
+    await waitFor(() =>
+      expect(adapter.searchWorkspaces).toHaveBeenCalledExactlyOnceWith(
+        [
+          { path: ROOT, showHidden: false },
+          { path: otherRoot, showHidden: true },
+        ],
+        "查找",
+        false,
+        false,
+        "",
+      ),
+    );
+    fireEvent.click(scope);
+    expect(within(dialog).queryByRole("option", { name: /Closed fixtures/ })).toBeNull();
+  });
+
+  it("searches disk in the global dialog and opens a result in the focused split without replacing a kept page", async () => {
     seedBrowsing();
     const adapter = new RestoreAdapter();
     adapter.contents.set(ALPHA, "# Alpha\n中文查找内容\n");
     setup(adapter);
     const gamma = await screen.findByRole("textbox", { name: `Document body ${GAMMA}` });
     fireEvent.change(gamma, { target: { value: "# Local draft" } });
-    fireEvent.keyDown(window, { key: "f", metaKey: true, shiftKey: true });
+    fireEvent.keyDown(window, { key: "f", ctrlKey: true, shiftKey: true });
     const search = await screen.findByRole("search");
     const input = within(search).getByRole("searchbox");
     fireEvent.change(input, { target: { value: "查找" } });
     fireEvent.submit(input.closest("form")!);
-    const result = await within(search).findByRole("button", { name: /中文查找内容/ });
+    const result = await within(search).findByRole("button", {
+      name: /中文\s*查找\s*内容/,
+    });
+    const results = search.querySelector<HTMLElement>(".workspace-search__results")!;
+    results.scrollTop = 96;
+    fireEvent.scroll(results);
     fireEvent.click(result);
     await waitFor(() =>
       expect(
@@ -304,11 +732,26 @@ describe("AppShell startup browsing", () => {
       [{ path: ROOT, showHidden: false }],
       "查找",
       false,
+      false,
+      "",
     );
     const tabs = rail(2);
     expect(within(tabs).getByTitle(GAMMA)).toBeInTheDocument();
     expect(within(tabs).getByLabelText("未保存")).toBeInTheDocument();
-    expect(search).toBeInTheDocument();
+    expect(search).not.toBeInTheDocument();
+    expect(document.querySelector(".workspace-search-dialog-layer")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "全文搜索" }));
+    const reopenedSearch = await screen.findByRole("search");
+    expect(within(reopenedSearch).getByRole("searchbox")).toHaveValue("查找");
+    expect(adapter.searchWorkspaces).toHaveBeenCalledOnce();
+    expect(within(reopenedSearch).getByTitle("alpha.md:2:3")).toHaveAttribute(
+      "aria-current",
+      "true",
+    );
+    expect(
+      reopenedSearch.querySelector<HTMLElement>(".workspace-search__results")!.scrollTop,
+    ).toBe(96);
   });
 
   it("exports the current unsaved Markdown snapshot without saving or clearing dirty state", async () => {
@@ -318,7 +761,9 @@ describe("AppShell startup browsing", () => {
     const gamma = await screen.findByRole("textbox", { name: `Document body ${GAMMA}` });
     fireEvent.change(gamma, { target: { value: "# Export latest\n\n中文内容" } });
     fireEvent.click(screen.getByRole("button", { name: "更多操作" }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "导出 HTML…" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "导出" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: /^HTML…/ }));
+    fireEvent.click(screen.getByRole("button", { name: "选择保存位置并导出" }));
     await waitFor(() => expect(adapter.exportHtml).toHaveBeenCalledTimes(1));
     const [name, html, excluded] = adapter.exportHtml.mock.calls[0]!;
     expect(name).toBe("gamma.html");
@@ -377,14 +822,14 @@ describe("AppShell startup browsing", () => {
     {
       locale: "zh-CN" as const,
       more: "更多操作",
-      exportLabel: "导出 HTML…",
+      exportLabel: "导出",
       message:
         "导出失败：文档超过 HTML 导出的 8 MiB 大小限制。当前编辑已保留，请拆分文档后重试。",
     },
     {
       locale: "en-US" as const,
       more: "More Actions",
-      exportLabel: "Export HTML…",
+      exportLabel: "Export",
       message:
         "Export failed: This document exceeds the 8 MiB HTML export limit. Your edits are preserved; split the document and try again.",
     },
@@ -407,6 +852,12 @@ describe("AppShell startup browsing", () => {
       fireEvent.change(gamma, { target: { value: "# Keep this export draft" } });
       fireEvent.click(screen.getByRole("button", { name: more }));
       fireEvent.click(screen.getByRole("menuitem", { name: exportLabel }));
+      fireEvent.click(screen.getByRole("menuitem", { name: /^HTML…/ }));
+      fireEvent.click(
+        screen.getByRole("button", {
+          name: locale === "zh-CN" ? "选择保存位置并导出" : "Choose destination and export",
+        }),
+      );
       expect(await screen.findByText(message)).toBeVisible();
       expect(gamma).toHaveValue("# Keep this export draft");
       expect(adapter.contents.get(GAMMA)).toBe("# Gamma on disk\n");

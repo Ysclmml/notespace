@@ -28,8 +28,34 @@ function SettingsProbe() {
       <output aria-label="auto-save-mode">{settings.autoSaveMode}</output>
       <output aria-label="auto-save-delay">{settings.autoSaveDelaySeconds}</output>
       <output aria-label="startup-behavior">{settings.startupBehavior}</output>
+      <output aria-label="show-favorites">{String(settings.showFavorites)}</output>
+      <output aria-label="search-history-limit">{settings.searchHistoryLimit}</output>
+      <output aria-label="check-updates">{String(settings.checkUpdatesOnStartup)}</output>
+      <output aria-label="bold-shortcut">{settings.shortcuts.toggleBold ?? "none"}</output>
+      <button
+        onClick={() =>
+          updateSettings({
+            shortcuts: { ...settings.shortcuts, toggleBold: "Mod+J", heading1: null },
+          })
+        }
+        type="button"
+      >
+        Custom shortcut
+      </button>
       <button onClick={() => updateSettings({ startupBehavior: "empty" })} type="button">
         Start empty
+      </button>
+      <button onClick={() => updateSettings({ showFavorites: false })} type="button">
+        Hide favorites
+      </button>
+      <button onClick={() => updateSettings({ searchHistoryLimit: 22 })} type="button">
+        Keep more searches
+      </button>
+      <button
+        onClick={() => updateSettings({ checkUpdatesOnStartup: false })}
+        type="button"
+      >
+        Disable update checks
       </button>
       <button onClick={() => setLocale("en-US")} type="button">
         English
@@ -70,13 +96,21 @@ describe("AppSettingsProvider", () => {
     fireEvent.click(screen.getByRole("button", { name: "Large text" }));
     fireEvent.click(screen.getByRole("button", { name: "Auto-save" }));
     fireEvent.click(screen.getByRole("button", { name: "Start empty" }));
+    fireEvent.click(screen.getByRole("button", { name: "Hide favorites" }));
+    fireEvent.click(screen.getByRole("button", { name: "Keep more searches" }));
+    fireEvent.click(screen.getByRole("button", { name: "Disable update checks" }));
+    fireEvent.click(screen.getByRole("button", { name: "Custom shortcut" }));
     await waitFor(() =>
       expect(JSON.parse(storage.getItem(APP_SETTINGS_STORAGE_KEY) ?? "{}")).toMatchObject({
         autoSaveDelaySeconds: 12,
         autoSaveMode: "afterDelay",
+        checkUpdatesOnStartup: false,
         editorFontSize: 21,
         locale: "en-US",
+        searchHistoryLimit: 22,
+        showFavorites: false,
         startupBehavior: "empty",
+        shortcuts: { toggleBold: "Mod+J", heading1: null },
       }),
     );
 
@@ -91,6 +125,10 @@ describe("AppSettingsProvider", () => {
     expect(screen.getByLabelText("auto-save-mode")).toHaveTextContent("afterDelay");
     expect(screen.getByLabelText("auto-save-delay")).toHaveTextContent("12");
     expect(screen.getByLabelText("startup-behavior")).toHaveTextContent("empty");
+    expect(screen.getByLabelText("show-favorites")).toHaveTextContent("false");
+    expect(screen.getByLabelText("search-history-limit")).toHaveTextContent("22");
+    expect(screen.getByLabelText("check-updates")).toHaveTextContent("false");
+    expect(screen.getByLabelText("bold-shortcut")).toHaveTextContent("Mod+J");
 
     fireEvent.click(screen.getByRole("button", { name: "Reset" }));
     expect(screen.getByLabelText("locale")).toHaveTextContent("zh-CN");
@@ -98,6 +136,10 @@ describe("AppSettingsProvider", () => {
     expect(screen.getByLabelText("auto-save-mode")).toHaveTextContent("manual");
     expect(screen.getByLabelText("auto-save-delay")).toHaveTextContent("5");
     expect(screen.getByLabelText("startup-behavior")).toHaveTextContent("restore");
+    expect(screen.getByLabelText("show-favorites")).toHaveTextContent("true");
+    expect(screen.getByLabelText("search-history-limit")).toHaveTextContent("15");
+    expect(screen.getByLabelText("check-updates")).toHaveTextContent("true");
+    expect(screen.getByLabelText("bold-shortcut")).toHaveTextContent("Mod+B");
   });
 
   it("uses safe defaults when browser storage is unavailable", () => {
@@ -118,8 +160,11 @@ describe("AppSettingsProvider", () => {
         autoSaveDelaySeconds: 900,
         autoSaveMode: "whenever",
         codeWrap: "yes",
+        checkUpdatesOnStartup: "never",
         editorFontSize: 900,
         locale: "invalid",
+        searchHistoryLimit: 99,
+        showFavorites: "hidden",
       }),
     );
     render(
@@ -132,5 +177,8 @@ describe("AppSettingsProvider", () => {
     expect(screen.getByLabelText("font-size")).toHaveTextContent("28");
     expect(screen.getByLabelText("auto-save-mode")).toHaveTextContent("manual");
     expect(screen.getByLabelText("auto-save-delay")).toHaveTextContent("300");
+    expect(screen.getByLabelText("show-favorites")).toHaveTextContent("true");
+    expect(screen.getByLabelText("search-history-limit")).toHaveTextContent("30");
+    expect(screen.getByLabelText("check-updates")).toHaveTextContent("true");
   });
 });

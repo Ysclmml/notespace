@@ -122,6 +122,79 @@ function renderTree(
 describe("WorkspaceTree", () => {
   afterEach(() => vi.restoreAllMocks());
 
+  it("offers add/remove favorite only for files without opening or removing the file", () => {
+    const onToggleFavorite = vi.fn();
+    const onOpen = vi.fn();
+    const view = (favoritePaths: readonly string[] = []) => (
+      <AppSettingsProvider initialSettings={{ locale: "zh-CN" }} storage={null}>
+        <WorkspaceTree
+          nodes={nodes}
+          rootPath="/workspace"
+          rootName="Workspace"
+          onOpen={onOpen}
+          favoritePaths={favoritePaths}
+          onToggleFavorite={onToggleFavorite}
+        />
+      </AppSettingsProvider>
+    );
+    const { container, rerender } = render(view());
+    const file = screen.getByRole("button", { name: "guide.md" });
+    fireEvent.contextMenu(file);
+    fireEvent.click(screen.getByRole("menuitem", { name: "添加到收藏" }));
+    expect(onToggleFavorite).toHaveBeenCalledExactlyOnceWith(guidePath);
+    expect(onOpen).not.toHaveBeenCalled();
+    rerender(view([guidePath]));
+    fireEvent.contextMenu(file);
+    expect(screen.queryByRole("menuitem", { name: "添加到收藏" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("menuitem", { name: "取消收藏" }));
+    expect(onToggleFavorite).toHaveBeenCalledTimes(2);
+    expect(onToggleFavorite).toHaveBeenLastCalledWith(guidePath);
+
+    for (const target of [
+      screen.getByRole("button", { name: "docs" }),
+      screen.getByRole("button", { name: "折叠工作区 · Workspace" }),
+      container.querySelector(".workspace-tree-shell")!,
+    ]) {
+      fireEvent.contextMenu(target);
+      expect(
+        screen.queryByRole("menuitem", { name: "添加到收藏" }),
+      ).not.toBeInTheDocument();
+      expect(screen.queryByRole("menuitem", { name: "取消收藏" })).not.toBeInTheDocument();
+      fireEvent.keyDown(document, { key: "Escape" });
+    }
+  });
+
+  it("offers a localized favorite action for code files and omits it when not wired", () => {
+    const onToggleFavorite = vi.fn();
+    const code: WorkspaceNode = {
+      kind: "text",
+      name: "worker.py",
+      path: "C:\\Notes\\worker.py",
+      relativePath: "worker.py",
+    };
+    const view = (enabled: boolean) => (
+      <AppSettingsProvider initialSettings={{ locale: "en-US" }} storage={null}>
+        <WorkspaceTree
+          nodes={[code]}
+          rootPath="C:\\Notes"
+          onOpen={vi.fn()}
+          favoritePaths={["c:/notes/WORKER.py"]}
+          onToggleFavorite={enabled ? onToggleFavorite : undefined}
+        />
+      </AppSettingsProvider>
+    );
+    const { rerender } = render(view(true));
+    fireEvent.contextMenu(screen.getByRole("button", { name: "worker.py" }));
+    const action = screen.getByRole("menuitem", { name: "Remove favorite" });
+    fireEvent.keyDown(screen.getByRole("menu"), { key: "End" });
+    expect(action).toHaveFocus();
+    fireEvent.click(action);
+    expect(onToggleFavorite).toHaveBeenCalledExactlyOnceWith(code.path);
+    rerender(view(false));
+    fireEvent.contextMenu(screen.getByRole("button", { name: "worker.py" }));
+    expect(screen.queryByRole("menuitem", { name: /favorite/i })).not.toBeInTheDocument();
+  });
+
   it("filters hidden entries recursively and reveals their active document when enabled", () => {
     const hiddenPath = "/workspace/docs/.drafts/draft.md";
     const hiddenNodes: readonly WorkspaceNode[] = [

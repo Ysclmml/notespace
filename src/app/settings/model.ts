@@ -1,3 +1,13 @@
+import {
+  DEFAULT_SHORTCUTS,
+  normalizeShortcuts,
+  type ShortcutBindings,
+} from "../../features/shortcuts/shortcuts";
+import {
+  DEFAULT_SEARCH_HISTORY_LIMIT,
+  normalizeSearchHistoryLimit,
+} from "./searchHistoryLimit";
+
 export const SUPPORTED_LOCALES = ["zh-CN", "en-US"] as const;
 export const AUTO_SAVE_MODES = ["manual", "afterDelay"] as const;
 export const STARTUP_BEHAVIORS = ["restore", "empty"] as const;
@@ -14,10 +24,14 @@ export interface AppSettings {
   readonly contentWidth: number;
   readonly showCodeLineNumbers: boolean;
   readonly showTypingHints: boolean;
+  readonly showFavorites: boolean;
+  readonly searchHistoryLimit: number;
+  readonly checkUpdatesOnStartup: boolean;
   readonly codeWrap: boolean;
   readonly autoSaveMode: AutoSaveMode;
   readonly autoSaveDelaySeconds: number;
   readonly startupBehavior: StartupBehavior;
+  readonly shortcuts: ShortcutBindings;
 }
 
 export const DEFAULT_APP_SETTINGS: Readonly<AppSettings> = Object.freeze({
@@ -26,10 +40,14 @@ export const DEFAULT_APP_SETTINGS: Readonly<AppSettings> = Object.freeze({
   contentWidth: 920,
   showCodeLineNumbers: true,
   showTypingHints: true,
+  showFavorites: true,
+  searchHistoryLimit: DEFAULT_SEARCH_HISTORY_LIMIT,
+  checkUpdatesOnStartup: true,
   codeWrap: true,
   autoSaveMode: "manual",
   autoSaveDelaySeconds: 5,
   startupBehavior: "restore",
+  shortcuts: DEFAULT_SHORTCUTS,
 });
 
 function clampNumber(
@@ -86,6 +104,12 @@ export function normalizeAppSettings(value: unknown): AppSettings {
       candidate.showTypingHints,
       DEFAULT_APP_SETTINGS.showTypingHints,
     ),
+    showFavorites: booleanOr(candidate.showFavorites, DEFAULT_APP_SETTINGS.showFavorites),
+    searchHistoryLimit: normalizeSearchHistoryLimit(candidate.searchHistoryLimit),
+    checkUpdatesOnStartup: booleanOr(
+      candidate.checkUpdatesOnStartup,
+      DEFAULT_APP_SETTINGS.checkUpdatesOnStartup,
+    ),
     codeWrap: booleanOr(candidate.codeWrap, DEFAULT_APP_SETTINGS.codeWrap),
     autoSaveMode: isAutoSaveMode(candidate.autoSaveMode)
       ? candidate.autoSaveMode
@@ -99,5 +123,12 @@ export function normalizeAppSettings(value: unknown): AppSettings {
     startupBehavior: isStartupBehavior(candidate.startupBehavior)
       ? candidate.startupBehavior
       : DEFAULT_APP_SETTINGS.startupBehavior,
+    shortcuts: normalizeShortcuts(candidate.shortcuts),
   };
 }
+
+export {
+  DEFAULT_SEARCH_HISTORY_LIMIT,
+  SEARCH_HISTORY_LIMIT_MAX,
+  SEARCH_HISTORY_LIMIT_MIN,
+} from "./searchHistoryLimit";

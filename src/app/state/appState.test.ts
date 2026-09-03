@@ -30,6 +30,50 @@ function reduce(state: AppState, ...actions: Parameters<typeof appStateReducer>[
 }
 
 describe("P1-STATE-01 navigation state", () => {
+  it("starts an explicitly created empty untitled draft dirty", () => {
+    const state = reduce(
+      createInitialAppState(),
+      openInNewTab("tab-1", {
+        ...document("untitled://Empty-template.md", ""),
+        initialDirty: true,
+      }),
+    );
+
+    expect(selectCurrentSession(state, "tab-1")).toMatchObject({
+      text: "",
+      dirty: true,
+    });
+  });
+
+  it("keeps ordinary blank untitled documents clean", () => {
+    const state = reduce(
+      createInitialAppState(),
+      openInNewTab("tab-1", document("untitled://Blank.md", "")),
+      openInNewTab("tab-2", {
+        ...document("untitled://Explicitly-clean.md", ""),
+        initialDirty: false,
+      }),
+    );
+
+    expect(selectCurrentSession(state, "tab-1")?.dirty).toBe(false);
+    expect(selectCurrentSession(state, "tab-2")?.dirty).toBe(false);
+  });
+
+  it("ignores the initial-draft dirty flag for disk documents", () => {
+    const state = reduce(
+      createInitialAppState(),
+      openInNewTab("tab-1", {
+        ...document("/workspace/blank.md", ""),
+        initialDirty: true,
+      }),
+    );
+
+    expect(selectCurrentSession(state, "tab-1")).toMatchObject({
+      text: "",
+      dirty: false,
+    });
+  });
+
   it("AC-NAV-001 restores A and B view state across back and forward", () => {
     const viewA = createViewState({
       anchor: "intro",

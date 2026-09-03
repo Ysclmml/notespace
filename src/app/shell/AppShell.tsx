@@ -15,6 +15,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 
 import { useI18n } from "../i18n";
 import { useAppSettings } from "../settings";
+import { APP_VERSION } from "../version";
 import {
   activateTab,
   activateEditorGroup,
@@ -60,12 +61,23 @@ import type {
 } from "../../features/editor/clipboardImage";
 import { DocumentStatisticsStatus } from "./DocumentStatisticsStatus";
 import { AboutDialog } from "../../features/about/AboutDialog";
+import { HelpDialog } from "../../features/help/HelpDialog";
+import { UpdateDialog } from "../../features/update/UpdateDialog";
+import { isAvailableUpdate, type AvailableUpdate } from "../../features/update/types";
+import {
+  loadSkippedUpdateVersion,
+  saveSkippedUpdateVersion,
+} from "../../features/update/updatePreferences";
 import {
   RestoreNotice,
   type RestoreNoticeEntry,
 } from "../../features/session-restore/RestoreNotice";
-import { WorkspaceSearchPanel } from "../../features/workspace-search/WorkspaceSearchPanel";
-import type { WorkspaceSearchRoot } from "../../features/workspace-search/types";
+import { WorkspaceSearchDialog } from "../../features/workspace-search/WorkspaceSearchDialog";
+import { trimSearchHistory } from "../../features/workspace-search/searchHistory";
+import {
+  createWorkspaceSearchViewState,
+  type WorkspaceSearchRoot,
+} from "../../features/workspace-search/types";
 import { CodeFilePreview } from "../../features/code-preview/CodeFilePreview";
 import { ExternalChangeBanner } from "../../features/external-changes/ExternalChangeBanner";
 import { useFileSystemChanges } from "../../features/external-changes/useFileSystemChanges";
@@ -86,6 +98,27 @@ import { imageReferenceFromLink } from "../../features/navigation/imageReference
 import { resolveWorkspaceLink } from "../../features/navigation/resolveWorkspaceLink";
 import { sourcePositionAtLine } from "../../features/navigation/sourcePositionAtLine";
 import { SettingsDialog } from "../../features/settings";
+import { FavoritesPanel } from "../../features/favorites/FavoritesPanel";
+import {
+  favoriteLabels,
+  isFavorite,
+  loadFavorites,
+  MAX_FAVORITES,
+  relocateFavorite,
+  saveFavorites,
+  toggleFavorite,
+} from "../../features/favorites/favorites";
+import { TemplateDialog } from "../../features/templates/TemplateDialog";
+import { templateLabels, type DocumentTemplate } from "../../features/templates/templates";
+import {
+  formatShortcut,
+  getPlatform,
+  hasPlatformModifier,
+  matchesShortcut,
+} from "../../features/shortcuts/shortcuts";
+import { ExportDialog, type ExportFormat } from "../../features/export/ExportDialog";
+import { ExportMenu } from "../../features/export/ExportMenu";
+import { exportErrorMessage } from "../../features/export/exportErrorMessage";
 import { WorkspaceImageSettingsDialog } from "../../features/settings/WorkspaceImageSettingsDialog";
 import {
   buildSessionSnapshot,
@@ -134,7 +167,7 @@ import {
 } from "./icons";
 import "./AppShell.css";
 
-type SidebarMode = "files" | "outline" | "search";
+type SidebarMode = "files" | "outline";
 
 function hasImageReferenceDialog(): boolean {
   return Boolean(document.querySelector('.image-reference-dialog[aria-modal="true"]'));
@@ -677,7 +710,7 @@ export function AppShell({
   readonly adapter?: DesktopAdapter;
 } = {}) {
   const { locale, t } = useI18n();
-  const { settings } = useAppSettings();
+  const { settings, updateSettings } = useAppSettings();
   const { contextMenu, onContextMenu, onPointerDownCapture, closeContextMenu } =
     useEditorContextMenu();
   const adapter = useMemo(
@@ -691,6 +724,7 @@ export function AppShell({
   );
   const appStateRef = useRef(appState);
   const startupBehaviorRef = useRef(settings.startupBehavior);
+  const startupUpdateCheckEnabledRef = useRef(settings.checkUpdatesOnStartup);
   const [initialSnapshot] = useState(() =>
     adapter.kind === "tauri" ? loadSessionSnapshot() : null,
   );
@@ -704,6 +738,7 @@ export function AppShell({
   const [restorePending, setRestorePending] = useState<readonly string[]>([]);
   const restorePendingRef = useRef(new Set<string>());
   const [exporting, setExporting] = useState(false);
+  const [exportFormat, setExportFormat] = useState<ExportFormat | null>(null);
   const [exportFailure, setExportFailure] = useState<{
     readonly documentId: string;
     readonly error: string;
@@ -785,6 +820,57 @@ export function AppShell({
     id: number;
   } | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [focusMode, setFocusMode] = useState(false);
+  const previousFocusModeRef = useRef(false);
+  useLayoutEffect(() => {
+    if (previousFocusModeRef.current === focusMode) return;
+    previousFocusModeRef.current = focusMode;
+    const panel = document.querySelector<HTMLElement>(
+      '.editor-tab-panel[data-focused="true"]',
+    );
+    // Keep the mounted editor/selection. Only move focus away from hidden chrome.
+    if (panel?.contains(document.activeElement)) return;
+    const target =
+      panel?.querySelector<HTMLElement>(".ProseMirror, .cm-content, textarea, button") ??
+      document.querySelector<HTMLElement>(
+        focusMode ? ".focus-mode-exit" : ".shell-toolbar button",
+      );
+    target?.focus({ preventScroll: true });
+  }, [focusMode]);
+  const [templateVisible, setTemplateVisible] = useState(false);
+  const [workspaceSearchVisible, setWorkspaceSearchVisible] = useState(false);
+  const [workspaceSearchViewState, setWorkspaceSearchViewState] = useState(
+    createWorkspaceSearchViewState,
+  );
+  useEffect(() => {
+    trimSearchHistory(settings.searchHistoryLimit);
+  }, [settings.searchHistoryLimit]);
+  const [helpVisible, setHelpVisible] = useState(false);
+  const [favorites, setFavorites] = useState<readonly string[]>(() =>
+    adapter.kind === "tauri" ? loadFavorites() : [],
+  );
+  const favoriteCopy = favoriteLabels[locale];
+  const templateCopy = templateLabels[locale];
+  const inspectFavoritePaths = useMemo(
+    () => adapter.inspectDocuments?.bind(adapter),
+    [adapter],
+  );
+  const templateLibrary = useMemo(() => {
+    if (
+      !adapter.listDocumentTemplates ||
+      !adapter.readDocumentTemplate ||
+      !adapter.saveDocumentTemplate
+    )
+      return undefined;
+    return {
+      list: adapter.listDocumentTemplates.bind(adapter),
+      read: adapter.readDocumentTemplate.bind(adapter),
+      save: adapter.saveDocumentTemplate.bind(adapter),
+      openDirectory: adapter.revealInFileManager.bind(adapter),
+    };
+  }, [adapter]);
+  const focusLabel = locale === "zh-CN" ? "专注模式" : "Focus mode";
+  const exitFocusLabel = locale === "zh-CN" ? "退出专注模式" : "Exit focus mode";
   const [busy, setBusy] = useState(false);
   const [localizedStatus, setStatus] = useReducer(
     (_current: { locale: string; message: string }, message: string) => ({
@@ -795,6 +881,17 @@ export function AppShell({
   );
   const status =
     localizedStatus.locale === locale ? localizedStatus.message : t("status.ready");
+  const toggleFileFavorite = useCallback(
+    (path: string) => {
+      if (isUntitledPath(path)) return;
+      if (favorites.length >= MAX_FAVORITES && !isFavorite(favorites, path)) {
+        setStatus(favoriteCopy.limit);
+        return;
+      }
+      setFavorites((current) => toggleFavorite(current, path, adapter.kind === "demo"));
+    },
+    [adapter.kind, favoriteCopy.limit, favorites],
+  );
   const [saveFailure, setSaveFailure] = useState<SaveFailure | null>(null);
   const [imagePasteFailure, setImagePasteFailure] = useState<ImagePasteFailure | null>(
     null,
@@ -804,6 +901,12 @@ export function AppShell({
   const [visual, setVisual] = useState<PreviewVisual | null>(null);
   const [settingsVisible, setSettingsVisible] = useState(false);
   const [aboutVisible, setAboutVisible] = useState(false);
+  const [availableUpdate, setAvailableUpdate] = useState<AvailableUpdate | null>(null);
+  const [updatePromptReady, setUpdatePromptReady] = useState(false);
+  const startupUpdateCheckRef = useRef<{
+    readonly adapter: DesktopAdapter;
+    readonly promise: Promise<import("../../features/update/types").UpdateCheckResult>;
+  } | null>(null);
   const [imageSettingsWorkspace, setImageSettingsWorkspace] =
     useState<WorkspaceSelection | null>(null);
   const [imageInsertRequests, setImageInsertRequests] = useState<
@@ -843,12 +946,66 @@ export function AppShell({
     useState<PendingCloseRequest | null>(null);
   const [pendingWorkspaceDelete, setPendingWorkspaceDelete] =
     useState<PendingWorkspaceDelete | null>(null);
+
+  useEffect(() => {
+    if (!startupUpdateCheckEnabledRef.current || !adapter.checkForUpdate) return undefined;
+    let active = true;
+    if (startupUpdateCheckRef.current?.adapter !== adapter) {
+      startupUpdateCheckRef.current = {
+        adapter,
+        promise: adapter.checkForUpdate(),
+      };
+    }
+    void startupUpdateCheckRef.current.promise
+      .then((result) => {
+        if (
+          active &&
+          isAvailableUpdate(result) &&
+          loadSkippedUpdateVersion() !== result.latestVersion
+        ) {
+          setUpdatePromptReady(false);
+          setAvailableUpdate(result);
+        }
+      })
+      .catch(() => {
+        // Startup checks are intentionally quiet. About offers an explicit retry.
+      });
+    return () => {
+      active = false;
+    };
+  }, [adapter]);
+
+  useEffect(() => {
+    if (!availableUpdate) return undefined;
+    let active = true;
+    const refresh = () => {
+      if (!active) return;
+      setUpdatePromptReady(
+        !document.querySelector('[aria-modal="true"]:not(.update-dialog)'),
+      );
+    };
+    queueMicrotask(refresh);
+    const observer = new MutationObserver(refresh);
+    observer.observe(document.body, {
+      subtree: true,
+      childList: true,
+      attributes: true,
+      attributeFilter: ["aria-modal"],
+    });
+    return () => {
+      active = false;
+      observer.disconnect();
+    };
+  }, [availableUpdate]);
+
   useNativeContextMenuPolicy(
     Boolean(
       pendingCloseRequest ||
       pendingWorkspaceDelete ||
       imageSettingsWorkspace ||
-      aboutVisible,
+      aboutVisible ||
+      helpVisible ||
+      availableUpdate,
     ),
   );
   const [localPreview, setLocalPreview] = useState<LocalPreviewOverlay | null>(null);
@@ -878,12 +1035,23 @@ export function AppShell({
     closeLocalPreview();
     setAboutVisible(true);
   }, [closeContextMenu, closeLocalPreview]);
+  const openHelp = useCallback(() => {
+    setMoreMenuVisible(false);
+    setWorkspaceMenuVisible(false);
+    setQuickOpenVisible(false);
+    setWorkspaceSearchVisible(false);
+    setSettingsVisible(false);
+    closeContextMenu();
+    closeLocalPreview();
+    setHelpVisible(true);
+  }, [closeContextMenu, closeLocalPreview]);
   const [findRequests, setFindRequests] = useState<Readonly<Record<string, number>>>({});
   const findRequestCounter = useRef(1);
   const findInActivePage = useCallback(() => {
     if (
       settingsVisible ||
       aboutVisible ||
+      helpVisible ||
       imageSettingsWorkspace ||
       quickOpenVisible ||
       visual ||
@@ -899,6 +1067,7 @@ export function AppShell({
   }, [
     settingsVisible,
     aboutVisible,
+    helpVisible,
     imageSettingsWorkspace,
     quickOpenVisible,
     visual,
@@ -925,9 +1094,18 @@ export function AppShell({
       pendingCloseRequest ||
       pendingWorkspaceDelete ||
       imageSettingsWorkspace ||
-      aboutVisible,
+      aboutVisible ||
+      helpVisible ||
+      availableUpdate,
     );
-  }, [pendingCloseRequest, pendingWorkspaceDelete, imageSettingsWorkspace, aboutVisible]);
+  }, [
+    pendingCloseRequest,
+    pendingWorkspaceDelete,
+    imageSettingsWorkspace,
+    aboutVisible,
+    helpVisible,
+    availableUpdate,
+  ]);
 
   useLayoutEffect(() => {
     appStateRef.current = appState;
@@ -1077,6 +1255,10 @@ export function AppShell({
     if (adapter.kind !== "tauri") return;
     saveWorkspaceHistory(workspaceHistory);
   }, [adapter.kind, workspaceHistory]);
+
+  useEffect(() => {
+    if (adapter.kind === "tauri") saveFavorites(favorites);
+  }, [adapter.kind, favorites]);
 
   useEffect(() => {
     if (adapter.kind !== "tauri" || restoredWorkspacesRef.current) return;
@@ -1239,11 +1421,15 @@ export function AppShell({
       hasImageReferenceDialog()
     )
       return;
-    setSidebarCollapsed(false);
-    setSidebarMode("search");
+    if (!searchWorkspaces) {
+      setStatus(t("search.unavailable"));
+      return;
+    }
+    setFocusMode(false);
+    setWorkspaceSearchVisible(true);
     setQuickOpenVisible(false);
     setMoreMenuVisible(false);
-  }, []);
+  }, [searchWorkspaces, t]);
   const allWorkspaceFiles = useMemo<readonly QuickOpenCandidate[]>(
     () =>
       workspaces.flatMap((item) =>
@@ -1579,6 +1765,45 @@ export function AppShell({
     [adapter, commitAction, nextTabId, setEditorRevealForTab, t, workspaces],
   );
 
+  const associatedOpenDocumentRef = useRef(openDocument);
+  useEffect(() => {
+    associatedOpenDocumentRef.current = openDocument;
+  }, [openDocument]);
+
+  useEffect(() => {
+    const listen = adapter.listenOpenedDocumentPaths;
+    if (!listen) return undefined;
+
+    let disposed = false;
+    let unlisten: (() => void) | undefined;
+    let opens = Promise.resolve();
+    void listen
+      .call(adapter, (paths) => {
+        opens = opens.then(async () => {
+          for (const path of paths) {
+            if (disposed) return;
+            await associatedOpenDocumentRef.current(path, "newForeground");
+          }
+        });
+      })
+      .then((stop) => {
+        if (disposed) stop();
+        else unlisten = stop;
+      })
+      .catch((error) => {
+        if (!disposed) {
+          setStatus(
+            translateRef.current("status.openFailed", { error: readableError(error) }),
+          );
+        }
+      });
+
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
+  }, [adapter]);
+
   const openWorkspace = useCallback(async () => {
     setBusy(true);
     try {
@@ -1667,72 +1892,93 @@ export function AppShell({
     );
   };
 
-  const exportActiveHtml = useCallback(async () => {
-    if (
-      exportingRef.current ||
-      confirmationPendingRef.current ||
-      imageSaveAsPendingRef.current ||
-      hasImageReferenceDialog()
-    )
-      return;
-    const state = appStateRef.current;
-    const tab = selectActiveTab(state);
-    const session = tab ? selectCurrentSession(state, tab.id) : undefined;
-    if (
-      !session ||
-      session.kind !== "markdown" ||
-      session.mode === "sourceOnly" ||
-      !adapter.exportHtml
-    ) {
-      setStatus(t("export.unavailable"));
-      return;
-    }
-    exportingRef.current = true;
-    setExporting(true);
-    setExportFailure(null);
-    setMoreMenuVisible(false);
-    setStatus(t("export.busy"));
-    // Capture a snapshot, not a save: subsequent edits remain dirty and independent.
-    const { text, path } = session;
-    const title = fileName(path).replace(/\.(md|markdown)$/iu, "");
-    try {
-      const { buildHtmlExport } = await import("../../features/export/buildHtmlExport");
-      const html = buildHtmlExport(text, {
-        title,
-        documentPath: isUntitledPath(path) ? undefined : path,
-      });
-      const latestState = appStateRef.current;
-      // Closed clean sessions are just a cache, not open files. Keep the
-      // captured source protected even if its tab closes during export setup.
-      const excludedPaths = [
-        ...new Set([
-          path,
-          ...[...referencedDocumentIds(latestState)].map(
-            (id) => latestState.sessions[id]?.path,
-          ),
-        ]),
-      ].filter((item): item is string => typeof item === "string" && !isUntitledPath(item));
-      const result = await adapter.exportHtml(`${title}.html`, html, excludedPaths);
-      setStatus(
-        result
-          ? t("export.success", { name: fileName(result.path) })
-          : t("export.cancelled"),
-      );
-    } catch (error) {
-      const message =
-        typeof error === "object" &&
-        error !== null &&
-        "code" in error &&
-        error.code === "htmlExportSourceTooLarge"
-          ? t("export.sourceTooLarge")
-          : readableError(error);
-      setExportFailure({ documentId: session.id, error: message });
-      setStatus(t("export.failed", { error: message }));
-    } finally {
-      exportingRef.current = false;
-      setExporting(false);
-    }
-  }, [adapter, t]);
+  const exportActiveDocument = useCallback(
+    async (format: ExportFormat, allowRemoteImages: boolean) => {
+      if (
+        exportingRef.current ||
+        confirmationPendingRef.current ||
+        imageSaveAsPendingRef.current ||
+        hasImageReferenceDialog()
+      )
+        return;
+      const state = appStateRef.current;
+      const tab = selectActiveTab(state);
+      const session = tab ? selectCurrentSession(state, tab.id) : undefined;
+      if (
+        !session ||
+        session.kind !== "markdown" ||
+        session.mode === "sourceOnly" ||
+        !(format === "html" ? adapter.exportHtml : adapter.exportPdf)
+      ) {
+        setStatus(t("export.unavailable"));
+        return;
+      }
+      exportingRef.current = true;
+      setExporting(true);
+      setExportFailure(null);
+      setMoreMenuVisible(false);
+      setStatus(t("export.busy"));
+      // Capture a snapshot, not a save: subsequent edits remain dirty and independent.
+      const { text, path } = session;
+      const title = fileName(path).replace(/\.(md|markdown)$/iu, "");
+      try {
+        const { prepareShareableHtml } =
+          await import("../../features/export/prepareShareableHtml");
+        const { html, images } = await prepareShareableHtml(text, {
+          title,
+          documentPath: isUntitledPath(path) ? undefined : path,
+        });
+        const latestState = appStateRef.current;
+        // Closed clean sessions are just a cache, not open files. Keep the
+        // captured source protected even if its tab closes during export setup.
+        const excludedPaths = [
+          ...new Set([
+            path,
+            ...[...referencedDocumentIds(latestState)].map(
+              (id) => latestState.sessions[id]?.path,
+            ),
+          ]),
+        ].filter(
+          (item): item is string => typeof item === "string" && !isUntitledPath(item),
+        );
+        const result =
+          format === "html"
+            ? await adapter.exportHtml!(
+                `${title}.html`,
+                html,
+                excludedPaths,
+                images,
+                allowRemoteImages,
+              )
+            : await adapter.exportPdf!(
+                `${title}.pdf`,
+                html,
+                excludedPaths,
+                images,
+                allowRemoteImages,
+              );
+        setStatus(
+          result
+            ? t("export.success", { name: fileName(result.path) })
+            : t("export.cancelled"),
+        );
+      } catch (error) {
+        const message =
+          typeof error === "object" &&
+          error !== null &&
+          "code" in error &&
+          error.code === "htmlExportSourceTooLarge"
+            ? t("export.sourceTooLarge")
+            : exportErrorMessage(error, locale, readableError(error));
+        setExportFailure({ documentId: session.id, error: message });
+        setStatus(t("export.failed", { error: message }));
+      } finally {
+        exportingRef.current = false;
+        setExporting(false);
+      }
+    },
+    [adapter, t, locale],
+  );
 
   const removeWorkspace = useCallback(
     (selection: WorkspaceSelection) => {
@@ -1751,11 +1997,15 @@ export function AppShell({
   );
 
   const newDocument = useCallback(
-    (kind: "markdown" | "text" = "markdown", groupId?: string) => {
+    (
+      kind: "markdown" | "text" = "markdown",
+      groupId?: string,
+      template?: DocumentTemplate,
+    ) => {
       const index = untitledCounter.current++;
       const extension = kind === "markdown" ? "md" : "txt";
       const baseName = locale === "zh-CN" ? `未命名-${index}` : `Untitled-${index}`;
-      const name = `${baseName}.${extension}`;
+      const name = `${template ? `${template.title}-${index}` : baseName}.${extension}`;
       const path = `untitled://${name}`;
       const tabId = nextTabId();
       commitAction(
@@ -1763,7 +2013,8 @@ export function AppShell({
           tabId,
           {
             path,
-            text: "",
+            text: template?.markdown ?? "",
+            initialDirty: Boolean(template),
             diskMtimeMs: 0,
             mode: "normal",
             kind,
@@ -2260,8 +2511,12 @@ export function AppShell({
             return;
           }
           const owned = stillOwned(appStateRef.current);
-          if (owned)
+          if (owned) {
             commitAction(relocateDocument(session.id, saveAsResult.relocated, savedText));
+            setFavorites((current) =>
+              relocateFavorite(current, session.path, saveAsResult.saved.path),
+            );
+          }
           setSaveFailure(null);
           setWorkspaceHistory((current) =>
             rememberFile(current, {
@@ -2511,6 +2766,7 @@ export function AppShell({
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      if (event.isComposing || event.keyCode === 229) return;
       if (
         confirmationPendingRef.current ||
         imageSaveAsPendingRef.current ||
@@ -2526,12 +2782,35 @@ export function AppShell({
         return;
       }
       if (event.key === "Escape") {
+        if (
+          event.target instanceof Element &&
+          event.target.closest(".export-menu__submenu")
+        )
+          return;
+        if (
+          focusMode &&
+          !document.querySelector('[aria-modal="true"], .page-find, [role="menu"]') &&
+          !quickOpenVisible &&
+          !localPreview
+        )
+          setFocusMode(false);
         setQuickOpenVisible(false);
         setMoreMenuVisible(false);
         setWorkspaceMenuVisible(false);
         closeLocalPreview();
       }
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "f") {
+      // Dialogs own their keyboard, including shortcut recording fields.
+      if (document.querySelector('[aria-modal="true"]') || quickOpenVisible) return;
+      if (matchesShortcut(event, "Mod+Shift+Enter")) {
+        event.preventDefault();
+        setFocusMode((current) => !current);
+        setMoreMenuVisible(false);
+        setWorkspaceMenuVisible(false);
+        closeContextMenu();
+        return;
+      }
+      if (!hasPlatformModifier(event) || event.altKey) return;
+      if (event.key.toLowerCase() === "f") {
         event.preventDefault();
         event.stopPropagation();
         if (!settingsVisible && !quickOpenVisible && !visual) {
@@ -2540,29 +2819,29 @@ export function AppShell({
         }
         return;
       }
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "s") {
+      if (event.key.toLowerCase() === "s") {
         event.preventDefault();
         void saveActiveDocument(event.shiftKey);
       }
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "n") {
+      if (!event.shiftKey && event.key.toLowerCase() === "n") {
         event.preventDefault();
         newDocument("markdown");
       }
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "o") {
+      if (event.key.toLowerCase() === "o") {
         event.preventDefault();
         if (event.shiftKey) void openWorkspace();
         else void openSingleFile();
       }
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+      if (!event.shiftKey && event.key.toLowerCase() === "k") {
         event.preventDefault();
         if (workspaces.length > 0) setQuickOpenVisible(true);
         else void openWorkspace();
       }
-      if ((event.metaKey || event.ctrlKey) && event.key === ",") {
+      if (!event.shiftKey && event.key === ",") {
         event.preventDefault();
         setSettingsVisible(true);
       }
-      if ((event.metaKey || event.ctrlKey) && event.key === "/" && activeTab) {
+      if (!event.shiftKey && event.key === "/" && activeTab) {
         event.preventDefault();
         event.stopPropagation();
         const currentState = appStateRef.current;
@@ -2585,6 +2864,9 @@ export function AppShell({
     return () => window.removeEventListener("keydown", onKeyDown, { capture: true });
   }, [
     activeTab,
+    focusMode,
+    localPreview,
+    closeContextMenu,
     closeLocalPreview,
     findInActivePage,
     showWorkspaceSearch,
@@ -2631,7 +2913,8 @@ export function AppShell({
         if (
           confirmationPendingRef.current ||
           imageSaveAsPendingRef.current ||
-          hasImageReferenceDialog()
+          hasImageReferenceDialog() ||
+          document.querySelector('[aria-modal="true"]')
         )
           return;
         switch (actionId) {
@@ -2651,7 +2934,16 @@ export function AppShell({
             void saveActiveDocument(true);
             break;
           case "file.exportHtml":
-            void exportActiveHtml();
+            setExportFormat("html");
+            break;
+          case "file.exportPdf":
+            if (getPlatform() === "mac") setExportFormat("pdf");
+            break;
+          case "file.newTemplate":
+            setTemplateVisible(true);
+            break;
+          case "view.toggleFocus":
+            setFocusMode((current) => !current);
             break;
           case "edit.findWorkspace":
             showWorkspaceSearch();
@@ -2687,6 +2979,9 @@ export function AppShell({
             requestNativeWindowClose();
             break;
           case "help.open":
+            openHelp();
+            break;
+          case "app.about":
             openAbout();
             break;
           case "edit.find":
@@ -2705,7 +3000,6 @@ export function AppShell({
     };
   }, [
     adapter,
-    exportActiveHtml,
     showWorkspaceSearch,
     findInActivePage,
     newDocument,
@@ -2713,6 +3007,7 @@ export function AppShell({
     openWorkspace,
     requestNativeWindowClose,
     openAbout,
+    openHelp,
     revealInFileManager,
     saveActiveDocument,
     switchEditorMode,
@@ -3377,10 +3672,20 @@ export function AppShell({
 
   return (
     <div
-      className={sidebarCollapsed ? "app-shell app-shell--sidebar-collapsed" : "app-shell"}
+      className={`app-shell${sidebarCollapsed ? " app-shell--sidebar-collapsed" : ""}${focusMode ? " app-shell--focus" : ""}`}
       onContextMenu={onContextMenu}
       onPointerDownCapture={onPointerDownCapture}
     >
+      {focusMode && (
+        <button
+          className="focus-mode-exit"
+          type="button"
+          onClick={() => setFocusMode(false)}
+          title={`${exitFocusLabel} · ${formatShortcut("Mod+Shift+Enter")}`}
+        >
+          {exitFocusLabel} <kbd>Esc</kbd>
+        </button>
+      )}
       <header className="shell-toolbar" data-native-context-menu="true">
         <div className="shell-toolbar__cluster" aria-label={t("toolbar.navigation")}>
           <button
@@ -3536,6 +3841,33 @@ export function AppShell({
         </div>
 
         <div className="shell-toolbar__actions">
+          {settings.showFavorites && (
+            <button
+              className="icon-button favorite-current"
+              disabled={!activeSession || isUntitledPath(activeSession.path)}
+              aria-label={
+                activeSession && isFavorite(favorites, activeSession.path)
+                  ? favoriteCopy.remove
+                  : favoriteCopy.add
+              }
+              aria-pressed={Boolean(
+                activeSession && isFavorite(favorites, activeSession.path),
+              )}
+              title={
+                !activeSession || isUntitledPath(activeSession.path)
+                  ? favoriteCopy.unsaved
+                  : isFavorite(favorites, activeSession.path)
+                    ? favoriteCopy.remove
+                    : favoriteCopy.add
+              }
+              onClick={() => {
+                if (activeSession) toggleFileFavorite(activeSession.path);
+              }}
+              type="button"
+            >
+              {activeSession && isFavorite(favorites, activeSession.path) ? "★" : "☆"}
+            </button>
+          )}
           {activeSession?.kind === "markdown" && (
             <div
               className="editor-mode-switch"
@@ -3567,6 +3899,7 @@ export function AppShell({
           )}
           <button
             className="command-button"
+            title={t("toolbar.quickOpen")}
             onClick={() =>
               workspaces.length > 0 ? setQuickOpenVisible(true) : void openWorkspace()
             }
@@ -3574,7 +3907,17 @@ export function AppShell({
           >
             <SearchIcon />
             <span>{t("toolbar.quickOpen")}</span>
-            <kbd>⌘K</kbd>
+            <kbd>{formatShortcut("Mod+K")}</kbd>
+          </button>
+          <button
+            aria-label={t("search.workspace")}
+            className="command-button"
+            onClick={showWorkspaceSearch}
+            title={`${t("search.workspace")} · ${formatShortcut("Mod+Shift+F")}`}
+            type="button"
+          >
+            <SearchIcon />
+            <span>{t("search.workspace")}</span>
           </button>
           <div className="more-menu-host">
             <button
@@ -3602,10 +3945,20 @@ export function AppShell({
                   type="button"
                 >
                   <span>{t("menu.newMarkdown")}</span>
-                  <kbd>⌘N</kbd>
+                  <kbd>{formatShortcut("Mod+N")}</kbd>
                 </button>
                 <button onClick={() => newDocument("text")} role="menuitem" type="button">
                   <span>{t("menu.newText")}</span>
+                </button>
+                <button
+                  onClick={() => {
+                    setMoreMenuVisible(false);
+                    setTemplateVisible(true);
+                  }}
+                  role="menuitem"
+                  type="button"
+                >
+                  <span>{templateCopy.title}</span>
                 </button>
                 <button
                   className="more-actions-menu__separated"
@@ -3617,7 +3970,7 @@ export function AppShell({
                   type="button"
                 >
                   <span>{t("menu.openFile")}</span>
-                  <kbd>⌘O</kbd>
+                  <kbd>{formatShortcut("Mod+O")}</kbd>
                 </button>
                 <button
                   onClick={() => {
@@ -3643,7 +3996,7 @@ export function AppShell({
                   type="button"
                 >
                   <span>{t("toolbar.quickOpen")}</span>
-                  <kbd>⌘K</kbd>
+                  <kbd>{formatShortcut("Mod+K")}</kbd>
                 </button>
                 <button
                   disabled={!activeSession}
@@ -3655,13 +4008,14 @@ export function AppShell({
                   type="button"
                 >
                   <span>{t("find.currentPage")}</span>
-                  <kbd>⌘F</kbd>
+                  <kbd>{formatShortcut("Mod+F")}</kbd>
                 </button>
                 <button onClick={showWorkspaceSearch} role="menuitem" type="button">
                   <span>{t("search.workspace")}</span>
-                  <kbd>⇧⌘F</kbd>
+                  <kbd>{formatShortcut("Mod+Shift+F")}</kbd>
                 </button>
-                <button
+                <ExportMenu
+                  locale={locale}
                   disabled={
                     !activeSession ||
                     activeSession.kind !== "markdown" ||
@@ -3669,12 +4023,12 @@ export function AppShell({
                     exporting ||
                     !adapter.exportHtml
                   }
-                  onClick={() => void exportActiveHtml()}
-                  role="menuitem"
-                  type="button"
-                >
-                  <span>{t("export.html")}</span>
-                </button>
+                  pdfAvailable={Boolean(adapter.exportPdf && getPlatform() === "mac")}
+                  onSelect={(format) => {
+                    setMoreMenuVisible(false);
+                    setExportFormat(format);
+                  }}
+                />
                 <button
                   disabled={!activeSession}
                   onClick={() => {
@@ -3685,7 +4039,7 @@ export function AppShell({
                   type="button"
                 >
                   <span>{t("menu.save")}</span>
-                  <kbd>⌘S</kbd>
+                  <kbd>{formatShortcut("Mod+S")}</kbd>
                 </button>
                 <button
                   className="more-actions-menu__separated"
@@ -3698,7 +4052,7 @@ export function AppShell({
                   type="button"
                 >
                   <span>{t("menu.saveAs")}</span>
-                  <kbd>⇧⌘S</kbd>
+                  <kbd>{formatShortcut("Mod+Shift+S")}</kbd>
                 </button>
                 <button
                   disabled={!activeSession || isUntitledPath(activeSession.path)}
@@ -3722,7 +4076,21 @@ export function AppShell({
                   type="button"
                 >
                   <span>{t("menu.preferences")}</span>
-                  <kbd>⌘,</kbd>
+                  <kbd>{formatShortcut("Mod+,")}</kbd>
+                </button>
+                <button
+                  onClick={() => {
+                    setMoreMenuVisible(false);
+                    setFocusMode(true);
+                  }}
+                  role="menuitem"
+                  type="button"
+                >
+                  <span>{focusLabel}</span>
+                  <kbd>{formatShortcut("Mod+Shift+Enter")}</kbd>
+                </button>
+                <button onClick={openHelp} role="menuitem" type="button">
+                  <span>{t("help.title")}</span>
                 </button>
                 <button onClick={openAbout} role="menuitem" type="button">
                   <span>{t("about.title")}</span>
@@ -3760,16 +4128,6 @@ export function AppShell({
             >
               {t("sidebar.outline")}
             </button>
-            <button
-              aria-controls="sidebar-panel"
-              aria-selected={sidebarMode === "search"}
-              className="sidebar__mode-tab"
-              onClick={showWorkspaceSearch}
-              role="tab"
-              type="button"
-            >
-              {t("search.workspace")}
-            </button>
           </div>
 
           <div
@@ -3790,137 +4148,145 @@ export function AppShell({
             }}
             role="tabpanel"
           >
-            {sidebarMode === "search" ? (
-              searchWorkspaces ? (
-                <WorkspaceSearchPanel
-                  locale={locale}
-                  workspaces={searchRoots}
-                  search={searchWorkspaces}
-                  onOpen={(match) =>
-                    void openDocument(match.path, "current", undefined, match.line, {
-                      treePreview: true,
-                      searchColumn: match.column,
-                    })
-                  }
-                  onClose={() => setSidebarMode("files")}
-                />
-              ) : (
-                <p className="sidebar-empty">{t("search.unavailable")}</p>
-              )
-            ) : sidebarMode === "files" ? (
-              workspaces.length > 0 ? (
-                <div className="workspace-roots">
-                  {workspaces.map((item) => {
-                    const isActive = item.selection.path === workspace?.path;
-                    return (
-                      <section
-                        className={
-                          isActive
-                            ? "workspace-root workspace-root--active"
-                            : "workspace-root"
-                        }
-                        key={item.selection.path}
-                      >
-                        <WorkspaceTree
-                          showHidden={getWorkspaceShowHidden(
-                            workspaceHistory,
-                            item.selection.path,
-                          )}
-                          onShowHiddenChange={(path, visible) =>
-                            void changeWorkspaceHiddenFiles(path, visible)
+            {sidebarMode === "files" ? (
+              <>
+                {settings.showFavorites && (
+                  <FavoritesPanel
+                    paths={favorites}
+                    activePath={activeSession?.path}
+                    locale={locale}
+                    inspectPaths={inspectFavoritePaths}
+                    onHide={() => updateSettings({ showFavorites: false })}
+                    onOpen={(path) =>
+                      openDocument(path, "current", undefined, undefined, {
+                        treePreview: true,
+                      })
+                    }
+                    onRemove={(path) =>
+                      setFavorites((current) => toggleFavorite(current, path))
+                    }
+                  />
+                )}
+                {workspaces.length > 0 ? (
+                  <div className="workspace-roots">
+                    {workspaces.map((item) => {
+                      const isActive = item.selection.path === workspace?.path;
+                      return (
+                        <section
+                          className={
+                            isActive
+                              ? "workspace-root workspace-root--active"
+                              : "workspace-root"
                           }
-                          onImageSettings={() => setImageSettingsWorkspace(item.selection)}
-                          actionLabels={{
-                            collapseWorkspace: t("workspace.collapse"),
-                            expandWorkspace: t("workspace.expand"),
-                            closeWorkspace: t("workspace.close"),
-                            copyPath: t("workspace.copyPath"),
-                            deleteItem: t("workspace.delete"),
-                          }}
-                          activePath={
-                            activeDocumentWorkspacePath === item.selection.path
-                              ? activeSession?.path
-                              : undefined
-                          }
-                          ariaLabel={`${t("workspace.tree")} · ${item.selection.name}`}
-                          contextMenuRequest={
-                            workspaceContextRequest?.rootPath === item.selection.path
-                              ? workspaceContextRequest
-                              : undefined
-                          }
-                          nodes={item.nodes}
-                          onContextMenuRequestHandled={(id) =>
-                            setWorkspaceContextRequest((current) =>
-                              current?.id === id ? null : current,
-                            )
-                          }
-                          onActivateWorkspace={activateWorkspace}
-                          onCloseWorkspace={() => removeWorkspace(item.selection)}
-                          onCopyPath={copyPath}
-                          onCreateFile={(directoryPath, requestedFileName) =>
-                            createWorkspaceFile(
-                              item.selection,
-                              directoryPath,
-                              requestedFileName,
-                            )
-                          }
-                          onCreateFolder={
-                            adapter.createWorkspaceFolder
-                              ? (directoryPath, folderName) =>
-                                  createWorkspaceFolder(
-                                    item.selection,
-                                    directoryPath,
-                                    folderName,
-                                  )
-                              : undefined
-                          }
-                          onDeleteRequested={(node) =>
-                            requestWorkspaceDelete(item.selection, node)
-                          }
-                          onOpen={(path) => {
-                            activateWorkspace(item.selection.path);
-                            void openDocument(path, "current", undefined, undefined, {
-                              treePreview: true,
-                            });
-                          }}
-                          onOpenPermanent={(path) => {
-                            activateWorkspace(item.selection.path);
-                            void openDocument(path, "current", undefined, undefined, {
-                              treePreview: true,
-                              keepOpen: true,
-                            });
-                          }}
-                          onOpenInNewTab={(path) => {
-                            activateWorkspace(item.selection.path);
-                            void openDocument(path, "newForeground");
-                          }}
-                          onQuickOpen={() => {
-                            activateWorkspace(item.selection.path);
-                            setQuickOpenQuery("");
-                            setQuickOpenVisible(true);
-                          }}
-                          onReveal={revealInFileManager}
-                          rootActive={isActive}
-                          rootName={item.selection.name}
-                          rootPath={item.selection.path}
-                        />
-                      </section>
-                    );
-                  })}
-                </div>
-              ) : (
-                <div className="sidebar-empty">
-                  <FolderIcon className="sidebar-empty__icon" />
-                  <p className="sidebar-empty__title">{t("sidebar.noWorkspace")}</p>
-                  <button
-                    className="sidebar-empty__action"
-                    onClick={openWorkspace}
-                    type="button"
-                  >
-                    {t("welcome.openWorkspace")}
-                  </button>
-                </div>
-              )
+                          key={item.selection.path}
+                        >
+                          <WorkspaceTree
+                            favoritePaths={settings.showFavorites ? favorites : undefined}
+                            onToggleFavorite={
+                              settings.showFavorites ? toggleFileFavorite : undefined
+                            }
+                            showHidden={getWorkspaceShowHidden(
+                              workspaceHistory,
+                              item.selection.path,
+                            )}
+                            onShowHiddenChange={(path, visible) =>
+                              void changeWorkspaceHiddenFiles(path, visible)
+                            }
+                            onImageSettings={() =>
+                              setImageSettingsWorkspace(item.selection)
+                            }
+                            actionLabels={{
+                              collapseWorkspace: t("workspace.collapse"),
+                              expandWorkspace: t("workspace.expand"),
+                              closeWorkspace: t("workspace.close"),
+                              copyPath: t("workspace.copyPath"),
+                              deleteItem: t("workspace.delete"),
+                            }}
+                            activePath={
+                              activeDocumentWorkspacePath === item.selection.path
+                                ? activeSession?.path
+                                : undefined
+                            }
+                            ariaLabel={`${t("workspace.tree")} · ${item.selection.name}`}
+                            contextMenuRequest={
+                              workspaceContextRequest?.rootPath === item.selection.path
+                                ? workspaceContextRequest
+                                : undefined
+                            }
+                            nodes={item.nodes}
+                            onContextMenuRequestHandled={(id) =>
+                              setWorkspaceContextRequest((current) =>
+                                current?.id === id ? null : current,
+                              )
+                            }
+                            onActivateWorkspace={activateWorkspace}
+                            onCloseWorkspace={() => removeWorkspace(item.selection)}
+                            onCopyPath={copyPath}
+                            onCreateFile={(directoryPath, requestedFileName) =>
+                              createWorkspaceFile(
+                                item.selection,
+                                directoryPath,
+                                requestedFileName,
+                              )
+                            }
+                            onCreateFolder={
+                              adapter.createWorkspaceFolder
+                                ? (directoryPath, folderName) =>
+                                    createWorkspaceFolder(
+                                      item.selection,
+                                      directoryPath,
+                                      folderName,
+                                    )
+                                : undefined
+                            }
+                            onDeleteRequested={(node) =>
+                              requestWorkspaceDelete(item.selection, node)
+                            }
+                            onOpen={(path) => {
+                              activateWorkspace(item.selection.path);
+                              void openDocument(path, "current", undefined, undefined, {
+                                treePreview: true,
+                              });
+                            }}
+                            onOpenPermanent={(path) => {
+                              activateWorkspace(item.selection.path);
+                              void openDocument(path, "current", undefined, undefined, {
+                                treePreview: true,
+                                keepOpen: true,
+                              });
+                            }}
+                            onOpenInNewTab={(path) => {
+                              activateWorkspace(item.selection.path);
+                              void openDocument(path, "newForeground");
+                            }}
+                            onQuickOpen={() => {
+                              activateWorkspace(item.selection.path);
+                              setQuickOpenQuery("");
+                              setQuickOpenVisible(true);
+                            }}
+                            onReveal={revealInFileManager}
+                            rootActive={isActive}
+                            rootName={item.selection.name}
+                            rootPath={item.selection.path}
+                          />
+                        </section>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="sidebar-empty">
+                    <FolderIcon className="sidebar-empty__icon" />
+                    <p className="sidebar-empty__title">{t("sidebar.noWorkspace")}</p>
+                    <button
+                      className="sidebar-empty__action"
+                      onClick={openWorkspace}
+                      type="button"
+                    >
+                      {t("welcome.openWorkspace")}
+                    </button>
+                  </div>
+                )}
+              </>
             ) : activeSession?.kind === "markdown" && activeTab ? (
               <Outline
                 emptyLabel={t("outline.noHeadings")}
@@ -4196,13 +4562,100 @@ export function AppShell({
         )}
       </main>
 
+      {templateVisible && (
+        <TemplateDialog
+          locale={locale}
+          library={templateLibrary}
+          currentMarkdown={
+            activeSession?.kind === "markdown" && activeSession.mode === "normal"
+              ? activeSession.text
+              : undefined
+          }
+          onClose={() => setTemplateVisible(false)}
+          onSelect={(template) => {
+            setTemplateVisible(false);
+            newDocument("markdown", undefined, template);
+          }}
+        />
+      )}
+      {workspaceSearchVisible && searchWorkspaces && (
+        <WorkspaceSearchDialog
+          historyLimit={settings.searchHistoryLimit}
+          locale={locale}
+          onViewStateChange={setWorkspaceSearchViewState}
+          workspaces={searchRoots}
+          search={searchWorkspaces}
+          viewState={workspaceSearchViewState}
+          onOpen={(match) => {
+            setWorkspaceSearchVisible(false);
+            void openDocument(match.path, "current", undefined, match.line, {
+              treePreview: true,
+              searchColumn: match.column,
+            });
+          }}
+          onOpenWorkspace={() => {
+            setWorkspaceSearchVisible(false);
+            void openWorkspace();
+          }}
+          onClose={() => setWorkspaceSearchVisible(false)}
+        />
+      )}
+      {exportFormat && (
+        <ExportDialog
+          locale={locale}
+          initialFormat={exportFormat}
+          pdfAvailable={Boolean(adapter.exportPdf && getPlatform() === "mac")}
+          onClose={() => setExportFormat(null)}
+          onExport={(format, allowRemoteImages) => {
+            setExportFormat(null);
+            void exportActiveDocument(format, allowRemoteImages);
+          }}
+        />
+      )}
       <SettingsDialog open={settingsVisible} onClose={() => setSettingsVisible(false)} />
+      {helpVisible && <HelpDialog onClose={() => setHelpVisible(false)} />}
       {aboutVisible && (
         <AboutDialog
+          onCheckForUpdate={adapter.checkForUpdate?.bind(adapter)}
           onClose={() => setAboutVisible(false)}
           onOpenExternalUrl={adapter.openExternalUrl?.bind(adapter)}
         />
       )}
+      {availableUpdate &&
+        updatePromptReady &&
+        !pendingCloseRequest &&
+        !pendingWorkspaceDelete &&
+        !imageSettingsWorkspace &&
+        !settingsVisible &&
+        !aboutVisible &&
+        !helpVisible &&
+        !templateVisible &&
+        !workspaceSearchVisible &&
+        !exportFormat &&
+        !visual &&
+        !quickOpenVisible &&
+        !moreMenuVisible &&
+        !workspaceMenuVisible &&
+        !contextMenu.open && (
+          <UpdateDialog
+            update={availableUpdate}
+            onClose={() => {
+              setUpdatePromptReady(false);
+              setAvailableUpdate(null);
+            }}
+            onSkip={(version) => {
+              saveSkippedUpdateVersion(version);
+              setUpdatePromptReady(false);
+              setAvailableUpdate(null);
+            }}
+            onOpenRelease={(url) => {
+              if (!adapter.openExternalUrl) {
+                return Promise.reject(new Error("External browser unavailable"));
+              }
+              return adapter.openExternalUrl(url);
+            }}
+          />
+        )}
       {imageSettingsWorkspace && (
         <WorkspaceImageSettingsDialog
           key={imageSettingsWorkspace.path}
@@ -4302,7 +4755,9 @@ export function AppShell({
         ) : (
           <span>{t("status.localFirst")}</span>
         )}
-        <span className="status-bar__app">{t("app.name")} 0.1.1</span>
+        <span className="status-bar__app">
+          {t("app.name")} {APP_VERSION}
+        </span>
       </footer>
     </div>
   );

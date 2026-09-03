@@ -1,0 +1,123 @@
+.shortcut-settings {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.shortcut-settings__description,
+.shortcut-settings__guidance {
+  margin: 0;
+  color: var(--ink-500);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.shortcut-settings__search {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 36px;
+  padding: 7px 10px;
+  color: var(--ink-800);
+  background: var(--paper-0);
+  border: 1px solid var(--line-300);
+  border-radius: var(--radius-sm);
+  font: inherit;
+}
+
+.shortcut-settings__list {
+  border: 1px solid var(--line-200);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.shortcut-settings__row {
+  display: grid;
+  grid-template-columns: minmax(90px, 1fr) minmax(95px, auto) auto;
+  gap: 8px 10px;
+  align-items: center;
+  padding: 12px;
+  background: var(--paper-1);
+}
+
+.shortcut-settings__row + .shortcut-settings__row {
+  border-top: 1px solid var(--line-200);
+}
+
+.shortcut-settings__action {
+  display: grid;
+  gap: 3px;
+}
+
+.shortcut-settings__action strong {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.shortcut-settings__action small {
+  color: var(--ink-500);
+  font-size: 11px;
+}
+
+.shortcut-settings button {
+  min-height: 30px;
+  padding: 5px 8px;
+  color: var(--ink-700);
+  background: var(--paper-0);
+  border: 1px solid var(--line-300);
+  border-radius: var(--radius-sm);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.shortcut-settings button:hover:not(:disabled) {
+  color: var(--accent-700);
+  border-color: var(--accent-600);
+}
+
+.shortcut-settings button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.shortcut-settings button:focus-visible,
+.shortcut-settings input:focus-visible {
+  outline: 2px solid var(--accent-600);
+  outline-offset: 2px;
+}
+
+.shortcut-settings__binding[aria-pressed="true"] {
+  color: var(--accent-700);
+  background: #eef2ff;
+  border-color: var(--accent-600);
+}
+
+.shortcut-settings__binding kbd {
+  font: inherit;
+  white-space: nowrap;
+}
+
+.shortcut-settings__buttons,
+.shortcut-settings__footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.shortcut-settings__error {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: #a04125;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+@media (max-width: 780px) {
+  .shortcut-settings__row {
+    grid-template-columns: minmax(90px, 1fr) minmax(95px, auto);
+  }
+
+  .shortcut-settings__buttons {
+    grid-column: 1 / -1;
+  }
+}

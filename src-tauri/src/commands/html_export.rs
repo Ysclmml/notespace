@@ -1,3 +1,6 @@
+use super::export_resources::{
+    embed_export_images, image_source_paths, ExportImage, MAX_EXPORT_BYTES,
+};
 use super::{
     atomic_write_with_hook, display_path, save_target_is_excluded, BackendError, BackendResult,
 };
@@ -5,8 +8,6 @@ use serde::Serialize;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
-
-const MAX_HTML_EXPORT_BYTES: usize = 64 * 1024 * 1024;
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -19,7 +20,9 @@ pub struct ExportHtmlResult {
 pub async fn export_html(
     suggested_file_name: String,
     html: String,
-    excluded_paths: Vec<String>,
+    mut excluded_paths: Vec<String>,
+    images: Option<Vec<ExportImage>>,
+    allow_remote_images: Option<bool>,
 ) -> BackendResult<Option<ExportHtmlResult>> {
     let selected = rfd::AsyncFileDialog::new()
         .set_title("导出 HTML / Export HTML")
@@ -29,6 +32,13 @@ pub async fn export_html(
         .await;
     let selected_path = selected.map(|handle| handle.path().to_path_buf());
     tauri::async_runtime::spawn_blocking(move || {
+        let Some(ref path) = selected_path else {
+            return Ok(None);
+        };
+        let images = images.unwrap_or_default();
+        excluded_paths.extend(image_source_paths(&images));
+        validate_export_target(path, &excluded_paths)?;
+        let html = embed_export_images(html, &images, allow_remote_images.unwrap_or(false))?;
         export_selected_html_path(selected_path, &html, &excluded_paths)
     })
     .await
@@ -90,7 +100,7 @@ fn export_html_path_with_hook(
     before_rename: impl FnOnce(&Path) -> io::Result<()>,
 ) -> BackendResult<ExportHtmlResult> {
     validate_export_target(path, excluded_paths)?;
-    if html.len() > MAX_HTML_EXPORT_BYTES {
+    if html.len() > MAX_EXPORT_BYTES {
         return Err(BackendError::new(
             "htmlExportTooLarge",
             "HTML export is too large",
@@ -188,5 +198,24 @@ mod tests {
             .file_type()
             .is_symlink());
         assert_eq!(fs::read_to_string(source).unwrap(), "do not replace");
+    }
+
+    #[test]
+    fn an_image_source_is_protected_even_with_an_html_extension() {
+        let directory = TestDirectory::new("html-export-image-protected");
+        let image = directory.path().join("image.html");
+        fs::write(&image, b"image bytes").unwrap();
+        let images = [ExportImage {
+            id: "notespace-export-image-0".into(),
+            source: tauri::Url::from_file_path(&image).unwrap().into(),
+        }];
+        assert!(export_html_path_with_hook(
+            &image,
+            "replacement",
+            &image_source_paths(&images),
+            |_| Ok(())
+        )
+        .is_err());
+        assert_eq!(fs::read(image).unwrap(), b"image bytes");
     }
 }

@@ -15,6 +15,7 @@
 .page-find {
   position: relative;
   display: flex;
+  flex-direction: column;
   box-sizing: border-box;
   width: min(470px, 100%);
   min-width: 0;
@@ -28,6 +29,28 @@
   box-shadow: 0 5px 20px #24365324;
   font: 13px/1.4 var(--font-ui);
   pointer-events: auto;
+}
+
+.page-find__row {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  align-items: center;
+  gap: 4px;
+}
+
+.page-find .page-find__replace-button {
+  width: auto;
+  padding: 0 7px;
+  flex: 0 0 auto;
+  font-size: 12px;
+}
+
+.page-find__error {
+  width: 100%;
+  margin: 2px 0 0;
+  color: #a33228;
+  font-size: 12px;
 }
 
 .page-find input {

@@ -740,8 +740,8 @@ describe("AppShell", () => {
     expect(confirm).toHaveFocus();
     fireEvent.keyDown(confirm, { key: "Tab" });
     expect(cancel).toHaveFocus();
-    fireEvent.keyDown(cancel, { key: "k", metaKey: true });
-    fireEvent.keyDown(cancel, { key: ",", metaKey: true });
+    fireEvent.keyDown(cancel, { key: "k", ctrlKey: true });
+    fireEvent.keyDown(cancel, { key: ",", ctrlKey: true });
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(cancel).toHaveFocus();
     screen.getByRole("button", { name: "更多操作" }).focus();
@@ -924,7 +924,7 @@ describe("AppShell", () => {
     const pickDocument = vi.spyOn(adapter, "pickDocument");
     renderShell(<AppShell adapter={adapter} />);
 
-    fireEvent.keyDown(window, { key: "o", metaKey: true, shiftKey: true });
+    fireEvent.keyDown(window, { key: "o", ctrlKey: true, shiftKey: true });
 
     expect(await screen.findByRole("button", { name: /a\.json/ })).toBeVisible();
     expect(pickWorkspace).toHaveBeenCalledOnce();
@@ -1047,7 +1047,7 @@ describe("AppShell", () => {
     await waitFor(() => expect(adapter.saveCalls).toHaveLength(1), { timeout: 1800 });
 
     view.dispatch({ changes: { from: view.state.doc.length, insert: "\n# newest" } });
-    fireEvent.keyDown(window, { key: "s", metaKey: true });
+    fireEvent.keyDown(window, { key: "s", ctrlKey: true });
     await new Promise((resolve) => window.setTimeout(resolve, 30));
     expect(adapter.saveCalls).toHaveLength(1);
 
@@ -1127,7 +1127,7 @@ describe("AppShell", () => {
 
     // File-tree clicks keep the dirty Tab. Navigate within it to test history-only dirtiness.
     // Keep both fixtures on CodeMirror; visual-editor initialization is unrelated to this close contract.
-    fireEvent.click(screen.getByRole("button", { name: "快速打开 ⌘K" }));
+    fireEvent.click(screen.getByRole("button", { name: "快速打开 Ctrl+K" }));
     const quickOpen = container.querySelector<HTMLElement>(".quick-open");
     if (!quickOpen) throw new Error("Quick Open was not mounted");
     fireEvent.click(within(quickOpen).getByRole("button", { name: /worker\.rs/ }));
@@ -1167,7 +1167,7 @@ describe("AppShell", () => {
     expect(window.dispatchEvent(dirtyClose)).toBe(false);
     expect(dirtyClose.defaultPrevented).toBe(true);
 
-    fireEvent.keyDown(window, { key: "s", metaKey: true });
+    fireEvent.keyDown(window, { key: "s", ctrlKey: true });
     await waitFor(() => expect(container.querySelector(".tab-rail__dirty")).toBeNull());
     expect(window.dispatchEvent(new Event("beforeunload", { cancelable: true }))).toBe(
       true,
@@ -1382,7 +1382,7 @@ describe("AppShell", () => {
     view.dispatch({ changes: { from: view.state.doc.length, insert: "\nchanged" } });
     await waitFor(() => expect(container.querySelector(".tab-rail__dirty")).toBeTruthy());
 
-    fireEvent.keyDown(window, { key: "s", metaKey: true });
+    fireEvent.keyDown(window, { key: "s", ctrlKey: true });
     await waitFor(() =>
       expect(container.querySelector(".status-bar__state--error")).toHaveTextContent(
         "保存失败：disk full",
@@ -1539,7 +1539,7 @@ describe("AppShell", () => {
     fireEvent.click(await screen.findByRole("button", { name: "example.py" }));
     await screen.findByLabelText("代码编辑器");
     adapter.blockNext = true;
-    fireEvent.keyDown(window, { key: "s", metaKey: true, shiftKey: true });
+    fireEvent.keyDown(window, { key: "s", ctrlKey: true, shiftKey: true });
     await waitFor(() => expect(adapter.pending).toBe(true));
     const root = screen.getByRole("button", { name: "折叠工作区 · Anchor fixtures" });
     fireEvent.contextMenu(root);
@@ -2064,7 +2064,7 @@ describe("AppShell", () => {
       await waitFor(() => expect(mainVisual.scrollTop).toBe(0));
 
       fireEvent.click(await screen.findByRole("link", { name: "Open duplicate" }), {
-        metaKey: true,
+        ctrlKey: true,
       });
       const backgroundTab = await screen.findByTitle("/workspace/other.md");
       expect(screen.getByTitle("/workspace/main.md")).toHaveAttribute(

@@ -14,6 +14,47 @@
   grid-template-columns: 0 minmax(0, 1fr);
 }
 
+.app-shell--focus {
+  grid-template-columns: 0 minmax(0, 1fr);
+  grid-template-rows: 0 0 minmax(0, 1fr) 0;
+}
+.app-shell--focus > .shell-toolbar,
+.app-shell--focus > .sidebar,
+.app-shell--focus > .status-bar,
+.app-shell--focus .editor-group-header {
+  display: none;
+}
+.app-shell--focus .editor-groups {
+  grid-template-rows: 0 minmax(0, 1fr);
+}
+.focus-mode-exit {
+  position: fixed;
+  right: 18px;
+  bottom: 16px;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  border: 1px solid var(--line-200);
+  border-radius: 8px;
+  background: var(--paper-1);
+  color: var(--ink-600);
+  font: 12px var(--font-ui);
+  cursor: pointer;
+  box-shadow: 0 2px 14px #0001;
+}
+.focus-mode-exit kbd {
+  font: inherit;
+  color: var(--ink-500);
+}
+.favorite-current {
+  font-size: 23px;
+}
+.favorite-current[aria-pressed="true"] {
+  color: #9a6a10;
+}
+
 /* A single shrinkable grid column keeps long file paths from sizing the dialog. */
 .settings-dialog.confirmation-dialog {
   box-sizing: border-box;
@@ -115,6 +156,8 @@
   right: 0;
   display: grid;
   width: 220px;
+  max-height: calc(100dvh - 90px);
+  overflow-y: auto;
   padding: 6px;
   border: 1px solid var(--line-300);
   border-radius: 9px;
@@ -424,7 +467,7 @@
 
 .sidebar__mode-tabs {
   display: grid;
-  grid-template-columns: minmax(0, 0.8fr) minmax(0, 0.8fr) minmax(0, 1.4fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   align-items: center;
   gap: 2px;
   margin: 7px var(--space-3);

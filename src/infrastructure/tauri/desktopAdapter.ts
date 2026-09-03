@@ -1,9 +1,14 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import type {
+  CustomDocumentTemplate,
+  DocumentTemplateLibrary,
+} from "../../features/templates/types";
+import type {
   WorkspaceSearch,
   WorkspaceSearchMatch,
 } from "../../features/workspace-search/types";
+import type { UpdateCheckResult } from "../../features/update/types";
 
 export interface WorkspaceSelection {
   readonly path: string;
@@ -22,10 +27,14 @@ export type NativeMenuActionId =
   | "file.save"
   | "file.saveAs"
   | "file.exportHtml"
+  | "file.exportPdf"
+  | "file.newTemplate"
+  | "view.toggleFocus"
   | "file.reveal"
   | "edit.find"
   | "edit.findWorkspace"
   | "app.settings"
+  | "app.about"
   | "app.quit"
   | "view.toggleSource"
   | "view.toggleSidebar"
@@ -106,10 +115,25 @@ export interface DesktopAdapter {
   pickDocument(): Promise<DocumentSelection | null>;
   listWorkspace(rootPath: string, showHidden?: boolean): Promise<readonly WorkspaceNode[]>;
   searchWorkspaces?: WorkspaceSearch;
+  checkForUpdate?(): Promise<UpdateCheckResult>;
+  listDocumentTemplates?(): Promise<DocumentTemplateLibrary>;
+  readDocumentTemplate?(
+    path: string,
+  ): Promise<CustomDocumentTemplate & { readonly markdown: string }>;
+  saveDocumentTemplate?(name: string, content: string): Promise<CustomDocumentTemplate>;
   exportHtml?(
     suggestedFileName: string,
     html: string,
     excludedPaths: readonly string[],
+    images?: readonly { readonly id: string; readonly source: string }[],
+    allowRemoteImages?: boolean,
+  ): Promise<{ readonly path: string; readonly bytesWritten: number } | null>;
+  exportPdf?(
+    suggestedFileName: string,
+    html: string,
+    excludedPaths: readonly string[],
+    images?: readonly { readonly id: string; readonly source: string }[],
+    allowRemoteImages?: boolean,
   ): Promise<{ readonly path: string; readonly bytesWritten: number } | null>;
   openDocument(path: string): Promise<OpenDocumentResult>;
   inspectDocuments?(paths: readonly string[]): Promise<readonly DocumentInspection[]>;
@@ -154,19 +178,76 @@ export interface DesktopAdapter {
   listenNativeMenuAction?(
     listener: (actionId: NativeMenuActionId) => void,
   ): Promise<() => void>;
+  listenOpenedDocumentPaths?(
+    listener: (paths: readonly string[]) => void,
+  ): Promise<() => void>;
 }
 
 export class TauriDesktopAdapter implements DesktopAdapter {
+  listDocumentTemplates(): Promise<DocumentTemplateLibrary> {
+    return invoke("list_document_templates");
+  }
+
+  readDocumentTemplate(
+    path: string,
+  ): Promise<CustomDocumentTemplate & { readonly markdown: string }> {
+    return invoke("read_document_template", { path });
+  }
+
+  saveDocumentTemplate(name: string, content: string): Promise<CustomDocumentTemplate> {
+    return invoke("save_document_template", { name, content });
+  }
+
   readonly kind = "tauri" as const;
 
-  searchWorkspaces: WorkspaceSearch = (workspaces, query, caseSensitive) =>
-    invoke("search_workspaces", { workspaces, query, caseSensitive });
+  searchWorkspaces: WorkspaceSearch = (
+    workspaces,
+    query,
+    caseSensitive,
+    useRegex,
+    fileFilter,
+  ) =>
+    invoke("search_workspaces", {
+      workspaces,
+      query,
+      caseSensitive,
+      useRegex,
+      fileFilter,
+    });
 
-  exportHtml(suggestedFileName: string, html: string, excludedPaths: readonly string[]) {
+  checkForUpdate() {
+    return invoke<UpdateCheckResult>("check_for_update");
+  }
+
+  exportHtml(
+    suggestedFileName: string,
+    html: string,
+    excludedPaths: readonly string[],
+    images?: readonly { readonly id: string; readonly source: string }[],
+    allowRemoteImages?: boolean,
+  ) {
     return invoke<{ path: string; bytesWritten: number } | null>("export_html", {
       suggestedFileName,
       html,
       excludedPaths,
+      ...(images === undefined ? {} : { images }),
+      ...(allowRemoteImages === undefined ? {} : { allowRemoteImages }),
+    });
+  }
+
+  exportPdf(
+    suggestedFileName: string,
+    html: string,
+    excludedPaths: readonly string[],
+    images?: readonly { readonly id: string; readonly source: string }[],
+    allowRemoteImages?: boolean,
+  ) {
+    return invoke<{ path: string; bytesWritten: number } | null>("export_pdf", {
+      suggestedFileName,
+      html,
+      excludedPaths,
+      images: images ?? [],
+      allowRemoteImages: allowRemoteImages ?? false,
     });
   }
 
@@ -275,6 +356,45 @@ export class TauriDesktopAdapter implements DesktopAdapter {
     return listen<{ id: string }>("native-menu-action", (event) => {
       listener(event.payload.id as NativeMenuActionId);
     });
+  }
+
+  async listenOpenedDocumentPaths(listener: (paths: readonly string[]) => void) {
+    let active = true;
+    let draining = false;
+    let drainAgain = false;
+
+    const drain = async () => {
+      if (draining) {
+        drainAgain = true;
+        return;
+      }
+      draining = true;
+      try {
+        do {
+          drainAgain = false;
+          const paths = await invoke<string[]>("take_opened_document_paths");
+          if (active && paths.length > 0) listener(paths);
+        } while (active && drainAgain);
+      } finally {
+        draining = false;
+      }
+    };
+
+    const unlisten = await listen<void>("opened-document-paths-available", () => {
+      void drain().catch(() => undefined);
+    });
+    try {
+      await drain();
+    } catch (error) {
+      active = false;
+      unlisten();
+      throw error;
+    }
+
+    return () => {
+      active = false;
+      unlisten();
+    };
   }
 }
 
@@ -393,10 +513,25 @@ export class DemoDesktopAdapter implements DesktopAdapter {
   private readonly documents = new Map(demoDocuments);
   private tree: readonly WorkspaceNode[] = demoTree;
 
-  searchWorkspaces: WorkspaceSearch = async (workspaces, query, caseSensitive) => {
+  searchWorkspaces: WorkspaceSearch = async (
+    workspaces,
+    query,
+    caseSensitive,
+    useRegex,
+    fileFilter,
+  ) => {
     const matches: WorkspaceSearchMatch[] = [];
     let searchedFiles = 0;
     const seen = new Set<string>();
+    let pathMatcher: RegExp | undefined;
+    if ([...fileFilter.trim()].length > 256) throw { code: "invalidFileFilter" };
+    if (fileFilter.trim()) {
+      try {
+        pathMatcher = new RegExp(fileFilter.trim(), "iu");
+      } catch {
+        throw { code: "invalidFileFilter" };
+      }
+    }
     if (!query.trim())
       return {
         matches,
@@ -405,29 +540,44 @@ export class DemoDesktopAdapter implements DesktopAdapter {
         unavailableRoots: [],
         truncated: false,
       };
-    const needle = caseSensitive ? query : query.toLowerCase();
+    if ([...query].length > 512 || /[\n\r\0]/u.test(query)) {
+      throw { code: "workspaceSearchInvalidQuery" };
+    }
+    let contentMatcher: RegExp;
+    try {
+      contentMatcher = new RegExp(
+        useRegex ? query : query.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&"),
+        caseSensitive ? "gu" : "giu",
+      );
+    } catch {
+      throw { code: "invalidSearchPattern" };
+    }
     for (const root of workspaces) {
       const visit = (nodes: readonly WorkspaceNode[]) => {
         for (const node of nodes) {
           if (node.children) visit(node.children);
           if (node.kind === "directory" || seen.has(node.path)) continue;
           seen.add(node.path);
+          if (pathMatcher && !pathMatcher.test(node.relativePath.replaceAll("\\", "/"))) {
+            continue;
+          }
           const text = this.documents.get(node.path);
           if (text === undefined) continue;
           searchedFiles++;
           for (const [line, snippet] of text.split("\n").entries()) {
-            const column = (caseSensitive ? snippet : snippet.toLowerCase()).indexOf(
-              needle,
+            const match = [...snippet.matchAll(contentMatcher)].find(
+              (candidate) => candidate[0].length > 0,
             );
-            if (column >= 0)
-              matches.push({
-                path: node.path,
-                relativePath: node.relativePath,
-                rootPath: root.path,
-                line: line + 1,
-                column: column + 1,
-                snippet,
-              });
+            if (!match || match.index === undefined) continue;
+            matches.push({
+              path: node.path,
+              relativePath: node.relativePath,
+              rootPath: root.path,
+              line: line + 1,
+              column: match.index + 1,
+              matchLength: match[0].length,
+              snippet,
+            });
           }
         }
       };
@@ -666,6 +816,10 @@ export class DemoDesktopAdapter implements DesktopAdapter {
   }
 
   async listenNativeMenuAction(): Promise<() => void> {
+    return () => undefined;
+  }
+
+  async listenOpenedDocumentPaths(): Promise<() => void> {
     return () => undefined;
   }
 }

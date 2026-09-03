@@ -1,0 +1,2 @@
+/* 声明简体中文 bundle 本地化，使 AppKit 自动菜单项使用系统中文。 */
+"CFBundleTypeName" = "Markdown 文稿";

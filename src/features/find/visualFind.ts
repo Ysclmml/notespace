@@ -1,10 +1,16 @@
 import { EditorView as CodeMirrorView } from "@codemirror/view";
 import type { Node } from "@milkdown/kit/prose/model";
+import { closeHistory } from "@milkdown/kit/prose/history";
 import { Plugin, PluginKey } from "@milkdown/kit/prose/state";
 import { Decoration, DecorationSet, type EditorView } from "@milkdown/kit/prose/view";
 
 import { codeFindDecorations, setCodeFindMatches } from "./codeMirrorFind";
-import { findTextMatches, type FindMatch, type PageFindTarget } from "./pageFind";
+import {
+  findTextMatches,
+  replacementIsSafe,
+  type FindMatch,
+  type PageFindTarget,
+} from "./pageFind";
 
 const visualFindKey = new PluginKey<DecorationSet>("notespace-page-find");
 
@@ -37,7 +43,24 @@ export function findVisualMatches(document: Node, query: string): FindMatch[] {
   return matches;
 }
 
-export function visualFindTarget(view: EditorView, scroller: HTMLElement): PageFindTarget {
+/** Preserve PM offsets while replacing structural positions with separators. */
+function textAtVisualPositions(document: Node): string {
+  const fragments: string[] = [];
+  let offset = 0;
+  document.descendants((node, position) => {
+    if (!node.isText && !node.isLeaf) return true;
+    fragments.push("\n".repeat(position - offset), node.text ?? "\ufffc");
+    offset = position + node.nodeSize;
+    return false;
+  });
+  return fragments.join("");
+}
+
+export function visualFindTarget(
+  view: EditorView,
+  scroller: HTMLElement,
+  isComposing: () => boolean = () => false,
+): PageFindTarget {
   return {
     matches: (query) => findVisualMatches(view.state.doc, query),
     highlight(matches, current, reveal) {
@@ -114,5 +137,20 @@ export function visualFindTarget(view: EditorView, scroller: HTMLElement): PageF
       }
     },
     focus: () => view.focus(),
+    replace(matches, replacement) {
+      if (!view.editable) return "readonly";
+      if (view.composing || isComposing()) return "composing";
+      const text = textAtVisualPositions(view.state.doc);
+      if (!replacementIsSafe(text, matches, replacement)) return "blocked";
+      let transaction = closeHistory(view.state.tr);
+      for (const { from, to } of [...matches].reverse()) {
+        transaction = transaction.insertText(replacement, from, to);
+      }
+      if (!transaction.doc.eq(view.state.doc)) {
+        view.dispatch(transaction);
+        view.dispatch(closeHistory(view.state.tr).setMeta("addToHistory", false));
+      }
+      return "replaced";
+    },
   };
 }

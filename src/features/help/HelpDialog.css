@@ -1,0 +1,159 @@
+.help-dialog-layer {
+  position: fixed;
+  z-index: 80;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 28px;
+  background: rgb(27 35 48 / 25%);
+}
+.help-dialog {
+  display: flex;
+  flex-direction: column;
+  width: min(860px, 100%);
+  height: min(660px, calc(100dvh - 56px));
+  overflow: hidden;
+  border: 1px solid var(--line-300);
+  border-radius: 14px;
+  color: var(--ink-950);
+  background: var(--paper-0);
+  box-shadow: 0 24px 80px rgb(25 36 56 / 24%);
+  font: 14px/1.65 var(--font-ui);
+}
+.help-dialog__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 21px 26px 18px;
+  border-bottom: 1px solid var(--line-200);
+}
+.help-dialog__header h2 {
+  margin: 0;
+  font-size: 20px;
+}
+.help-dialog__header p {
+  margin: 3px 0 0;
+  color: var(--ink-500);
+  font-size: 12px;
+}
+.help-dialog__header > button {
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink-700);
+  font-size: 24px;
+}
+.help-dialog__header > button:hover {
+  background: var(--paper-3);
+}
+.help-dialog__layout {
+  display: grid;
+  flex: 1;
+  min-height: 0;
+  grid-template-columns: 172px minmax(0, 1fr);
+}
+.help-dialog nav {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 20px 12px;
+  border-right: 1px solid var(--line-200);
+  background: var(--paper-2);
+  overflow: auto;
+}
+.help-dialog nav button {
+  padding: 10px 13px;
+  border: 0;
+  border-radius: 7px;
+  color: var(--ink-700);
+  background: transparent;
+  font: inherit;
+  text-align: left;
+}
+.help-dialog nav button:hover {
+  background: var(--paper-3);
+}
+.help-dialog nav button[aria-current] {
+  background: var(--accent-100);
+  color: var(--accent-700);
+  font-weight: 600;
+}
+.help-dialog__content {
+  min-width: 0;
+  overflow: auto;
+  padding: 26px 32px 32px;
+}
+.help-dialog__content h3 {
+  margin: 0 0 7px;
+  font-size: 22px;
+  line-height: 1.4;
+}
+.help-dialog__content h4 {
+  margin: 23px 0 5px;
+  font-size: 14px;
+  font-weight: 650;
+}
+.help-dialog__content p {
+  margin: 0;
+  color: var(--ink-700);
+  overflow-wrap: anywhere;
+}
+.help-dialog__content .help-dialog__intro {
+  color: var(--ink-500);
+  margin-bottom: 22px;
+}
+.help-dialog__shortcuts {
+  margin: 0 0 20px;
+}
+.help-dialog__shortcuts > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--line-200);
+}
+.help-dialog__shortcuts dd {
+  margin: 0;
+  flex-shrink: 0;
+}
+.help-dialog__shortcuts kbd {
+  font: 12px var(--font-ui);
+  color: var(--ink-700);
+  padding: 3px 6px;
+  border: 1px solid var(--line-300);
+  border-radius: 4px;
+  background: var(--paper-2);
+}
+.help-dialog footer {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 11px 24px;
+  border-top: 1px solid var(--line-200);
+  color: var(--ink-500);
+  font-size: 12px;
+}
+.help-dialog button:focus-visible {
+  outline: 2px solid var(--accent-600);
+  outline-offset: 1px;
+}
+@media (max-width: 600px) {
+  .help-dialog-layer {
+    padding: 12px;
+  }
+  .help-dialog {
+    height: calc(100dvh - 24px);
+  }
+  .help-dialog__layout {
+    grid-template-columns: 130px minmax(0, 1fr);
+  }
+  .help-dialog__content {
+    padding: 20px;
+  }
+  .help-dialog nav {
+    padding: 14px 7px;
+  }
+}

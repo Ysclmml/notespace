@@ -23,11 +23,18 @@ import {
 import type { EditorView } from "@milkdown/kit/prose/view";
 import {
   createCodeBlockCommand,
+  blockquoteKeymap,
+  codeBlockKeymap,
+  emphasisKeymap,
+  headingKeymap,
   imageSchema,
+  inlineCodeKeymap,
   insertHrCommand,
   toggleEmphasisCommand,
   toggleInlineCodeCommand,
   toggleStrongCommand,
+  paragraphKeymap,
+  strongKeymap,
   turnIntoTextCommand,
   wrapInBlockquoteCommand,
   wrapInBulletListCommand,
@@ -40,6 +47,7 @@ import {
   addRowAfterCommand,
   addRowBeforeCommand,
   insertTableCommand,
+  strikethroughKeymap,
   toggleStrikethroughCommand,
 } from "@milkdown/kit/preset/gfm";
 import { $prose, $view, callCommand } from "@milkdown/kit/utils";
@@ -70,6 +78,8 @@ import { FindBar } from "../find/FindBar";
 import { codeFindDecorations } from "../find/codeMirrorFind";
 import { usePageFind } from "../find/usePageFind";
 import { visualFindPlugin, visualFindTarget } from "../find/visualFind";
+import { matchFormattingShortcut } from "../shortcuts/shortcuts";
+import { formattingIsBlocked, useFormattingShortcuts } from "./useFormattingShortcuts";
 import { installWrappingLinkEditor } from "./linkEditorField";
 import { ImageReferenceDialog } from "../image-actions/ImageReferenceDialog";
 import { isAssetImageSource } from "../image-actions/imageActions";
@@ -118,6 +128,9 @@ export type VisualEditorCommand =
   | "heading1"
   | "heading2"
   | "heading3"
+  | "heading4"
+  | "heading5"
+  | "heading6"
   | "blockquote"
   | "bulletList"
   | "orderedList"
@@ -1089,6 +1102,15 @@ function runVisualEditorCommand(
       case "heading3":
         handled = crepe.editor.action(callCommand(wrapInHeadingCommand.key, 3));
         break;
+      case "heading4":
+        handled = crepe.editor.action(callCommand(wrapInHeadingCommand.key, 4));
+        break;
+      case "heading5":
+        handled = crepe.editor.action(callCommand(wrapInHeadingCommand.key, 5));
+        break;
+      case "heading6":
+        handled = crepe.editor.action(callCommand(wrapInHeadingCommand.key, 6));
+        break;
       case "blockquote":
         handled = crepe.editor.action(callCommand(wrapInBlockquoteCommand.key));
         break;
@@ -1316,6 +1338,11 @@ function VisualMarkdownEditorInstance({
   onRevealConsumed,
   onViewChange,
 }: VisualMarkdownEditorProps) {
+  const shortcuts = useFormattingShortcuts();
+  const shortcutsRef = useRef(shortcuts);
+  useLayoutEffect(() => {
+    shortcutsRef.current = shortcuts;
+  }, [shortcuts]);
   const messages = EDITOR_MESSAGES[locale];
   const scrollerRef = useRef<HTMLDivElement>(null);
   const editorRootRef = useRef<HTMLDivElement>(null);
@@ -1650,6 +1677,27 @@ function VisualMarkdownEditorInstance({
       },
     });
 
+    // Formatting is routed through our live settings. Disable only the stock
+    // formatting bindings, retaining heading deletion and other editing keys.
+    crepe.editor.config((ctx) => {
+      ctx.update(headingKeymap.key, (current) => ({
+        ...current,
+        TurnIntoH1: { shortcuts: [] },
+        TurnIntoH2: { shortcuts: [] },
+        TurnIntoH3: { shortcuts: [] },
+        TurnIntoH4: { shortcuts: [] },
+        TurnIntoH5: { shortcuts: [] },
+        TurnIntoH6: { shortcuts: [] },
+      }));
+      ctx.set(paragraphKeymap.key, { TurnIntoText: { shortcuts: [] } });
+      ctx.set(strongKeymap.key, { ToggleBold: { shortcuts: [] } });
+      ctx.set(emphasisKeymap.key, { ToggleEmphasis: { shortcuts: [] } });
+      ctx.set(inlineCodeKeymap.key, { ToggleInlineCode: { shortcuts: [] } });
+      ctx.set(strikethroughKeymap.key, { ToggleStrikethrough: { shortcuts: [] } });
+      ctx.set(blockquoteKeymap.key, { WrapInBlockquote: { shortcuts: [] } });
+      ctx.set(codeBlockKeymap.key, { CreateCodeBlock: { shortcuts: [] } });
+    });
+
     // Crepe's ImageBlock changes CommonMark image alt text into its caption
     // model. Keep the standard image node so Markdown round-trips losslessly,
     // and only customize its DOM URL and viewer affordance.
@@ -1981,6 +2029,26 @@ function VisualMarkdownEditorInstance({
     };
 
     const onEditorKeyDown = (event: KeyboardEvent) => {
+      const target = event.target instanceof Element ? event.target : null;
+      const view = editorViewRef.current;
+      if (
+        view?.hasFocus() &&
+        !composing &&
+        !view.composing &&
+        !formattingIsBlocked(event) &&
+        target?.closest(".ProseMirror") &&
+        !target.closest(".cm-editor, input, textarea, button")
+      ) {
+        const action = matchFormattingShortcut(event, shortcutsRef.current);
+        if (action) {
+          event.preventDefault();
+          event.stopImmediatePropagation();
+          view.dispatch(closeHistory(view.state.tr).setMeta("addToHistory", false));
+          runCommand({ command: action });
+          view.dispatch(closeHistory(view.state.tr).setMeta("addToHistory", false));
+          return;
+        }
+      }
       if (
         event.target instanceof Element &&
         event.target.closest(".visual-markdown-image__placeholder")
@@ -2068,7 +2136,11 @@ function VisualMarkdownEditorInstance({
         }
         const view = crepe.editor.action((ctx) => ctx.get(editorViewCtx));
         editorViewRef.current = view;
-        findTargetRef.current = visualFindTarget(view, scroller);
+        findTargetRef.current = visualFindTarget(
+          view,
+          scroller,
+          () => composing || Boolean(pendingExternalValue),
+        );
         serializedValueRef.current = crepe.getMarkdown();
 
         const latestValue = latestValueRef.current;

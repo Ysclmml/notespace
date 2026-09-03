@@ -1,7 +1,11 @@
 mod clipboard_image;
+pub mod document_templates;
+pub(crate) mod export_resources;
 mod external_url;
 pub mod filesystem;
 pub mod html_export;
+pub mod pdf_export;
+pub mod update_check;
 pub mod workspace_search;
 
 use serde::Serialize;

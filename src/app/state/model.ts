@@ -27,6 +27,8 @@ export interface DocumentSession {
 export interface OpenDocument {
   path: string;
   text: string;
+  /** Only caller-created untitled drafts may start dirty; ignored for disk paths. */
+  initialDirty?: boolean;
   diskMtimeMs: number;
   diskRevision?: string;
   mode: DocumentMode;

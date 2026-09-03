@@ -195,9 +195,106 @@ describe("browser demo adapter", () => {
     ).toBe("nested.md");
     expect(await adapter.listWorkspace(root, false)).toEqual(hidden);
   });
+
+  it("supports content regex and an independent path regex in demo search", async () => {
+    const adapter = new DemoDesktopAdapter();
+    const roots = [{ path: "demo://paper-and-ink", showHidden: false }];
+
+    const result = await adapter.searchWorkspaces(
+      roots,
+      "Markdown\\s+文件",
+      false,
+      true,
+      "01-产品.*\\.md$",
+    );
+
+    expect(result.matches.length).toBeGreaterThan(0);
+    expect(result.matches.every((match) => match.relativePath === "01-产品设计.md")).toBe(
+      true,
+    );
+    expect(result.matches[0]?.matchLength).toBeGreaterThan(0);
+    await expect(adapter.searchWorkspaces(roots, "[", false, true, "")).rejects.toEqual({
+      code: "invalidSearchPattern",
+    });
+    await expect(
+      adapter.searchWorkspaces(roots, "本地", false, false, "["),
+    ).rejects.toEqual({ code: "invalidFileFilter" });
+  });
 });
 
 describe("Tauri desktop adapter", () => {
+  it("forwards the explicit template library commands and preserves metadata and Markdown exactly", async () => {
+    const adapter = new TauriDesktopAdapter();
+    const template = {
+      path: "/fixture/templates/每周 计划.md",
+      title: "每周 计划",
+      sizeBytes: 36,
+    };
+    const library = {
+      directoryPath: "/fixture/templates",
+      templates: [template],
+      skippedCount: 2,
+      truncated: true,
+    };
+    const content = "# 每周 计划\r\n\r\n- [ ] 未保存内容\r\n";
+    const read = { ...template, markdown: content };
+    invokeMock
+      .mockResolvedValueOnce(library)
+      .mockResolvedValueOnce(read)
+      .mockResolvedValueOnce(template);
+
+    expect(await adapter.listDocumentTemplates()).toBe(library);
+    expect(await adapter.readDocumentTemplate(template.path)).toBe(read);
+    expect(await adapter.saveDocumentTemplate("每周 计划", content)).toBe(template);
+    expect(invokeMock.mock.calls).toEqual([
+      ["list_document_templates"],
+      ["read_document_template", { path: template.path }],
+      ["save_document_template", { name: "每周 计划", content }],
+    ]);
+  });
+
+  it("preserves an empty native template library without manufacturing templates or reading files", async () => {
+    const adapter = new TauriDesktopAdapter();
+    const library = {
+      directoryPath: "/fixture/templates",
+      templates: [],
+      skippedCount: 0,
+      truncated: false,
+    };
+    invokeMock.mockResolvedValueOnce(library);
+    expect(await adapter.listDocumentTemplates()).toEqual(library);
+    expect(invokeMock).toHaveBeenCalledExactlyOnceWith("list_document_templates");
+  });
+
+  it("propagates list, read and duplicate-save template failures without fallback or document writes", async () => {
+    const adapter = new TauriDesktopAdapter();
+    const listError = {
+      code: "templateUnavailable",
+      message: "cannot list template directory",
+    };
+    const readError = {
+      code: "templateInvalid",
+      message: "template is no longer a regular Markdown file",
+    };
+    const saveError = { code: "templateAlreadyExists", message: "template already exists" };
+    invokeMock
+      .mockRejectedValueOnce(listError)
+      .mockRejectedValueOnce(readError)
+      .mockRejectedValueOnce(saveError);
+    await expect(adapter.listDocumentTemplates()).rejects.toBe(listError);
+    await expect(adapter.readDocumentTemplate("/fixture/templates/gone.md")).rejects.toBe(
+      readError,
+    );
+    await expect(
+      adapter.saveDocumentTemplate("existing.md", "# latest draft\n"),
+    ).rejects.toBe(saveError);
+    expect(invokeMock.mock.calls).toEqual([
+      ["list_document_templates"],
+      ["read_document_template", { path: "/fixture/templates/gone.md" }],
+      ["save_document_template", { name: "existing.md", content: "# latest draft\n" }],
+    ]);
+  });
+
   it("passes image location preferences and native clipboard checks without image bytes", async () => {
     const adapter = new TauriDesktopAdapter();
     invokeMock.mockResolvedValueOnce(true).mockResolvedValueOnce("/images/截图");
@@ -315,14 +412,25 @@ describe("Tauri desktop adapter", () => {
       truncated: false,
     };
     invokeMock.mockResolvedValueOnce(response).mockResolvedValueOnce(null);
-    expect(await adapter.searchWorkspaces(roots, "中文", false)).toEqual(response);
+    expect(
+      await adapter.searchWorkspaces(roots, "中文", false, true, "docs/.*\\.md$"),
+    ).toEqual(response);
     expect(
       await adapter.exportHtml("note.html", "<!doctype html><p>中文</p>", [
         "/search-fixtures/note.md",
       ]),
     ).toBeNull();
     expect(invokeMock.mock.calls).toEqual([
-      ["search_workspaces", { workspaces: roots, query: "中文", caseSensitive: false }],
+      [
+        "search_workspaces",
+        {
+          workspaces: roots,
+          query: "中文",
+          caseSensitive: false,
+          useRegex: true,
+          fileFilter: "docs/.*\\.md$",
+        },
+      ],
       [
         "export_html",
         {
@@ -332,6 +440,21 @@ describe("Tauri desktop adapter", () => {
         },
       ],
     ]);
+  });
+
+  it("checks the fixed native update source without forwarding caller input", async () => {
+    const response = {
+      currentVersion: "0.1.1",
+      latestVersion: "0.2.0",
+      releaseUrl: "https://github.com/Ysclmml/notespace/releases/tag/v0.2.0",
+      publishedAt: "2026-09-04T09:00:00Z",
+      status: "available" as const,
+    };
+    invokeMock.mockResolvedValue(response);
+    const adapter = new TauriDesktopAdapter();
+
+    await expect(adapter.checkForUpdate()).resolves.toEqual(response);
+    expect(invokeMock).toHaveBeenCalledExactlyOnceWith("check_for_update");
   });
 
   it("forwards external URLs exactly and propagates browser launcher failures", async () => {
@@ -432,6 +555,35 @@ describe("Tauri desktop adapter", () => {
     });
   });
 
+  it("drains launch files after subscribing and reacts to later file-open events", async () => {
+    const unlisten = vi.fn();
+    listenMock.mockResolvedValue(unlisten);
+    invokeMock
+      .mockResolvedValueOnce(["/tmp/launch.md"])
+      .mockResolvedValueOnce(["/tmp/later.markdown"]);
+    const adapter = new TauriDesktopAdapter();
+    const listener = vi.fn();
+
+    const cleanup = await adapter.listenOpenedDocumentPaths(listener);
+    expect(listenMock).toHaveBeenCalledWith(
+      "opened-document-paths-available",
+      expect.any(Function),
+    );
+    expect(invokeMock).toHaveBeenCalledWith("take_opened_document_paths");
+    expect(listener).toHaveBeenCalledWith(["/tmp/launch.md"]);
+
+    const openedListener = listenMock.mock.calls[0]?.[1] as
+      ((event: { payload: undefined }) => void) | undefined;
+    if (!openedListener) throw new Error("expected an opened-document listener");
+    openedListener({ payload: undefined });
+    await vi.waitFor(() =>
+      expect(listener).toHaveBeenLastCalledWith(["/tmp/later.markdown"]),
+    );
+
+    cleanup();
+    expect(unlisten).toHaveBeenCalledOnce();
+  });
+
   it("forwards custom file and lifecycle menu actions to the application listener", async () => {
     listenMock.mockResolvedValue(() => undefined);
     const adapter = new TauriDesktopAdapter();
@@ -446,12 +598,26 @@ describe("Tauri desktop adapter", () => {
     nativeListener({ payload: { id: "edit.find" } });
     nativeListener({ payload: { id: "window.close" } });
     nativeListener({ payload: { id: "app.quit" } });
+    nativeListener({ payload: { id: "file.newTemplate" } });
+    nativeListener({ payload: { id: "file.exportHtml" } });
+    nativeListener({ payload: { id: "file.exportPdf" } });
+    nativeListener({ payload: { id: "view.toggleFocus" } });
+    nativeListener({ payload: { id: "edit.findWorkspace" } });
+    nativeListener({ payload: { id: "help.open" } });
+    nativeListener({ payload: { id: "app.about" } });
 
     expect(listener.mock.calls).toEqual([
       ["file.reveal"],
       ["edit.find"],
       ["window.close"],
       ["app.quit"],
+      ["file.newTemplate"],
+      ["file.exportHtml"],
+      ["file.exportPdf"],
+      ["view.toggleFocus"],
+      ["edit.findWorkspace"],
+      ["help.open"],
+      ["app.about"],
     ]);
   });
 });

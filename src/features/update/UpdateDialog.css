@@ -1,0 +1,128 @@
+.update-dialog-layer {
+  position: fixed;
+  z-index: 1250;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgb(27 33 45 / 24%);
+}
+
+.update-dialog {
+  box-sizing: border-box;
+  width: min(500px, 100%);
+  color: var(--ink-950);
+  background: var(--paper-0);
+  border: 1px solid var(--line-300);
+  border-radius: 16px;
+  box-shadow: 0 22px 70px rgb(25 32 45 / 28%);
+  font: 14px/1.55 var(--font-ui, -apple-system, BlinkMacSystemFont, sans-serif);
+}
+
+.update-dialog header {
+  display: flex;
+  gap: 14px;
+  padding: 24px 24px 20px;
+}
+
+.update-dialog__mark {
+  display: grid;
+  flex: 0 0 38px;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  color: var(--accent-700);
+  background: var(--accent-50, #f2f5ff);
+  border: 1px solid var(--accent-200, #ccd6ff);
+  border-radius: 11px;
+  font-size: 23px;
+  font-weight: 650;
+}
+
+.update-dialog h2,
+.update-dialog p {
+  margin: 0;
+}
+
+.update-dialog h2 {
+  font-size: 18px;
+  line-height: 1.35;
+}
+
+.update-dialog header p {
+  margin-top: 5px;
+  color: var(--ink-500);
+}
+
+.update-dialog__versions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin: 0 24px;
+  padding: 15px 16px;
+  background: var(--paper-2);
+  border: 1px solid var(--line-200);
+  border-radius: 10px;
+}
+
+.update-dialog__versions strong {
+  color: var(--accent-700);
+  text-align: right;
+}
+
+.update-dialog .update-dialog__error {
+  margin: 12px 24px 0;
+  color: var(--danger-600, #a13d35);
+}
+
+.update-dialog footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 9px;
+  padding: 20px 24px 24px;
+}
+
+.update-dialog button {
+  min-height: 36px;
+  padding: 7px 14px;
+  color: var(--ink-800);
+  background: var(--paper-1);
+  border: 1px solid var(--line-300);
+  border-radius: 8px;
+  font: inherit;
+  cursor: pointer;
+}
+
+.update-dialog button:hover:not(:disabled) {
+  background: var(--paper-3);
+}
+
+.update-dialog button.primary-button {
+  color: white;
+  background: var(--accent-700);
+  border-color: var(--accent-700);
+}
+
+.update-dialog button:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+.update-dialog button:focus-visible {
+  outline: 2px solid var(--accent-600);
+  outline-offset: 2px;
+}
+
+@media (max-width: 560px) {
+  .update-dialog__versions {
+    grid-template-columns: 1fr;
+  }
+
+  .update-dialog__versions strong {
+    text-align: left;
+  }
+
+  .update-dialog footer {
+    flex-wrap: wrap;
+  }
+}

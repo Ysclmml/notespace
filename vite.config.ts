@@ -1,10 +1,17 @@
 import react from "@vitejs/plugin-react";
+import { readFileSync } from "node:fs";
 import { defineConfig } from "vitest/config";
 
 const tauriDevHost = process.env.TAURI_DEV_HOST;
+const packageManifest = JSON.parse(
+  readFileSync(new URL("./package.json", import.meta.url), "utf8"),
+) as { readonly version: string };
 
 export default defineConfig({
   plugins: [react()],
+  define: {
+    __APP_VERSION__: JSON.stringify(packageManifest.version),
+  },
   clearScreen: false,
   server: {
     port: 1420,
@@ -26,5 +33,7 @@ export default defineConfig({
     setupFiles: ["./src/test/setup.ts"],
     css: true,
     restoreMocks: true,
+    testTimeout: 10_000,
+    maxWorkers: 1,
   },
 });

@@ -123,7 +123,8 @@ function VisualViewerInstance({ visual, onClose }: VisualViewerProps) {
         onClose();
         return;
       }
-      if (hasError) return;
+      if (hasError || event.metaKey || event.ctrlKey || event.altKey || event.isComposing)
+        return;
       if (event.key === "0") fit();
       if (event.key === "1") actualSize();
       if (event.key === "+" || event.key === "=") {

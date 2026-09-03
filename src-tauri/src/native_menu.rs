@@ -21,9 +21,13 @@ pub const ACTION_TOGGLE_SOURCE_MODE: &str = "view.toggleSource";
 pub const ACTION_TOGGLE_SIDEBAR: &str = "view.toggleSidebar";
 pub const ACTION_CLOSE_WINDOW: &str = "window.close";
 pub const ACTION_OPEN_HELP: &str = "help.open";
+pub const ACTION_OPEN_ABOUT: &str = "app.about";
 pub const ACTION_FIND: &str = "edit.find";
 pub const ACTION_FIND_WORKSPACE: &str = "edit.findWorkspace";
 pub const ACTION_EXPORT_HTML: &str = "file.exportHtml";
+pub const ACTION_EXPORT_PDF: &str = "file.exportPdf";
+pub const ACTION_NEW_TEMPLATE: &str = "file.newTemplate";
+pub const ACTION_TOGGLE_FOCUS: &str = "view.toggleFocus";
 #[cfg(debug_assertions)]
 const ACTION_OPEN_DEVTOOLS: &str = "view.openDevtools";
 
@@ -40,9 +44,13 @@ const FORWARDED_ACTIONS: &[&str] = &[
     ACTION_TOGGLE_SIDEBAR,
     ACTION_CLOSE_WINDOW,
     ACTION_OPEN_HELP,
+    ACTION_OPEN_ABOUT,
     ACTION_FIND,
     ACTION_FIND_WORKSPACE,
     ACTION_EXPORT_HTML,
+    ACTION_EXPORT_PDF,
+    ACTION_NEW_TEMPLATE,
+    ACTION_TOGGLE_FOCUS,
 ];
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -96,7 +104,11 @@ struct NativeMenuLabels {
     select_all: &'static str,
     find: &'static str,
     find_workspace: &'static str,
+    export: &'static str,
     export_html: &'static str,
+    export_pdf: &'static str,
+    new_template: &'static str,
+    toggle_focus: &'static str,
     toggle_source: &'static str,
     toggle_sidebar: &'static str,
     #[cfg(debug_assertions)]
@@ -138,8 +150,12 @@ fn labels(locale: NativeMenuLocale) -> NativeMenuLabels {
             paste: "粘贴",
             select_all: "全选",
             find: "当前页查找…",
-            find_workspace: "工作区搜索…",
-            export_html: "导出 HTML…",
+            find_workspace: "全文搜索…",
+            export: "导出",
+            export_html: "HTML…",
+            export_pdf: "PDF…",
+            new_template: "从模板新建…",
+            toggle_focus: "切换专注模式",
             toggle_source: "切换可视/源码",
             toggle_sidebar: "显示/隐藏侧边栏",
             #[cfg(debug_assertions)]
@@ -178,8 +194,12 @@ fn labels(locale: NativeMenuLocale) -> NativeMenuLabels {
             paste: "Paste",
             select_all: "Select All",
             find: "Find in Page…",
-            find_workspace: "Search Workspace…",
-            export_html: "Export HTML…",
+            find_workspace: "Search Contents…",
+            export: "Export",
+            export_html: "HTML…",
+            export_pdf: "PDF…",
+            new_template: "New from Template…",
+            toggle_focus: "Toggle Focus Mode",
             toggle_source: "Toggle Visual/Source",
             toggle_sidebar: "Toggle Sidebar",
             #[cfg(debug_assertions)]
@@ -237,7 +257,7 @@ fn build_native_menu<R: Runtime>(
     let quit = MenuItemBuilder::with_id(ACTION_QUIT_APP, labels.quit)
         .accelerator("CmdOrCtrl+Q")
         .build(app)?;
-    let about = MenuItemBuilder::with_id(ACTION_OPEN_HELP, labels.about).build(app)?;
+    let about = MenuItemBuilder::with_id(ACTION_OPEN_ABOUT, labels.about).build(app)?;
     let application = SubmenuBuilder::with_id(app, "menu.application", labels.application)
         .item(&about)
         .separator()
@@ -276,15 +296,24 @@ fn build_native_menu<R: Runtime>(
     let close_window = MenuItemBuilder::with_id(ACTION_CLOSE_WINDOW, labels.close_window)
         .accelerator("CmdOrCtrl+W")
         .build(app)?;
+    let export = SubmenuBuilder::with_id(app, "menu.export", labels.export)
+        .item(&MenuItemBuilder::with_id(ACTION_EXPORT_HTML, labels.export_html).build(app)?)
+        .item(
+            &MenuItemBuilder::with_id(ACTION_EXPORT_PDF, labels.export_pdf)
+                .enabled(cfg!(target_os = "macos"))
+                .build(app)?,
+        )
+        .build()?;
     let file = SubmenuBuilder::with_id(app, "menu.file", labels.file)
         .item(&new_document)
+        .item(&MenuItemBuilder::with_id(ACTION_NEW_TEMPLATE, labels.new_template).build(app)?)
         .separator()
         .item(&open_document)
         .item(&open_workspace)
         .separator()
         .item(&save_document)
         .item(&save_document_as)
-        .item(&MenuItemBuilder::with_id(ACTION_EXPORT_HTML, labels.export_html).build(app)?)
+        .item(&export)
         .separator()
         .item(&reveal_in_file_manager)
         .separator()
@@ -294,6 +323,10 @@ fn build_native_menu<R: Runtime>(
     let find = MenuItemBuilder::with_id(ACTION_FIND, labels.find)
         .accelerator("CmdOrCtrl+F")
         .build(app)?;
+    // AppKit/WebKit may append platform editing services (for example AutoFill,
+    // Dictation, and Emoji & Symbols) to this standard edit menu. Those items
+    // are localized from the bundle's `*.lproj` resources selected at process
+    // launch; every item created below still uses the runtime app locale.
     let edit = SubmenuBuilder::with_id(app, "menu.edit", labels.edit)
         .item(&PredefinedMenuItem::undo(app, Some(labels.undo))?)
         .item(&PredefinedMenuItem::redo(app, Some(labels.redo))?)
@@ -323,6 +356,11 @@ fn build_native_menu<R: Runtime>(
     let view_builder = SubmenuBuilder::with_id(app, "menu.view", labels.view)
         .item(&toggle_source)
         .item(&toggle_sidebar)
+        .item(
+            &MenuItemBuilder::with_id(ACTION_TOGGLE_FOCUS, labels.toggle_focus)
+                .accelerator("CmdOrCtrl+Shift+Enter")
+                .build(app)?,
+        )
         .separator()
         .item(&PredefinedMenuItem::fullscreen(
             app,
@@ -336,6 +374,10 @@ fn build_native_menu<R: Runtime>(
     };
     let view = view_builder.build()?;
 
+    // WINDOW_SUBMENU_ID makes this NSApplication's standard Window menu. AppKit
+    // then owns the additional window-management items it inserts here. Their
+    // language follows the bundle localization selected by macOS at launch,
+    // while these explicitly supplied labels follow the in-app locale now.
     let window = SubmenuBuilder::with_id(app, WINDOW_SUBMENU_ID, labels.window)
         .item(&PredefinedMenuItem::minimize(app, Some(labels.minimize))?)
         .item(&PredefinedMenuItem::maximize(app, Some(labels.maximize))?)
@@ -401,8 +443,83 @@ mod tests {
     }
 
     #[test]
+    fn app_owned_edit_and_window_items_have_runtime_localized_labels() {
+        let chinese = labels(NativeMenuLocale::ZhCn);
+        let english = labels(NativeMenuLocale::EnUs);
+
+        assert_eq!(
+            [
+                chinese.undo,
+                chinese.redo,
+                chinese.cut,
+                chinese.copy,
+                chinese.paste,
+                chinese.select_all,
+                chinese.fullscreen,
+                chinese.minimize,
+                chinese.maximize,
+                chinese.bring_all_to_front,
+            ],
+            [
+                "撤销",
+                "重做",
+                "剪切",
+                "复制",
+                "粘贴",
+                "全选",
+                "进入全屏幕",
+                "最小化",
+                "缩放",
+                "前置全部窗口",
+            ]
+        );
+        assert_eq!(
+            [
+                english.undo,
+                english.redo,
+                english.cut,
+                english.copy,
+                english.paste,
+                english.select_all,
+                english.fullscreen,
+                english.minimize,
+                english.maximize,
+                english.bring_all_to_front,
+            ],
+            [
+                "Undo",
+                "Redo",
+                "Cut",
+                "Copy",
+                "Paste",
+                "Select All",
+                "Enter Full Screen",
+                "Minimize",
+                "Zoom",
+                "Bring All to Front",
+            ]
+        );
+    }
+
+    #[test]
+    fn macos_bundle_declares_the_localizations_used_by_system_menu_items() {
+        let english = include_str!("../resources/en.lproj/InfoPlist.strings");
+        let simplified_chinese = include_str!("../resources/zh-Hans.lproj/InfoPlist.strings");
+
+        assert!(english.contains("Markdown Document"));
+        assert!(simplified_chinese.contains("Markdown 文稿"));
+    }
+
+    #[test]
     fn only_stable_application_actions_are_forwarded() {
-        assert_eq!(FORWARDED_ACTIONS.len(), 15);
+        assert_eq!(FORWARDED_ACTIONS.len(), 19);
+        assert_eq!(
+            FORWARDED_ACTIONS
+                .iter()
+                .collect::<std::collections::HashSet<_>>()
+                .len(),
+            19
+        );
         for id in FORWARDED_ACTIONS {
             assert_eq!(forwarded_action(id), Some(*id));
         }
@@ -415,6 +532,61 @@ mod tests {
         assert_eq!(forwarded_action("unknown"), None);
         assert_eq!(forwarded_action("view.openDevtools"), None);
         assert_eq!(forwarded_action("view.reload"), None);
+    }
+
+    #[test]
+    fn help_and_about_have_distinct_labels_actions_and_payloads() {
+        assert_ne!(ACTION_OPEN_HELP, ACTION_OPEN_ABOUT);
+        assert_eq!(forwarded_action("help.open"), Some(ACTION_OPEN_HELP));
+        assert_eq!(forwarded_action("app.about"), Some(ACTION_OPEN_ABOUT));
+        for (locale, help, about) in [
+            (NativeMenuLocale::ZhCn, "笔记空间帮助", "关于笔记空间"),
+            (NativeMenuLocale::EnUs, "NoteSpace Help", "About NoteSpace"),
+        ] {
+            assert_eq!(labels(locale).open_help, help);
+            assert_eq!(labels(locale).about, about);
+        }
+        assert_eq!(
+            serde_json::to_value(NativeMenuAction {
+                id: ACTION_OPEN_HELP
+            })
+            .unwrap(),
+            serde_json::json!({ "id": "help.open" })
+        );
+        assert_eq!(
+            serde_json::to_value(NativeMenuAction {
+                id: ACTION_OPEN_ABOUT
+            })
+            .unwrap(),
+            serde_json::json!({ "id": "app.about" })
+        );
+    }
+
+    #[test]
+    fn export_submenu_uses_short_format_labels_and_only_leaf_actions_are_forwarded() {
+        for (locale, export) in [
+            (NativeMenuLocale::ZhCn, "导出"),
+            (NativeMenuLocale::EnUs, "Export"),
+        ] {
+            let localized = labels(locale);
+            assert_eq!(localized.export, export);
+            assert_eq!(localized.export_html, "HTML…");
+            assert_eq!(localized.export_pdf, "PDF…");
+        }
+        assert_eq!(forwarded_action("menu.export"), None);
+        assert_eq!(
+            forwarded_action("file.exportHtml"),
+            Some(ACTION_EXPORT_HTML)
+        );
+        assert_eq!(forwarded_action("file.exportPdf"), Some(ACTION_EXPORT_PDF));
+        assert_eq!(
+            forwarded_action("file.newTemplate"),
+            Some(ACTION_NEW_TEMPLATE)
+        );
+        assert_eq!(
+            forwarded_action("view.toggleFocus"),
+            Some(ACTION_TOGGLE_FOCUS)
+        );
     }
 
     #[cfg(debug_assertions)]

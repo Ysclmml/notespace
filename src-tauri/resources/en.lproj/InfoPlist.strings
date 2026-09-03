@@ -1,0 +1,2 @@
+/* Declares English as a bundle localization for AppKit-provided menu items. */
+"CFBundleTypeName" = "Markdown Document";

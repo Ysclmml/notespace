@@ -77,6 +77,64 @@
   color: var(--danger-600, #a13d35);
 }
 
+.about-dialog__updates {
+  display: grid;
+  gap: 10px;
+  margin-top: 20px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line-200);
+}
+
+.about-dialog__update-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 16px;
+}
+
+.about-dialog__updates .about-dialog__check {
+  width: 164px;
+  min-width: 0;
+  max-width: 100%;
+  color: var(--accent-700);
+  background: var(--accent-50, #f2f5ff);
+  border-color: var(--accent-200, #ccd6ff);
+}
+
+.about-dialog__update-status {
+  box-sizing: border-box;
+  block-size: 64px;
+  min-block-size: 64px;
+  padding: 3px 2px 3px 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+.about-dialog__update-result {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-width: 0;
+  gap: 12px;
+  margin: 0;
+  color: var(--ink-650, var(--ink-700));
+  overflow-wrap: anywhere;
+}
+
+.about-dialog__update-status .about-dialog__error {
+  margin: 0;
+}
+
+.about-dialog__update-result button {
+  flex: 0 0 auto;
+  color: var(--accent-700);
+}
+
+.about-dialog__update-result span {
+  min-width: 0;
+}
+
 .about-dialog footer {
   display: flex;
   justify-content: flex-end;
@@ -102,4 +160,37 @@
 .about-dialog :is(button, a):focus-visible {
   outline: 2px solid var(--accent-600);
   outline-offset: 3px;
+}
+
+@media (max-width: 420px) {
+  .about-dialog-layer {
+    padding: 12px;
+  }
+
+  .about-dialog {
+    max-height: calc(100dvh - 24px);
+  }
+
+  .about-dialog__update-controls {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px;
+  }
+
+  .about-dialog__updates .about-dialog__check {
+    width: 100%;
+  }
+
+  .about-dialog__update-status {
+    block-size: 104px;
+    min-block-size: 104px;
+  }
+
+  .about-dialog__update-result {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .about-dialog__update-result button {
+    margin-inline-start: auto;
+  }
 }

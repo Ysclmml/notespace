@@ -2,9 +2,34 @@ import { EditorState } from "@codemirror/state";
 import { describe, expect, it } from "vitest";
 
 import { codeFindDecorations, setCodeFindMatches } from "./codeMirrorFind";
-import { findTextMatches } from "./pageFind";
+import { findTextMatches, replacementIsSafe } from "./pageFind";
 
 describe("current page literal matching", () => {
+  it("rejects replacement expansion and assembled large data URIs before editing", () => {
+    expect(
+      replacementIsSafe("x".repeat(10_001), findTextMatches("x".repeat(10_001), "x"), "y"),
+    ).toBe(false);
+    expect(
+      replacementIsSafe(
+        "x".repeat(20),
+        findTextMatches("x".repeat(20), "x"),
+        "a".repeat(1024 * 1024),
+      ),
+    ).toBe(false);
+    const suffix = "a".repeat(1024 * 1024);
+    const source = `data:PLACEHOLDER${suffix}`;
+    expect(
+      replacementIsSafe(
+        source,
+        findTextMatches(source, "PLACEHOLDER"),
+        "image/png;base64,",
+      ),
+    ).toBe(false);
+    expect(replacementIsSafe("中文 中文", findTextMatches("中文 中文", "中文"), "$&")).toBe(
+      true,
+    );
+    expect(replacementIsSafe("x".repeat(17 * 1024 * 1024), [], "")).toBe(true);
+  });
   it("matches CJK and literal punctuation with stable Unicode offsets", () => {
     expect(findTextMatches("🙂İ中文 a+b 中文 A+B", "中文")).toEqual([
       { from: 3, to: 5 },

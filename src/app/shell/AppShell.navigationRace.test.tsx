@@ -370,7 +370,7 @@ describe("AppShell asynchronous navigation across editor groups", () => {
 describe("AppShell Markdown navigation and window history", () => {
   it("navigates inside an unsaved untitled Markdown without reading disk or creating another tab", async () => {
     const { adapter } = await setup();
-    fireEvent.keyDown(window, { key: "n", metaKey: true });
+    fireEvent.keyDown(window, { key: "n", ctrlKey: true });
     const open = vi.spyOn(adapter, "openDocument");
     const tabId = panel(1).dataset.tabId;
     fireEvent.change(within(panel(1)).getByRole("textbox", { name: "Document body" }), {

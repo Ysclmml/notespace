@@ -228,8 +228,8 @@ describe("AppShell image context actions", () => {
         adapter.listener?.("window.close");
         nativeWindow.onClose?.({ preventDefault });
       });
-      fireEvent.keyDown(window, { key: "n", metaKey: true });
-      fireEvent.keyDown(window, { key: "s", metaKey: true });
+      fireEvent.keyDown(window, { key: "n", ctrlKey: true });
+      fireEvent.keyDown(window, { key: "s", ctrlKey: true });
       expect(screen.getAllByRole("button", { name: /^关闭 /u })).toHaveLength(1);
       expect(nativeWindow.destroy).not.toHaveBeenCalled();
       expect(preventDefault).toHaveBeenCalledOnce();
