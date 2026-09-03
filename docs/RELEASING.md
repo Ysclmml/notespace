@@ -1,11 +1,11 @@
 # macOS Release 与 Homebrew 分发
 
-本文是发布操作指南，不表示安装包或 Homebrew 安装源已经发布。当前产品版本为 `0.1.0`，只有 Apple Silicon 的本机验证记录；现有 GitHub Actions 生成的是临时 Debug artifact，不会自动创建 Release。
+当前产品版本为 `0.1.0`，Apple Silicon DMG 已发布到 [GitHub 预发布版本](https://github.com/Ysclmml/notespace/releases/tag/v0.1.0)。Homebrew 分发定义维护在 [Ysclmml/homebrew-tap](https://github.com/Ysclmml/homebrew-tap)。现有产品 GitHub Actions 生成的是临时 Debug artifact，不会自动创建 Release。
 
 ## 1. 分发结构
 
 - `Ysclmml/notespace`：产品源码、版本 tag 和 GitHub Release 的 DMG 附件。
-- `Ysclmml/homebrew-tap`：另建一个公开仓库，使用 `Casks/notespace.rb` 描述版本、下载地址、校验值和卸载范围。
+- `Ysclmml/homebrew-tap`：公开安装源，使用 `Casks/notespace.rb` 描述版本、下载地址、校验值和卸载范围。
 - Homebrew 下载已构建的应用，不要求使用者安装 Node、pnpm 或 Rust，也不在安装时编译产品。
 
 自己的 tap 不需要先进入 Homebrew 官方软件库。[Homebrew tap 文档](https://docs.brew.sh/How-to-Create-and-Maintain-a-Tap#casks)
@@ -72,38 +72,19 @@ git push origin v0.1.0
 
 草稿附件不能作为公开 Homebrew 下载源。发布后检查实际下载链接；后续 Cask 的 URL、文件名和 SHA-256 必须全部对应这个最终附件。[GitHub Release 操作说明](https://docs.github.com/en/repositories/releasing-projects-on-github/managing-releases-in-a-repository#creating-a-release)
 
-## 5. 建立自己的 Homebrew 安装源
+## 5. 维护 Homebrew 安装源
 
-在 GitHub 创建公开仓库 `Ysclmml/homebrew-tap`，添加 `Casks/notespace.rb`。下面是首版 Apple Silicon 的模板，必须将 SHA-256 占位值替换后才能使用：
+[Casks/notespace.rb](https://github.com/Ysclmml/homebrew-tap/blob/main/Casks/notespace.rb) 是安装定义的唯一维护位置，不在产品仓库复制另一份模板。`0.1.0` 的公开 DMG 下载校验值为：
 
-```ruby
-cask "notespace" do
-  version "0.1.0"
-  sha256 "REPLACE_WITH_FINAL_DMG_SHA256"
-
-  url "https://github.com/Ysclmml/notespace/releases/download/v#{version}/NoteSpace_#{version}_aarch64.dmg"
-  name "NoteSpace"
-  desc "Local Markdown and text editor"
-  homepage "https://github.com/Ysclmml/notespace"
-
-  depends_on :macos
-  depends_on arch: :arm64
-
-  app "NoteSpace.app"
-
-  zap trash: [
-    "~/Library/Caches/app.markdownworkspace.desktop",
-    "~/Library/Preferences/app.markdownworkspace.desktop.plist",
-    "~/Library/WebKit/app.markdownworkspace.desktop",
-  ]
-end
+```text
+8973594d28d7a5fb975536f38ee607e8e55abe4f814d96dbedc4b57c211ee981
 ```
 
-三个清理目标是开发机上已确认存在的、应用专属的缓存、偏好和 WebKit 数据。不要增加 `~/Library`、整个 WebKit 目录、工作区或自选图片目录等宽泛目标。发布版在隔离用户环境实测若产生其他应用专属文件，再逐项确认后补充；不能承诺删除 macOS 管理的全部日志、索引或备份。
+更新版本时先公开新的 Release 附件，重新下载验证 SHA-256，再更新 Cask 的版本及校验值，运行 tap 内的策略测试和 Homebrew 样式检查后提交推送。不要覆盖旧版本 DMG。
 
-`.rb` 只是 Homebrew 自己读取的 Cask 定义，不会为 NoteSpace 增加 Ruby 运行时。普通 `.app` 使用声明式 `app` 即可，不需要自定义安装/删除脚本。[Cask 定义](https://docs.brew.sh/Cask-Cookbook)
+这个自有 tap 的普通卸载会清理应用数据。不能直接使用 `uninstall trash:`：Homebrew 升级和重装也会执行它，`on_upgrade: false` 不会跳过 `trash`。当前使用自有 tap 的卸载钩子区分明确的 `brew uninstall` 与升级/重装；命令上下文或原生废纸篓接口不可用时保留数据并提示，而不猜测后删除。它们属于 Homebrew 内部接口，Homebrew 更新后需要复验。`.rb` 只由 Homebrew 读取，不为 NoteSpace 增加 Ruby 运行时。[Cask 定义与卸载钩子](https://docs.brew.sh/Cask-Cookbook)
 
-模板提交并推送到 tap、Release 附件公开后，使用完整名称安装：
+通过完整名称安装：
 
 ```sh
 brew install --cask ysclmml/tap/notespace
@@ -115,12 +96,12 @@ brew install --cask ysclmml/tap/notespace
 
 升级、卸载前先保存所有未保存内容并正常退出 NoteSpace。不要靠强杀进程完成卸载，也不要在应用运行时清理设置，避免数据被重新写回。
 
-| 操作            | 应用本体                                                             | 设置、最近文件与浏览恢复             | Markdown、代码及粘贴图片 |
-| --------------- | -------------------------------------------------------------------- | ------------------------------------ | ------------------------ |
-| 首次安装        | 安装到 Homebrew 管理的应用位置，通常为 `/Applications/NoteSpace.app` | 不主动清除已有数据                   | 不修改                   |
-| 正常升级        | 替换为新版本                                                         | 保留                                 | 不修改                   |
-| 普通卸载        | 移除                                                                 | 保留，方便重装                       | 不修改                   |
-| 带 `--zap` 卸载 | 移除                                                                 | 将 Cask 明确列出的应用数据移到废纸篓 | 不修改                   |
+| 操作             | 应用本体                                 | 设置、最近文件与浏览恢复 | Markdown、代码及粘贴图片 |
+| ---------------- | ---------------------------------------- | ------------------------ | ------------------------ |
+| 首次安装         | 通常安装到 `/Applications/NoteSpace.app` | 不主动清除已有数据       | 不修改                   |
+| 正常升级         | 替换为新版本                             | 保留                     | 不修改                   |
+| `brew reinstall` | 重新安装                                 | 保留                     | 不修改                   |
+| 普通卸载         | 移除                                     | 移入系统废纸篓，可恢复   | 不修改                   |
 
 升级：
 
@@ -132,18 +113,26 @@ brew upgrade --cask ysclmml/tap/notespace
 普通卸载：
 
 ```sh
-brew uninstall --cask ysclmml/tap/notespace
+brew uninstall ysclmml/tap/notespace
 ```
 
-希望连同应用设置一起清除时，**改用**下面一条，不是接着重复执行普通卸载：
+**无需 `--zap`，普通卸载已经清理以下三个应用专属路径：**
+
+- `~/Library/Caches/app.markdownworkspace.desktop`
+- `~/Library/Preferences/app.markdownworkspace.desktop.plist`
+- `~/Library/WebKit/app.markdownworkspace.desktop`
+
+清理只针对这些明确路径，不跟随符号链接，不触及工作区或自选图片目录，不自动清空废纸篓。应用仍在运行或进程检查失败时拒绝卸载；清理失败会明确报错。不要在卸载过程中重新启动应用。当前版本的数据范围已经在本机核查；未来出现其他应用专属文件时再逐项确认，不能扩大到整个 `Library` 或 WebKit 目录。
+
+普通卸载后再 `brew install --cask ysclmml/tap/notespace`，得到清除已声明应用数据后的安装。若此前手动安装了同一版本，可先保存并退出，再尝试接管：
 
 ```sh
-brew uninstall --cask --zap ysclmml/tap/notespace
+brew install --cask --adopt ysclmml/tap/notespace
 ```
 
-之后重新 `brew install --cask ysclmml/tap/notespace`，便是清除已声明应用数据后的重新安装。若曾手动放入同名 `.app`，先确认那份应用的来源并正常退出，再单独移走旧应用包；不要通过 `--force` 盲目覆盖。
+接管要求已有应用与下载产物一致；失败时确认来源，只将旧应用包移到废纸篓再安装，不使用 `--force` 盲目覆盖。[Homebrew 接管说明](https://docs.brew.sh/Tips-and-Tricks#adopt-a-manually-installed-app-as-a-cask)
 
-`--zap` 不默认执行，且按 Homebrew 规则不应删除用户直接创建的文件。这里使用可恢复的 `trash` 而非永久删除；不自动清空废纸篓。[Homebrew zap 规则](https://docs.brew.sh/Cask-Cookbook#stanza-zap)
+这里的干净卸载不承诺删除 macOS 管理的日志、索引、备份或 Homebrew 自己的安装包缓存。
 
 如还要清理 Homebrew 自己缓存的安装包，可先预览，再仅清理本软件；这不等同于清理应用设置：
 
@@ -154,14 +143,21 @@ brew cleanup --prune=all ysclmml/tap/notespace
 
 确认不再需要该安装源后，可选执行 `brew untap ysclmml/tap`。[Homebrew cleanup 手册](https://docs.brew.sh/Manpage#cleanup-options-formulacask-)
 
-## 7. 发布前的安装回归
+## 7. 分发回归
 
-在隔离 macOS 用户账户中、仅使用合成笔记和图片验证：
+tap 内的隔离测试使用生成的临时用户目录，并拦截进程和废纸篓操作，不接触真实用户数据：
+
+```sh
+HOMEBREW_DEVELOPER=1 brew ruby test/notespace_policy_test.rb
+brew style --cask Casks/notespace.rb
+```
+
+覆盖普通卸载、升级/重装保留、运行中拒绝、检测失败保留、路径白名单、符号链接拒绝和清理失败。实际安装回归只使用合成笔记和图片：
 
 1. 从公开 Release 通过完整 Cask 名称安装；检查架构、版本、应用路径与系统启动提示。
 2. 编辑/保存合成 Markdown、粘贴图片、改变设置并重启，确认功能和浏览恢复。
-3. 普通卸载后重装，确认设置保留；模拟新版升级，确认笔记与图片不变。
-4. 正常退出后 `--zap` 卸载，检查应用本体和三个声明路径已移除；合成笔记与图片仍完整。
+3. `brew reinstall` 后确认设置保留；有新版本时实际测试升级，不能用同版本重装冒充升级结果。
+4. 正常退出后普通卸载，检查应用本体和三个声明路径已移除；合成笔记与图片仍完整。
 5. 再次安装，确认默认设置及空的最近记录；检查是否有新增的应用专属数据路径。
 
-当前没有执行过上述完整 Homebrew 安装回归。关闭应用只应退出进程，不应自动清除设置；“干净卸载”的范围是应用本体及明确声明的应用数据，而不是用户的写作成果。
+准确的已执行结果记录在 [项目状态](PROJECT_STATE.md)。关闭应用只退出进程，不清除设置；“干净卸载”的范围是应用本体及明确声明的应用数据，而不是用户的写作成果。

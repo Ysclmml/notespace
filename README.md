@@ -4,6 +4,24 @@
 
 源码仓库：[Ysclmml/notespace](https://github.com/Ysclmml/notespace)。
 
+## 安装
+
+macOS Apple Silicon 可通过 Homebrew 安装，也可在 [GitHub Releases](https://github.com/Ysclmml/notespace/releases) 下载 DMG。
+
+```sh
+brew install --cask ysclmml/tap/notespace
+```
+
+当前 `0.1.0` 为预览版，采用 ad-hoc 签名，尚未完成 Apple 公证；首次启动可能需要在系统设置中确认允许打开。
+
+卸载前请保存文档并退出应用：
+
+```sh
+brew uninstall ysclmml/tap/notespace
+```
+
+普通卸载会将应用设置、最近文件、浏览恢复记录与缓存移入废纸篓，不删除笔记、工作区或图片。升级和 `brew reinstall` 保留这些应用数据。详见 [安装与卸载说明](docs/RELEASING.md#6-安装升级与卸载边界)。
+
 ## 软件截图
 
 以下截图均使用合成测试文档，在应用的浏览器演示模式中实拍。

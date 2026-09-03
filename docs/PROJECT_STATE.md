@@ -2,7 +2,7 @@
 
 最后更新：2026-09-03
 
-状态版本：36
+状态版本：38
 
 设计基线：Approved baseline 1.2（ADR-0015）
 
@@ -10,7 +10,10 @@
 
 ## 1. 当前结论
 
-- 用户授权后，最近 50 个路径的源码、测试和合成截图已提交为 `80162ee` 并正常推送到 `origin/main`。不重写历史，不上传构建产物、真实文档或签名材料。新增 [macOS 分发指南](RELEASING.md)，说明 Release DMG、个人 tap 和 Cask 的安装/卸载边界；目前仅有操作指南，尚未创建 tag、Release 或 Homebrew tap，也未在本机执行安装/卸载。
+- Homebrew 安装源已发布到 [Ysclmml/homebrew-tap](https://github.com/Ysclmml/homebrew-tap)，Cask 提交 `f7514bf`，测试样式收尾为 `6e1b947`。用户已公开 `v0.1.0` Release；重新下载的 ARM64 DMG 与本地 SHA-256 一致。普通 `brew uninstall ysclmml/tap/notespace` 会移除应用并把三个明确的应用数据路径移入废纸篓，不需要 `--zap`；升级和直接重装保留数据。README 与分发指南已同步新策略，未修改应用运行时代码、Release tag 或附件。
+- 用户确认正常退出后，本机已完成远程 Cask 接管手动应用、普通卸载、全新安装以及 `brew reinstall` 验证。普通卸载后 `.app`、Caskroom 条目及三个数据路径均不存在，合成笔记/图片 SHA-256 不变；直接重装保留合成缓存标记，随后只移除该测试标记与新建空目录。最终保留 Homebrew 管理的 `/Applications/NoteSpace.app` 0.1.0 ARM64，签名校验通过；新装应用的图形启动检查等待用户确认，尚未启动。
+- 状态 37 的重复应用清理已完成：6 份 NoteSpace Debug 和 2 份旧名 Markdown Workspace 测试包移入系统废纸篓，并逐路径取消注册，可恢复。Release 构建产物、DMG、源码与笔记/图片保留。本轮另经用户明确授权，普通卸载重置了原有设置、最近文件和浏览恢复记录；没有强制结束进程或重置全局应用索引。
+- 最近功能源码、测试和合成截图已提交为 `80162ee` 并推送到 `origin/main`，分发指南提交为 `52e107b`，也是已发布的 `v0.1.0` tag 目标。不重写历史，不上传构建产物、真实文档或签名材料。
 - 失效图片在可视正文原位置显示双语占位、完整可换行的原始地址，以及“编辑引用…”/“删除引用”。空 alt 与行内图片均可操作；占位不改正文或原始属性，删除仅移除目标 Markdown 图片引用并可 Undo/Redo，不操作磁盘文件。普通正文/alt/title 修改不重复加载，换地址才重试并隔离迟到结果。合成浏览器页面已验证占位、长路径、删除/撤销及修复引用后重新显示图片。
 - “更多 → 关于笔记空间”和原生关于/帮助入口共用双语对话框，显示 `https://github.com/Ysclmml/notespace`；点击或中键使用既有系统默认浏览器入口，不后台访问、上传或改变文档导航。失败在对话框内提示、允许重试；模态阻止后台命令，关闭后恢复操作。未新增依赖或 Tauri 命令。
 - 用户授权使用合成图片后，已实际复现跨应用粘贴失败：NoteSpace 自己复制的 PNG 可以粘贴，隔离浏览器生成的 PNG 在旧版原生窗口报 `imageDecodeFailed`，底层为 arboard TIFF 转换失败。macOS 改为同一 NSPasteboard 的 PNG 优先、AppKit TIFF 转码回退；同一张 520×220 合成图在新版 dirty 空段落及源码表面均可粘贴，图片落盘和 Undo 保留图片文件已实测。没有读取或提交真实截图；尚未覆盖用户所用截图软件及所有平台。
@@ -19,7 +22,7 @@
 - 产品名称：英文 `NoteSpace`，中文“笔记空间”。产品定位是普通单用户、本地优先 Markdown/文本编辑器；Typora 风格主画布 + 浏览器式 Tab/历史 + 统一水平可编辑分屏 + 可关闭的只读浮层。
 - 截图粘贴和每工作区图片目录已接通：键盘与右键粘贴都进入编辑器正常事务；默认写 Markdown 同级目录，也可通过根右键“图片保存位置…”选择现有目录。按实际来源文档的最长匹配根读取设置，独立文件使用同级目录；成功落盘后才插链接。未命名 Markdown 先 Save As，取消不写图片；迁移后的插入校验原 Tab、正文和编辑表面，支持 Undo。
 - README 只保留产品能力、合成软件截图、技术栈与开发/构建用法。三张 JPEG 使用隔离的浏览器演示模式和合成写作、代码、Mermaid 文档实拍，没有真实用户文档、路径或剪贴板内容；已随 `80162ee` 推送。
-- 源码已托管至公开仓库 [Ysclmml/notespace](https://github.com/Ysclmml/notespace)，`origin` 使用 SSH，`main` 跟踪 `origin/main`；保留原有历史，首次功能汇总为 `24f9efd`，最新功能修复为 `80162ee`。只上传源码与开发文档，不上传依赖、构建产物、本机数据或签名材料。既有 Actions 会执行质量门禁并生成保留 7 天的 Debug ZIP；当前未发布正式 Release 或 Homebrew tap。
+- 源码已托管至公开仓库 [Ysclmml/notespace](https://github.com/Ysclmml/notespace)，`origin` 使用 SSH，`main` 跟踪 `origin/main`；保留原有历史，首次功能汇总为 `24f9efd`，最新功能修复为 `80162ee`。只上传源码与开发文档，不上传依赖、构建产物、本机数据或签名材料。既有 Actions 会执行质量门禁并生成保留 7 天的 Debug ZIP；Release 由用户单独发布，自有 tap 本轮已提交并推送。
 - 侧栏“离线”已改成中性“本地文件”及说明：它只表示直接读写本地文件，不是网络故障或保存成功指示。底部字数跟随活动文档和正文修改/撤销/外部干净重载，点击可看字符（含/不含空白）及行数；CJK 逐字、其他连续字母数字计词，明确采用源码口径，包含代码和链接地址。120 ms 防抖、32 Ki UTF-16 分片与最多 32 个弱引用缓存，不额外读盘、不持久化正文、不 dirty。
 - 图片右键优先使用图片专属菜单，不再出现通用段落菜单和整图蓝色选择；支持预览、复制已加载像素/原地址/Markdown、编辑引用及本地图片定位。Markdown 图片多行编辑框可改 `src/alt/title`，单次事务支持 Undo，取消/相同值不修改；不移动/修改原图片。只读查看器没有正文编辑，Mermaid 只提供预览/编辑源码。菜单/弹窗双语，模态期间后台应用命令暂停、关闭弹窗后正常恢复。
 - Tauri 产品名、窗口标题、应用内品牌、双语原生菜单、Web 元数据、包/可执行文件和当前文档已同步改名。为兼容旧版本原地升级，bundle identifier `app.markdownworkspace.desktop`、既有 localStorage 键和内部事件/临时文件前缀保持不变。
@@ -64,7 +67,7 @@
 
 | 能力                                    | 状态             | 证据/说明                                                                                                                                                                                                 |
 | --------------------------------------- | ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Tauri 2 + React/Vite/Rust desktop shell | DONE             | 本轮 `NoteSpace.app` 已重建，ad-hoc 签名、ARM64 架构和兼容 bundle identifier 校验通过；DMG 保持历史版本，本轮未重建                                                                                       |
+| Tauri 2 + React/Vite/Rust desktop shell | DONE             | 0.1.0 ARM64 Release 已经 Homebrew 全新安装；普通卸载清理应用数据、直接重装保留数据已实测；签名与可执行文件哈希一致                                                                                        |
 | Markdown 可视/源码双表面                | DONE             | Milkdown/ProseMirror 默认可视；CodeMirror 显式源码或 `sourceOnly`；同步 serializer、表格和 IME 有回归                                                                                                     |
 | 代码/文本主 Tab 编辑                    | DONE             | JSON/Shell/Python 等受支持 UTF-8 文件用 CodeMirror 明确浅色语法高亮、真实行号、滚动、dirty、`⌘S` 与 Save As；同语言换文件也会重装 parser；源码、主 Tab 和只读预览的选区对比度有 DOM 回归；不进入 Milkdown |
 | 保存策略与 Save As                      | DONE             | 默认手动与全历史 dirty 关闭对话框；可选 1–300 秒 inactivity autosave；Save As 路径冲突与历史迁移保持不变                                                                                                  |
@@ -162,34 +165,37 @@ set_native_menu_locale(locale)
 
 ## 6. 当前工作包
 
-| 工作包                         | 状态    | 说明                                                                                                                                 |
-| ------------------------------ | ------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| 精简边界与 Node tooling        | DONE    | baseline 0.8；仅新增用户明确要求的水平编辑分屏、预览标签与图片链接查看；无 Ruby 工具链或重型框架                                     |
-| Rust 本地文件纵向切片          | DONE    | 19 个当前命令；原生监听、元数据检查、图片选择目录/可用性判断/逐文件授权；系统浏览器、工作区文件动作和带版本前提的原子保存保持        |
-| Markdown 双表面与代码/文本编辑 | DONE    | 主 Tab 可编辑/保存；新建、Save As 与路径迁移已接通                                                                                   |
-| 多工作区与本地最近项           | DONE    | 多根文件树同时显示、独立折叠、活动根、复制路径/关闭根、打开集合和最近工作区/文件尽力恢复                                             |
-| 浏览器式导航与统一右组         | DONE    | 当前组/右组共享 Tab 状态；有界浮层只读；右组代码直接编辑和定位，固定/dirty 保留                                                      |
-| 水平编辑分屏与预览标签         | DONE    | 每组 Tab/焦点、共享正文、独立视图、移动保留编辑器、in-flight 导航隔离、预览双击/编辑固定、内部标签拖放与分隔线调整                   |
-| 图片链接、活动文件与菜单策略   | DONE    | 无行号图片链接专用查看器/错误回退；工作区树跟随与对比度；浏览器默认右键限顶部，debug 原生 DevTools                                   |
-| 文件动作、自动保存与表格工具   | DONE    | 根/子目录新建、reveal/复制路径、确认后移入废纸篓、manual/afterDelay、view-only 列宽、临时插入网格、已有表格行列数与对齐已接通        |
-| 中英文菜单、右键与设置         | DONE    | 中文“笔记空间”/英文 `NoteSpace`；新增文件/表格/自动保存表面双语；紧凑 Typora/macOS 右键样式；九项持久设置已接通                      |
-| 保存、关闭与恢复完整性收尾     | DONE    | 写前 Save As 冲突、持久错误、全历史 dirty、`00 → 01 → close/quit`、删除取消/确认、恢复竞态/失效项和菜单作用域有自动回归              |
-| 外部磁盘变化                   | DONE    | 真实 macOS 监听、元数据比较、树刷新、干净重载、dirty/缺失保护、保存版本检查与迟到所有权均有自动回归                                  |
-| 文档统计、图片右键与引用编辑   | DONE    | 活动正文统计与缓存；图片专用动作、多行引用编辑、Undo、模态退出保护；无新 IPC 或文件写入                                              |
-| 失效图片占位与关于仓库         | DONE    | 失效提示/路径/直接编辑或删除引用、Undo；关于双语入口与 GitHub 浏览器打开，定向和合成 UI 已通过                                      |
-| 每根图片目录与截图粘贴         | DONE    | 同级/自选目录持久化；Save As 后排队的可撤销插入、原生兼容读取、右键粘贴、错误与迟到保护有定向测试                                    |
-| README 产品表述与截图          | DONE    | 产品/技术栈/开发构建说明；三张隔离合成文档实拍，不含真实工作内容、路径或对话约束                                                     |
-| 本轮自动化门禁                 | DONE    | 状态 35 的 `pnpm verify` 完整通过：59 个前端文件、797 项测试；Rust 64 项；格式/lint/类型及 Web、默认 Debug 构建通过                   |
-| 本轮界面回归                   | DONE    | 隔离 Browser 合成文档验证失效占位、长路径、删除/撤销、修改有效图地址恢复显示及关于仓库入口；未操作用户文档                          |
-| 本轮最终桌面验收               | PARTIAL | 独立 `src-tauri/target/debug/bundle/missing-image-fix.GBqp2J/NoteSpace.app` 已签名校验，本轮交互使用 Browser 验证；原生新包待用户验收 |
-| 源码公开同步与分发指南         | DONE    | 50 个路径审计后提交/推送 `80162ee`；Release/Cask/清理说明已编写，未创建发布资源或实际安装/卸载                                  |
+| 工作包                         | 状态    | 说明                                                                                                                          |
+| ------------------------------ | ------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| 精简边界与 Node tooling        | DONE    | baseline 0.8；仅新增用户明确要求的水平编辑分屏、预览标签与图片链接查看；无 Ruby 工具链或重型框架                              |
+| Rust 本地文件纵向切片          | DONE    | 19 个当前命令；原生监听、元数据检查、图片选择目录/可用性判断/逐文件授权；系统浏览器、工作区文件动作和带版本前提的原子保存保持 |
+| Markdown 双表面与代码/文本编辑 | DONE    | 主 Tab 可编辑/保存；新建、Save As 与路径迁移已接通                                                                            |
+| 多工作区与本地最近项           | DONE    | 多根文件树同时显示、独立折叠、活动根、复制路径/关闭根、打开集合和最近工作区/文件尽力恢复                                      |
+| 浏览器式导航与统一右组         | DONE    | 当前组/右组共享 Tab 状态；有界浮层只读；右组代码直接编辑和定位，固定/dirty 保留                                               |
+| 水平编辑分屏与预览标签         | DONE    | 每组 Tab/焦点、共享正文、独立视图、移动保留编辑器、in-flight 导航隔离、预览双击/编辑固定、内部标签拖放与分隔线调整            |
+| 图片链接、活动文件与菜单策略   | DONE    | 无行号图片链接专用查看器/错误回退；工作区树跟随与对比度；浏览器默认右键限顶部，debug 原生 DevTools                            |
+| 文件动作、自动保存与表格工具   | DONE    | 根/子目录新建、reveal/复制路径、确认后移入废纸篓、manual/afterDelay、view-only 列宽、临时插入网格、已有表格行列数与对齐已接通 |
+| 中英文菜单、右键与设置         | DONE    | 中文“笔记空间”/英文 `NoteSpace`；新增文件/表格/自动保存表面双语；紧凑 Typora/macOS 右键样式；九项持久设置已接通               |
+| 保存、关闭与恢复完整性收尾     | DONE    | 写前 Save As 冲突、持久错误、全历史 dirty、`00 → 01 → close/quit`、删除取消/确认、恢复竞态/失效项和菜单作用域有自动回归       |
+| 外部磁盘变化                   | DONE    | 真实 macOS 监听、元数据比较、树刷新、干净重载、dirty/缺失保护、保存版本检查与迟到所有权均有自动回归                           |
+| 文档统计、图片右键与引用编辑   | DONE    | 活动正文统计与缓存；图片专用动作、多行引用编辑、Undo、模态退出保护；无新 IPC 或文件写入                                       |
+| 失效图片占位与关于仓库         | DONE    | 失效提示/路径/直接编辑或删除引用、Undo；关于双语入口与 GitHub 浏览器打开，定向和合成 UI 已通过                                |
+| 每根图片目录与截图粘贴         | DONE    | 同级/自选目录持久化；Save As 后排队的可撤销插入、原生兼容读取、右键粘贴、错误与迟到保护有定向测试                             |
+| README 产品表述与截图          | DONE    | 产品/技术栈/开发构建说明；三张隔离合成文档实拍，不含真实工作内容、路径或对话约束                                              |
+| 本轮自动化门禁                 | DONE    | 状态 35 的 `pnpm verify` 完整通过：59 个前端文件、797 项测试；Rust 64 项；格式/lint/类型及 Web、默认 Debug 构建通过           |
+| 本轮界面回归                   | DONE    | 隔离 Browser 合成文档验证失效占位、长路径、删除/撤销、修改有效图地址恢复显示及关于仓库入口；未操作用户文档                    |
+| 本轮最终桌面验收               | PARTIAL | 远程 Cask 接管、普通卸载、全新安装与直接重装均通过；新装应用 GUI 启动待确认，不把签名校验等同于 Gatekeeper 放行               |
+| 源码公开同步与分发指南         | DONE    | 功能源码为 `80162ee`，Release tag 目标 `52e107b`；tap `f7514bf` 已推送，README/指南同步普通卸载清理策略                       |
+| Homebrew 卸载策略              | DONE    | 41 个隔离测试、1209 条断言通过，真实安装/卸载链路通过；精确三个路径、拒绝运行中清理、无提权、未知上下文保留                   |
+| 本机测试应用清理               | DONE    | 8 份已确认的 Debug 应用包移入废纸篓并取消各自注册，保留正式安装副本、Release 产物和用户数据                                   |
 
 ## 7. 唯一下一步
 
-确认首版签名方式（个人试用 ad-hoc，或 Developer ID + 公证）及实际发布授权后，按 `docs/RELEASING.md` 从确定提交构建 Release DMG，再建立 `Ysclmml/homebrew-tap` 并用合成资料完成安装/普通卸载/带 zap 卸载/重装验收。当前只授权了源码推送及发布步骤咨询，不自动创建 tag/Release/tap，不重启正常实例或清理用户数据。
+Homebrew 发布、普通卸载清理和全新安装已完成。唯一下一步：用户确认后检查新装应用的 GUI 启动和空白浏览状态；遇到 Gatekeeper 提示交给用户处理，不移除隔离标记或关闭安全检查。不要再次清理已安装应用或用户数据；没有新版本时不能把同版本重装写成实际升级验收。
 
 ### 已知边界
 
+- Cask 的卸载钩子依赖 Homebrew 内部命令上下文和原生废纸篓接口，本机 Homebrew 6.0.20 已验证；后续 Homebrew 升级需要复验，不兼容时保留数据并提示。用户若撤销 Cask 信任，Homebrew 可能跳过钩子并保留应用数据。“干净”不包括 macOS 日志/索引/备份、废纸篓内容或 Homebrew 下载缓存；尚无跨版本实际升级记录。
 - 状态 34 在隔离原生窗口完成合成跨应用粘贴、正常退出和双表面位置恢复；本轮失效图片/关于交互采用 Browser 实测及自动回归，没有启动用户正常应用或默认浏览器。特定截图软件、图片系统定位、重启恢复及 Windows/Linux 剪贴板仍未全部实机验收。当前只有 ad-hoc 签名，没有 Apple Developer ID 签名/公证。
 - 失效图片占位响应图片准备/加载错误，不新增图片资源独立监听；已缓存的图片外部删除不保证即时显示失效，重新打开文档后再次加载。占位保留准确原地址，统一提示不存在或无法加载，不把所有加载错误误称为磁盘删除。
 - 字数统一采用源码口径，不是移除 Markdown 语法/链接地址/代码后的排版字数。缓存可被回收并重算，不写入设置目录。
@@ -200,7 +206,9 @@ set_native_menu_locale(locale)
 
 ## 8. 最近主线决策
 
-- 2026-09-03 用户要求提交远程并咨询 Release/Homebrew：源码已正常推送；首版建议 Apple Silicon Release DMG + 自有 tap。普通卸载保留设置，明确 `--zap` 才清理应用专属 WebKit、缓存及偏好；工作区、笔记、代码和粘贴图片永不纳入卸载目标。分发方式仍为待执行方案，ad-hoc 不等于公证，不绕过 Gatekeeper；安装/卸载回归尚未执行。
+- 2026-09-03 用户明确改为普通卸载即清理应用数据，并授权发布自有 tap、退出后卸载/重装测试，取代此前默认保留、`--zap` 清理的分发方案。固定清理 `Library/Caches`、`Library/Preferences`、`Library/WebKit` 下的 `app.markdownworkspace.desktop` 专属路径；笔记/工作区/图片不清理，应用运行时或检测失败拒绝，未知操作保留，升级/重装不触发数据清理。
+- 2026-09-03 测试应用清理只作用于逐个核对的 Debug bundle，以系统废纸篓保留恢复能力；不按名称删除正式 Release、不清理共享设置、不全局重置 LaunchServices。后续隔离测试结束需清理自建临时应用包，避免构建目录被 macOS 收录后出现重复入口。
+- 2026-09-03 首次 Release/Homebrew 咨询方案（卸载策略已由上条取代）：源码正常推送，采用 Apple Silicon Release DMG + 自有 tap；工作区、笔记、代码和粘贴图片永不纳入卸载目标。ad-hoc 不等于公证，不绕过 Gatekeeper。
 - 2026-09-03 文内缺失图片显示可操作占位；“删除引用”只修改 Markdown 并可撤销，不复用磁盘废纸篓命令。关于软件公开展示用户 GitHub 仓库地址，点击复用已实现的外部浏览器能力，不增加网络抓取或上传。
 - `ADR-0015`：用户要求修复截图剪贴板粘贴并允许每工作区独立指定图片目录；默认改为 Markdown 同级目录，保留先落盘后插链接、Save As 与 Undo。键盘/右键入口、图像格式兼容、逐文件加载授权及错误/取消/过期保护作为同一纵向切片；不自动迁移旧图片或保存剪贴板快照。
 - 2026-09-03 README 采用隔离合成测试文档的软件截图；内容仅介绍最终产品、技术栈与使用/构建方式，不包含对话讨论或被排除技术的罗列。
@@ -224,6 +232,24 @@ set_native_menu_locale(locale)
 - 2026-09-02 分屏集成收尾：保存和确认状态 ref 在提交时同步，避免保存后立即关闭仍读旧 dirty；移走/关闭来源 Tab 或后退时废弃迟到导航；最终放弃移除无主 dirty 缓存。关闭 Tauri 原生拖放接管以保留 WebKit HTML5 标签拖放；图片仅放宽 `img-src` 的 HTTP(S)，asset 范围保持不变。
 
 ## 9. 验证记录
+
+- **PASS (release integrity)** — 公开 `v0.1.0` DMG 重新下载后的 SHA-256 为 `8973594d28d7a5fb975536f38ee607e8e55abe4f814d96dbedc4b57c211ee981`，与本地 Release 相同；`hdiutil verify` 通过。安装验证使用 `f7514bf` 的 Cask，tap 远程、工作副本及 Homebrew 安装源已同步测试样式收尾 `6e1b947`，Cask 未变。
+- **PASS (isolated Homebrew policy)** — 在 tap 运行 `HOMEBREW_DEVELOPER=1 brew ruby test/notespace_policy_test.rb`：41 tests、1209 assertions、0 failures；真实 Cask loader/flight artifacts，合成临时 home，拦截进程和废纸篓接口，mock 必须对应真实存在的方法。在 Homebrew 安装的 tap 目录运行 `brew style Casks/notespace.rb test/notespace_policy_test.rb`，以及 Ruby 语法、`git diff --check` 均通过。样式工具使用 Homebrew 自有开发 gems，没有为产品添加 Ruby 依赖。
+- **PASS (real ordinary uninstall)** — 本机 Homebrew 6.0.20 从已发布 tap 执行 `brew install --cask --adopt ysclmml/tap/notespace`，精确信任该 Cask，保存含钩子的安装元数据；随后执行用户要求的 `brew uninstall ysclmml/tap/notespace` 成功。应用本体、Caskroom 条目及三个应用数据路径全部不存在；原数据移入系统废纸篓，可恢复，没有强杀、提权、宽泛删除或清空废纸篓。
+- **PASS (fresh install and reinstall)** — `brew install --cask ysclmml/tap/notespace` 完成全新安装；另以单独生成的缓存标记验证真实 `brew reinstall --cask ysclmml/tap/notespace` 保留数据，之后只清除测试标记与新建空目录。最终 `brew list --cask --versions notespace` 为 `0.1.0`，ARM64 可执行文件哈希为 `69b5c998c338fce060d9de445034dbc3b2c4d70ec06d5a003cd4c13163ddb5df`，`codesign --verify --deep --strict` 通过。三条应用数据路径及另查的专属 Application Support/Logs/Saved State 路径均不存在（尚未启动）。
+- **PASS (document preservation)** — 只使用临时合成笔记与 SVG 测试图片，整个安装/卸载/重装流程前后 SHA-256 不变；未读取真实笔记、图片、设置内容或剪贴板。未改动用户原始 Release DMG。
+- **PASS (distribution docs)** — `pnpm repo:check`、`pnpm exec prettier --check README.md docs/RELEASING.md docs/PROJECT_STATE.md` 与 `git diff --check` 通过；本轮产品仓库只更新发布文档和交接状态。
+- **PENDING (new-install GUI)** — 已请求用户确认打开刚安装应用进行启动和空白浏览状态检查，尚未执行 UI 启动；不声称已经通过 Gatekeeper 或实际新版升级。原运行时代码的编辑/截图回归记录见下方历史验证，本轮未重跑全套运行时测试。
+
+### 以下为状态版本 37 验证记录（应用数据保留是当时清理范围）
+
+本轮状态版本 37：只清理测试应用和更新交接，不修改运行时代码、不执行安装或远程发布。
+
+- **PASS (cleanup)** — `/usr/bin/trash --verbose --stopOnError` 成功移走 8 份逐一核对 Info.plist 的 Debug 应用：默认 NoteSpace、clipboard-fix、paste-position-fix、missing-image-fix、Paste Test、Group QA，以及旧名 Markdown Workspace / Markdown Workspace QA。随后对原路径逐一执行 `lsregister -u`；没有删除整个构建目录、清空废纸篓或重置全局索引。清理前没有匹配的运行进程。
+- **PASS (inventory)** — `rg --files -uu src-tauri/target/debug/bundle -g Info.plist` 无剩余应用清单；Spotlight 按应用类型和 NoteSpace 名称查询只返回正式安装副本 `/Applications/NoteSpace.app`。
+- **PASS (preserved release)** — 正式安装副本与挂载 DMG 内应用的可执行文件 SHA-256 同为 `69b5c998c338fce060d9de445034dbc3b2c4d70ec06d5a003cd4c13163ddb5df`。`src-tauri/target/release/bundle/dmg/NoteSpace_0.1.0_aarch64.dmg` 清理前后 SHA-256 均为 `8973594d28d7a5fb975536f38ee607e8e55abe4f814d96dbedc4b57c211ee981`；Release 目录、源码、共享设置及工作文档未清理。
+
+### 以下为状态版本 36 验证记录（发布状态为当时记录）
 
 本轮状态版本 36：源码公开审计与推送完成，发布步骤已核实；没有改动运行时代码。
 
