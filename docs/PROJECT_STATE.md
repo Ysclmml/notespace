@@ -2,7 +2,7 @@
 
 最后更新：2026-09-03
 
-状态版本：38
+状态版本：39
 
 设计基线：Approved baseline 1.2（ADR-0015）
 
@@ -10,8 +10,9 @@
 
 ## 1. 当前结论
 
-- Homebrew 安装源已发布到 [Ysclmml/homebrew-tap](https://github.com/Ysclmml/homebrew-tap)，Cask 提交 `f7514bf`，测试样式收尾为 `6e1b947`。用户已公开 `v0.1.0` Release；重新下载的 ARM64 DMG 与本地 SHA-256 一致。普通 `brew uninstall ysclmml/tap/notespace` 会移除应用并把三个明确的应用数据路径移入废纸篓，不需要 `--zap`；升级和直接重装保留数据。README 与分发指南已同步新策略，未修改应用运行时代码、Release tag 或附件。
-- 用户确认正常退出后，本机已完成远程 Cask 接管手动应用、普通卸载、全新安装以及 `brew reinstall` 验证。普通卸载后 `.app`、Caskroom 条目及三个数据路径均不存在，合成笔记/图片 SHA-256 不变；直接重装保留合成缓存标记，随后只移除该测试标记与新建空目录。最终保留 Homebrew 管理的 `/Applications/NoteSpace.app` 0.1.0 ARM64，签名校验通过；新装应用的图形启动检查等待用户确认，尚未启动。
+- Homebrew 安装源已发布到 [Ysclmml/homebrew-tap](https://github.com/Ysclmml/homebrew-tap)，当前提交为 `5f43bdb`。按用户明确选择，自有 tap 的安装 `postflight` 只清除实际 `appdir/NoteSpace.app` 内的 `com.apple.quarantine`，不跟随内部符号链接，不清其他属性、不提权、不改全局安全策略；失败明确报错。应用本身不增加提示窗口，产品和 tap README 公开说明这是未公证应用的单应用绕过，不等于 Apple 信任。Release 仍为原 `v0.1.0`，没有重打包、更换附件或修改运行时代码。
+- 本机已使用新安装源执行保留数据的 `brew reinstall --cask ysclmml/tap/notespace`。重装后完整应用树无下载隔离属性，原 `com.apple.provenance` 保留，可执行文件 SHA-256 与原 Release 一致，签名验证通过，`spctl --status` 前后均为 `assessments enabled`。保留 `/Applications/NoteSpace.app` 0.1.0 ARM64，未自动启动；实际首次启动 UI 仍由用户复验，不把属性检查当成所有 macOS 版本的放行保证。
+- 状态 38 已完成远程 Cask 接管、普通卸载、全新安装和合成缓存保留测试。本轮没有再次执行普通卸载或清理应用数据；三个应用数据路径在重装前后均不存在。普通 `brew uninstall ysclmml/tap/notespace` 仍把三个明确的应用数据路径移入废纸篓，不需要 `--zap`；升级/重装保留数据，笔记和图片不纳入清理范围。
 - 状态 37 的重复应用清理已完成：6 份 NoteSpace Debug 和 2 份旧名 Markdown Workspace 测试包移入系统废纸篓，并逐路径取消注册，可恢复。Release 构建产物、DMG、源码与笔记/图片保留。本轮另经用户明确授权，普通卸载重置了原有设置、最近文件和浏览恢复记录；没有强制结束进程或重置全局应用索引。
 - 最近功能源码、测试和合成截图已提交为 `80162ee` 并推送到 `origin/main`，分发指南提交为 `52e107b`，也是已发布的 `v0.1.0` tag 目标。不重写历史，不上传构建产物、真实文档或签名材料。
 - 失效图片在可视正文原位置显示双语占位、完整可换行的原始地址，以及“编辑引用…”/“删除引用”。空 alt 与行内图片均可操作；占位不改正文或原始属性，删除仅移除目标 Markdown 图片引用并可 Undo/Redo，不操作磁盘文件。普通正文/alt/title 修改不重复加载，换地址才重试并隔离迟到结果。合成浏览器页面已验证占位、长路径、删除/撤销及修复引用后重新显示图片。
@@ -184,17 +185,18 @@ set_native_menu_locale(locale)
 | README 产品表述与截图          | DONE    | 产品/技术栈/开发构建说明；三张隔离合成文档实拍，不含真实工作内容、路径或对话约束                                              |
 | 本轮自动化门禁                 | DONE    | 状态 35 的 `pnpm verify` 完整通过：59 个前端文件、797 项测试；Rust 64 项；格式/lint/类型及 Web、默认 Debug 构建通过           |
 | 本轮界面回归                   | DONE    | 隔离 Browser 合成文档验证失效占位、长路径、删除/撤销、修改有效图地址恢复显示及关于仓库入口；未操作用户文档                    |
-| 本轮最终桌面验收               | PARTIAL | 远程 Cask 接管、普通卸载、全新安装与直接重装均通过；新装应用 GUI 启动待确认，不把签名校验等同于 Gatekeeper 放行               |
-| 源码公开同步与分发指南         | DONE    | 功能源码为 `80162ee`，Release tag 目标 `52e107b`；tap `f7514bf` 已推送，README/指南同步普通卸载清理策略                       |
-| Homebrew 卸载策略              | DONE    | 41 个隔离测试、1209 条断言通过，真实安装/卸载链路通过；精确三个路径、拒绝运行中清理、无提权、未知上下文保留                   |
+| 本轮最终桌面验收               | PARTIAL | 新安装钩子已实际重装验证；完整包无 quarantine、其他属性/二进制保留；用户仍需重开验证 GUI，不保证所有系统放行                  |
+| 源码公开同步与分发指南         | DONE    | 功能源码为 `80162ee`，Release tag 目标 `52e107b`；tap `5f43bdb` 已推送，README/指南说明单应用启动处理及卸载策略               |
+| Homebrew 安装与卸载策略        | DONE    | 46 个策略测试/1309 条断言及真实临时属性回归/59 条断言通过；安装限域、普通卸载清理、升级/重装保留，样式与实机重装通过          |
 | 本机测试应用清理               | DONE    | 8 份已确认的 Debug 应用包移入废纸篓并取消各自注册，保留正式安装副本、Release 产物和用户数据                                   |
 
 ## 7. 唯一下一步
 
-Homebrew 发布、普通卸载清理和全新安装已完成。唯一下一步：用户确认后检查新装应用的 GUI 启动和空白浏览状态；遇到 Gatekeeper 提示交给用户处理，不移除隔离标记或关闭安全检查。不要再次清理已安装应用或用户数据；没有新版本时不能把同版本重装写成实际升级验收。
+安装源更新和保留数据的本机重装已完成。唯一下一步：用户重新打开当前 `/Applications/NoteSpace.app`，确认不再出现未公证拦截并检查正常编辑。未自动启动应用，不再重装、卸载或清理数据；若仍被其他系统策略拦截，应先查看具体提示，不扩大到全局安全关闭。当前仍无 Apple 公证；本轮同版本重装不是新版升级验收。
 
 ### 已知边界
 
+- 安装钩子是用户明确选定的个人 tap 策略，README 已披露；普通“来自互联网”提示也可能消失，不冒充 Apple 公证。直接下载 DMG 不执行该钩子。自选应用目录若含符号链接会被拒绝，企业管理或其他系统安全策略仍可能拦截；实际 GUI 尚待用户复验。以后完成正式签名/公证时应移除此钩子。
 - Cask 的卸载钩子依赖 Homebrew 内部命令上下文和原生废纸篓接口，本机 Homebrew 6.0.20 已验证；后续 Homebrew 升级需要复验，不兼容时保留数据并提示。用户若撤销 Cask 信任，Homebrew 可能跳过钩子并保留应用数据。“干净”不包括 macOS 日志/索引/备份、废纸篓内容或 Homebrew 下载缓存；尚无跨版本实际升级记录。
 - 状态 34 在隔离原生窗口完成合成跨应用粘贴、正常退出和双表面位置恢复；本轮失效图片/关于交互采用 Browser 实测及自动回归，没有启动用户正常应用或默认浏览器。特定截图软件、图片系统定位、重启恢复及 Windows/Linux 剪贴板仍未全部实机验收。当前只有 ad-hoc 签名，没有 Apple Developer ID 签名/公证。
 - 失效图片占位响应图片准备/加载错误，不新增图片资源独立监听；已缓存的图片外部删除不保证即时显示失效，重新打开文档后再次加载。占位保留准确原地址，统一提示不存在或无法加载，不把所有加载错误误称为磁盘删除。
@@ -206,9 +208,10 @@ Homebrew 发布、普通卸载清理和全新安装已完成。唯一下一步�
 
 ## 8. 最近主线决策
 
+- 2026-09-03 用户在了解区别后明确要求个人 Homebrew 安装无需到系统设置单独放行，不新增应用说明窗口，只在 GitHub README 披露。采用安装后仅清已安装 NoteSpace 下载隔离属性的方式，取代早期分发指南“不移除隔离标记”的选择；不关闭 Gatekeeper/SIP/XProtect、不改其他应用、不冒称公证。普通卸载清理与升级/重装保留策略不变。
 - 2026-09-03 用户明确改为普通卸载即清理应用数据，并授权发布自有 tap、退出后卸载/重装测试，取代此前默认保留、`--zap` 清理的分发方案。固定清理 `Library/Caches`、`Library/Preferences`、`Library/WebKit` 下的 `app.markdownworkspace.desktop` 专属路径；笔记/工作区/图片不清理，应用运行时或检测失败拒绝，未知操作保留，升级/重装不触发数据清理。
 - 2026-09-03 测试应用清理只作用于逐个核对的 Debug bundle，以系统废纸篓保留恢复能力；不按名称删除正式 Release、不清理共享设置、不全局重置 LaunchServices。后续隔离测试结束需清理自建临时应用包，避免构建目录被 macOS 收录后出现重复入口。
-- 2026-09-03 首次 Release/Homebrew 咨询方案（卸载策略已由上条取代）：源码正常推送，采用 Apple Silicon Release DMG + 自有 tap；工作区、笔记、代码和粘贴图片永不纳入卸载目标。ad-hoc 不等于公证，不绕过 Gatekeeper。
+- 2026-09-03 首次 Release/Homebrew 咨询方案（卸载与启动处理已由本节新决策取代）：源码正常推送，采用 Apple Silicon Release DMG + 自有 tap；工作区、笔记、代码和粘贴图片永不纳入卸载目标。当时保留 Gatekeeper 隔离检查；ad-hoc 不等于公证的事实不变。
 - 2026-09-03 文内缺失图片显示可操作占位；“删除引用”只修改 Markdown 并可撤销，不复用磁盘废纸篓命令。关于软件公开展示用户 GitHub 仓库地址，点击复用已实现的外部浏览器能力，不增加网络抓取或上传。
 - `ADR-0015`：用户要求修复截图剪贴板粘贴并允许每工作区独立指定图片目录；默认改为 Markdown 同级目录，保留先落盘后插链接、Save As 与 Undo。键盘/右键入口、图像格式兼容、逐文件加载授权及错误/取消/过期保护作为同一纵向切片；不自动迁移旧图片或保存剪贴板快照。
 - 2026-09-03 README 采用隔离合成测试文档的软件截图；内容仅介绍最终产品、技术栈与使用/构建方式，不包含对话讨论或被排除技术的罗列。
@@ -232,6 +235,16 @@ Homebrew 发布、普通卸载清理和全新安装已完成。唯一下一步�
 - 2026-09-02 分屏集成收尾：保存和确认状态 ref 在提交时同步，避免保存后立即关闭仍读旧 dirty；移走/关闭来源 Tab 或后退时废弃迟到导航；最终放弃移除无主 dirty 缓存。关闭 Tauri 原生拖放接管以保留 WebKit HTML5 标签拖放；图片仅放宽 `img-src` 的 HTTP(S)，asset 范围保持不变。
 
 ## 9. 验证记录
+
+- **PASS (install/uninstall policy)** — `HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_DEVELOPER=1 brew ruby test/notespace_policy_test.rb`：46 tests、1309 assertions、0 failures。真实 Cask loader 与分离的 install/uninstall PostflightBlock；系统动作全拦截，覆盖安装路径、缺失/非目录/重定向拒绝、失败传播与既有普通卸载清理/重装保留。
+- **PASS (real isolated attributes)** — `HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_DEVELOPER=1 brew ruby test/notespace_quarantine_test.rb`：59 assertions、0 failures。真实 `postflight` 和真实 `xattr` 只处理运行时生成的临时 bundle，自定义含空格的 appdir、二次执行、父目录/相邻应用/外部链接的 quarantine 与无关属性均保留；未启动测试应用或读取真实用户数据。
+- **PASS (tap checks and publication)** — 三个 Ruby 文件语法检查、`git diff --check` 通过；在 Homebrew 已安装的 tap 目录运行 `HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_DEVELOPER=1 brew style Casks/notespace.rb test/notespace_policy_test.rb test/notespace_quarantine_test.rb`：3 files、no offenses。普通工作副本路径被工具误套核心/重复类规则，不放宽规则；同步本地提交后从正确目录检查通过。`5f43bdb` 已正常推送到 GitHub，并与已安装 tap 同步；无强制推送或 Release 改动。
+- **PASS (real reinstall)** — 确认 NoteSpace 不在运行后，执行 `HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_NO_INSTALL_CLEANUP=1 brew reinstall --cask ysclmml/tap/notespace` 成功；新钩子已保存在 Homebrew 安装元数据。未执行普通卸载、未运行应用、未读取/删除笔记或设置；原本不存在的三个应用数据路径仍不存在，不将空数据状态冒充真实设置保留实验。
+- **PASS (app integrity and scope)** — 重装后 `xattr -r /Applications/NoteSpace.app` 只见既有 provenance，没有 quarantine；`codesign --verify --deep --strict` 通过；可执行文件 SHA-256 保持 `69b5c998c338fce060d9de445034dbc3b2c4d70ec06d5a003cd4c13163ddb5df`。`spctl --status` 前后均为 `assessments enabled`，没有全局关闭安全检查。
+- **PASS (product docs)** — `pnpm repo:check`、`pnpm exec prettier --check README.md docs/RELEASING.md docs/PROJECT_STATE.md`、tap README 的 Prettier 检查及 `git diff --check` 通过。产品仓库仅改 README、分发指南和状态；未重跑不相关的应用全量构建/编辑器测试。
+- **PENDING (launch UI)** — 用户此前的启动截图确认为 macOS 未公证拦截；本轮仅完成新安装流程与属性/完整性验证，没有主动启动重装后的应用。待用户重开确认，不能声称已完成 GUI 放行或所有平台兼容验收。
+
+### 以下为状态版本 38 验证记录（当时未启用安装后属性处理）
 
 - **PASS (release integrity)** — 公开 `v0.1.0` DMG 重新下载后的 SHA-256 为 `8973594d28d7a5fb975536f38ee607e8e55abe4f814d96dbedc4b57c211ee981`，与本地 Release 相同；`hdiutil verify` 通过。安装验证使用 `f7514bf` 的 Cask，tap 远程、工作副本及 Homebrew 安装源已同步测试样式收尾 `6e1b947`，Cask 未变。
 - **PASS (isolated Homebrew policy)** — 在 tap 运行 `HOMEBREW_DEVELOPER=1 brew ruby test/notespace_policy_test.rb`：41 tests、1209 assertions、0 failures；真实 Cask loader/flight artifacts，合成临时 home，拦截进程和废纸篓接口，mock 必须对应真实存在的方法。在 Homebrew 安装的 tap 目录运行 `brew style Casks/notespace.rb test/notespace_policy_test.rb`，以及 Ruby 语法、`git diff --check` 均通过。样式工具使用 Homebrew 自有开发 gems，没有为产品添加 Ruby 依赖。

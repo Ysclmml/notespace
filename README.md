@@ -12,7 +12,16 @@ macOS Apple Silicon 可通过 Homebrew 安装，也可在 [GitHub Releases](http
 brew install --cask ysclmml/tap/notespace
 ```
 
-当前 `0.1.0` 为预览版，采用 ad-hoc 签名，尚未完成 Apple 公证；首次启动可能需要在系统设置中确认允许打开。
+当前 `0.1.0` 为预览版，采用 ad-hoc 签名，尚未完成 Apple 公证。此个人 Homebrew 安装源会在安装后自动移除 **NoteSpace.app 内的下载隔离标记**，以避免因未公证而需要到系统设置中单独放行；普通的“来自互联网”提示也可能不再出现。此处理不代表 Apple 已验证应用，不关闭系统全局安全检查，不影响其他应用，也不增加应用内提示窗口。请仅在信任本仓库及安装源时安装。
+
+已通过 Homebrew 安装的用户，保存文档并退出 NoteSpace 后执行以下命令，即可应用更新后的安装流程，设置和浏览记录会保留：
+
+```sh
+brew update
+brew reinstall --cask ysclmml/tap/notespace
+```
+
+直接下载 DMG 不会执行 Homebrew 的安装后处理，仍遵循 macOS 的下载与启动检查。详见 [签名与安装说明](docs/RELEASING.md#2-确定签名与发布版本)。
 
 卸载前请保存文档并退出应用：
 

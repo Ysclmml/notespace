@@ -14,10 +14,18 @@
 
 先选择分发方式：
 
-- **个人试用**：Release 构建加 ad-hoc 签名。可以通过自己的 tap 安装，但首次打开仍可能需要在“系统设置 → 隐私与安全性”中针对这个应用允许打开。
+- **当前个人预览版**：Release 构建加 ad-hoc 签名，使用下述自有 tap 安装后处理；不要求使用者另到系统设置中为未公证应用放行。直接下载 DMG 不执行该处理，仍可能遇到系统拦截。
 - **面向普通用户分发**：使用 Developer ID Application 签名并完成 Apple 公证，按 Tauri 官方说明配置发布凭据。
 
-Homebrew 安装成功不代表通过 Gatekeeper。不要在安装脚本中关闭 Gatekeeper、移除隔离标记或默认使用 `--no-quarantine`。[Tauri 签名与公证](https://v2.tauri.app/distribute/sign/macos/)、[Homebrew 安全模型](https://docs.brew.sh/Homebrew-Security-and-Supply-Chain#casks-have-a-different-trust-model)
+### 自有 tap 的启动处理
+
+此个人安装源的 `postflight` 在应用安装完成后，仅清除实际安装位置下 `NoteSpace.app` 及其内部普通文件/目录的 `com.apple.quarantine` 下载隔离标记。安装、重装及后续升级使用相同处理；它不改应用代码或签名、不清其他扩展属性、不改笔记/设置，也不关闭全局 Gatekeeper、SIP 或 XProtect。应用内不增加说明窗口，分发行为在本仓库与 tap 的 README 公开说明。
+
+这属于对 NoteSpace 的应用级绕过，不是 Apple 公证或安全认证；普通的“来自互联网”确认也可能不再出现。只有信任本仓库、Release 和安装源时才应使用。Homebrew 仍核对下载包的 SHA-256，但校验值一致不等于应用已获 Apple 信任。该策略不适用于要求正常通过 Gatekeeper 的官方 `homebrew/cask`，也不保证绕过 macOS 的其他安全拦截。[Homebrew 安全模型](https://docs.brew.sh/Homebrew-Security-and-Supply-Chain#casks-have-a-different-trust-model)
+
+处理范围跟随 Homebrew 的实际应用安装目录，不能扩展到整个 `/Applications`、下载目录或其他软件；不得跟随应用内符号链接到外部目标，不使用提权或清除全部属性作为失败回退。缺少标记时应可重复执行，读取或清理失败必须报错，不能静默宣称已完成。将来改用 Developer ID 签名并完成公证时，应移除这一安装钩子，恢复标准系统检查。[Tauri 签名与公证](https://v2.tauri.app/distribute/sign/macos/)
+
+本机 Homebrew 6.0.20 已无 `--no-quarantine` 安装参数，不将旧参数作为安装说明。仅更新 tap 不会改动已经安装的应用；已有用户须先正常退出，再运行 `brew update` 和 `brew reinstall --cask ysclmml/tap/notespace`。重装保留应用数据。
 
 下文以首个 `v0.1.0` 为例。发布前确认 `package.json`、`src-tauri/Cargo.toml` 和 `src-tauri/tauri.conf.json` 的版本一致，相关 lockfile 同步；不要更改兼容旧版本的 bundle identifier `app.markdownworkspace.desktop`。以后每次发版使用新的版本/tag，不覆盖旧版本附件。
 
@@ -145,14 +153,15 @@ brew cleanup --prune=all ysclmml/tap/notespace
 
 ## 7. 分发回归
 
-tap 内的隔离测试使用生成的临时用户目录，并拦截进程和废纸篓操作，不接触真实用户数据：
+tap 内的策略测试使用生成的临时用户目录，并拦截进程、属性处理和废纸篓操作；属性回归另对合成目录执行真实 `xattr`，均不接触已安装应用或真实用户数据。在 Homebrew 安装的 tap 目录运行：
 
 ```sh
 HOMEBREW_DEVELOPER=1 brew ruby test/notespace_policy_test.rb
-brew style --cask Casks/notespace.rb
+HOMEBREW_DEVELOPER=1 brew ruby test/notespace_quarantine_test.rb
+brew style Casks/notespace.rb test/notespace_policy_test.rb test/notespace_quarantine_test.rb
 ```
 
-覆盖普通卸载、升级/重装保留、运行中拒绝、检测失败保留、路径白名单、符号链接拒绝和清理失败。实际安装回归只使用合成笔记和图片：
+覆盖普通卸载、升级/重装保留、运行中拒绝、检测失败保留、路径白名单、符号链接拒绝和清理失败。安装钩子另验证实际安装目录、只移除下载隔离属性、重复执行、保留其他属性/外部链接目标，以及失败报错；卸载不得执行安装处理。实际安装回归只使用合成笔记和图片：
 
 1. 从公开 Release 通过完整 Cask 名称安装；检查架构、版本、应用路径与系统启动提示。
 2. 编辑/保存合成 Markdown、粘贴图片、改变设置并重启，确认功能和浏览恢复。
