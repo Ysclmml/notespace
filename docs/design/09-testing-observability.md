@@ -1,8 +1,8 @@
 # 09. 测试、可观测性与质量门禁
 
-> **历史参考（baseline 0.1）**：当前采用风险相称测试和 `pnpm verify` 本地门禁；Ruby、可信宿主人工证据、Hosted CI 前置和全量攻击矩阵已退役。见 [AGENTS.md](../../AGENTS.md) 与 [IMPLEMENTATION_PLAN.md](../IMPLEMENTATION_PLAN.md)。
+> **历史参考（baseline 0.1）**：当前采用风险相称测试和 `pnpm verify` 本地门禁；Ruby、可信宿主人工证据、Hosted CI 前置和全量攻击矩阵已退役。编辑器验收以 [ADR-0006](../decisions/0006-visual-editor-explicit-source-mode.md) 为准，旧 live preview/活动块源码测试不得继续作为成功标准。见 [AGENTS.md](../../AGENTS.md) 与 [IMPLEMENTATION_PLAN.md](../IMPLEMENTATION_PLAN.md)。
 
-> 状态：Approved design baseline 0.1  
+> 状态：Historical design baseline 0.1；当前质量基线为 0.3
 > 所有者：Quality / Platform  
 > 适用范围：全部 P0、P1 和未来扩展  
 > 需求索引：[REQUIREMENTS.md](../REQUIREMENTS.md)  
@@ -10,46 +10,46 @@
 
 ## 1. 目的
 
-本章把需求、领域契约和性能安全目标转换成可重复的验证证据。它还规定多代理并行实现时如何命名测试、隔离 fixture、记录失败和完成交接。
+本章记录 baseline 0.1 的测试设计并保留仍有价值的 fixture/测试 ID。当前合并门禁与验收含义以 `REQUIREMENTS.md`、`IMPLEMENTATION_PLAN.md` 和 ADR-0006 为准；已退役的安全矩阵、CI 前置或 live preview 断言不构成当前门禁。
 
 测试不是实现后的补充。任何 P0 功能必须在开始实现前能指出对应 requirement ID、test ID、fixture 和所属测试层。
 
 ## 2. 质量不变量
 
-| ID | 不变量 |
-|---|---|
+| ID         | 不变量                                                              |
+| ---------- | ------------------------------------------------------------------- |
 | QA-INV-001 | 每条 P0 requirement 至少有一个自动化 test ID 或有时限的人工验证理由 |
-| QA-INV-002 | 测试名称必须包含稳定 test ID，任务/提交必须引用 requirement ID |
-| QA-INV-003 | 测试不得修改用户真实语料；真实工作区只允许显式只读本机验收 |
-| QA-INV-004 | 文件、恢复和资产测试必须在隔离临时目录运行并在失败时保留可诊断摘要 |
-| QA-INV-005 | 性能结果必须标注构建、机器、fixture、样本数和测量边界 |
-| QA-INV-006 | 日志与测试 artifact 禁止包含正文、剪贴板、Base64 或未脱敏绝对路径 |
-| QA-INV-007 | flaky 测试不得静默重试后视为健康；重试结果必须可见并有负责人 |
-| QA-INV-008 | 任何 schema、IPC、持久化格式或安全策略变更必须有兼容/迁移测试 |
+| QA-INV-002 | 测试名称必须包含稳定 test ID，任务/提交必须引用 requirement ID      |
+| QA-INV-003 | 测试不得修改用户真实语料；真实工作区只允许显式只读本机验收          |
+| QA-INV-004 | 文件、恢复和资产测试必须在隔离临时目录运行并在失败时保留可诊断摘要  |
+| QA-INV-005 | 性能结果必须标注构建、机器、fixture、样本数和测量边界               |
+| QA-INV-006 | 日志与测试 artifact 禁止包含正文、剪贴板、Base64 或未脱敏绝对路径   |
+| QA-INV-007 | flaky 测试不得静默重试后视为健康；重试结果必须可见并有负责人        |
+| QA-INV-008 | 任何 schema、IPC、持久化格式或安全策略变更必须有兼容/迁移测试       |
 
 ## 3. 测试层次
 
-~~~text
+```text
                     少量：桌面端到端
               应用集成 / 契约 / 故障注入
           组件交互 / 编辑器 harness / 可访问性
       大量：TypeScript 与 Rust 领域单元、属性测试
     Golden corpus / fuzz / 性能与安全专项横向覆盖
-~~~
+```
 
 建议工具基线：
 
-| 层 | 工具 | 用途 |
-|---|---|---|
-| TypeScript 单元 | Vitest | reducer、router、link、revision、命令 |
-| React 组件 | Testing Library + Vitest | AppShell、错误态、面板和无障碍 |
-| CodeMirror harness | Vitest + DOM 环境/真实浏览器 | transaction、IME、decoration、view state |
-| Rust 单元/集成 | cargo test 或 nextest | 预检、路径、保存、恢复、资产 |
-| 属性测试 | proptest / fast-check | 路径、Markdown round-trip、状态机序列 |
-| Web UI 集成 | Playwright | 浏览器 harness 中的 Tab、导航、查看器 |
-| Tauri 桌面 E2E | 平台可用的 WebDriver/Tauri harness | 原生对话框外的端到端主路径 |
-| 性能 | Criterion + 浏览器 Performance API | Rust 流式任务和 UI 延迟 |
-| 安全 | cargo-fuzz、恶意 corpus、依赖扫描 | parser、路径、HTML/SVG、IPC |
+| 层              | 工具                               | 用途                                                                          |
+| --------------- | ---------------------------------- | ----------------------------------------------------------------------------- |
+| TypeScript 单元 | Vitest                             | reducer、router、link、revision、命令                                         |
+| React 组件      | Testing Library + Vitest           | AppShell、错误态、面板和无障碍                                                |
+| 编辑器 harness  | Vitest + DOM 环境/真实浏览器       | Milkdown/ProseMirror 可视 transaction、CodeMirror 源码、IME、表格、view state |
+| Rust 单元/集成  | cargo test 或 nextest              | 预检、路径、保存、恢复、资产                                                  |
+| 属性测试        | proptest / fast-check              | 路径、Markdown round-trip、状态机序列                                         |
+| Web UI 集成     | Playwright                         | 浏览器 harness 中的 Tab、导航、查看器                                         |
+| Tauri 桌面 E2E  | 平台可用的 WebDriver/Tauri harness | 原生对话框外的端到端主路径                                                    |
+| 性能            | Criterion + 浏览器 Performance API | Rust 流式任务和 UI 延迟                                                       |
+| 安全            | cargo-fuzz、恶意 corpus、依赖扫描  | parser、路径、HTML/SVG、IPC                                                   |
 
 具体包在 Phase 0 技术验证后冻结；改变工具不改变本章测试 ID 和验收含义。
 
@@ -57,7 +57,7 @@
 
 ### 4.1 目录约定
 
-~~~text
+```text
 tests/
   fixtures/
     markdown/
@@ -78,11 +78,11 @@ tests/
   golden/
   perf/
   e2e/
-~~~
+```
 
 每个 fixture 旁放 manifest：
 
-~~~yaml
+```yaml
 fixtureVersion: 1
 id: markdown.tables.dense-001
 purpose: GFM 密集表格 round-trip
@@ -91,7 +91,7 @@ newline: lf
 expectedMode: editable
 sensitive: false
 generatedBy: tools/generate-fixtures
-~~~
+```
 
 病态大 fixture 不必提交数十 MiB 文件；优先提交确定性生成脚本、摘要和参数。CI 在临时目录生成，测试验证 hash，避免仓库膨胀。
 
@@ -106,17 +106,17 @@ generatedBy: tools/generate-fixtures
 
 ### 4.3 核心语料族
 
-| 族 | 必含情况 |
-|---|---|
-| canonical | 空文件、纯文本、标题、列表、引用、代码、强调、转义、HTML 源码 |
-| tables | 对齐、空格、转义管道、代码内管道、宽表、连续约 300 表 |
-| links | 相对路径、中文、空格、百分号、重复标题、跨文件 anchor、断链、目录链接 |
-| mermaid | flowchart、中文节点、语法错误、超限节点、恶意 click/HTML |
-| images | PNG/JPEG/SVG、透明、超大尺寸、损坏、错误 MIME、远程 URL |
-| encodings | UTF-8、BOM、LF、CRLF、混合换行、非法 UTF-8 |
-| pathological | 10 MiB 多行、10 MiB 单行 Base64、1 MiB 行边界、数千嵌套标记 |
-| malicious | 路径逃逸、符号链接、javascript URL、HTML/SVG 事件、解码炸弹 |
-| recovery | dirty 快照、损坏快照、磁盘 revision 变化、staging 资产、启动循环 |
+| 族           | 必含情况                                                              |
+| ------------ | --------------------------------------------------------------------- |
+| canonical    | 空文件、纯文本、标题、列表、引用、代码、强调、转义、HTML 源码         |
+| tables       | 对齐、空格、转义管道、代码内管道、宽表、连续约 300 表                 |
+| links        | 相对路径、中文、空格、百分号、重复标题、跨文件 anchor、断链、目录链接 |
+| mermaid      | flowchart、中文节点、语法错误、超限节点、恶意 click/HTML              |
+| images       | PNG/JPEG/SVG、透明、超大尺寸、损坏、错误 MIME、远程 URL               |
+| encodings    | UTF-8、BOM、LF、CRLF、混合换行、非法 UTF-8                            |
+| pathological | 10 MiB 多行、10 MiB 单行 Base64、1 MiB 行边界、数千嵌套标记           |
+| malicious    | 路径逃逸、符号链接、javascript URL、HTML/SVG 事件、解码炸弹           |
+| recovery     | dirty 快照、损坏快照、磁盘 revision 变化、staging 资产、启动循环      |
 
 ## 5. 可追踪测试目录
 
@@ -124,84 +124,87 @@ generatedBy: tools/generate-fixtures
 
 ### 5.1 数据与编辑
 
-| Test ID | 覆盖需求 | 自动化断言 |
-|---|---|---|
-| RT-001 | DATA-SOURCE-001、DATA-ROUNDTRIP-001 | 全 canonical 与真实脱敏语料 open -> 无编辑 save，输出字节与输入 hash 一致 |
-| RT-002 | DATA-UNKNOWN-001 | 未识别语法显示为源码，其他区域编辑保存后未知区间字节不变 |
-| CORE-001 | DATA-REVISION-001 | 随机 transaction 序列中 SessionRevision 单调且迟到 revision 被拒绝 |
-| EDT-LIVE-001 | EDIT-LIVE-001 | 光标跨标题/链接/表格/代码块时，仅安全活动范围切回源码 |
-| EDT-UNDO-001 | EDIT-UNDO-001 | 正文事务可 Undo/Redo；滚动、导航、后退不进入编辑 Undo |
-| IME-001 | EDIT-IME-001 | 中文拼音 composition 全程不切 decoration、不重复字符，结束后再更新 |
-| TABLE-001 | EDIT-TABLE-001 | GFM 表格预览可读，进入源码再退出后未编辑字节不变 |
-| TABLE-010 | EDIT-TABLE-002 | P1 网格只提交用户确认的单个表格区间，外围原文不变 |
-| LINK-EDIT-001 | EDIT-LINK-001 | 渲染态链接可导航；编辑态单击只定位，显式命令才打开 |
-| FIND-001 | EDIT-FIND-001 | Unicode literal 上/下一个与大小写切换正确；replace one/all 只改匹配范围、可 Undo，largeText 可用 |
+| Test ID       | 覆盖需求                            | 自动化断言                                                                                                                          |
+| ------------- | ----------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| RT-001        | DATA-SOURCE-001、DATA-ROUNDTRIP-001 | 全 canonical 与真实脱敏语料 open -> 无编辑 save，输出字节与输入 hash 一致                                                           |
+| RT-002        | DATA-ROUNDTRIP-001                  | 未识别语法在未编辑/仅切换模式时字节不变，并可显式进入源码处理                                                                       |
+| RT-003        | DATA-ROUNDTRIP-001                  | 首次可视正文编辑后 serializer 结果是可重开的等价 Markdown；测试接受整篇规范化                                                       |
+| CORE-001      | DATA-REVISION-001                   | 随机 transaction 序列中 SessionRevision 单调且迟到 revision 被拒绝                                                                  |
+| EDT-LIVE-001  | EDIT-LIVE-001、PERF-LAYOUT-001      | 光标跨标题/链接/表格/代码块时始终保持可视结构，不泄露源码、不改变块高或滚动位置                                                     |
+| EDT-MODE-001  | EDIT-MODE-001、NAV-VIEW-001         | `normal` 默认 visual、`sourceOnly` 强制 source；每 Tab 独立恢复模式与选择，切换不 dirty/不进 Undo                                   |
+| EDT-SYNC-001  | EDIT-SYNC-001                       | 可视输入后不等待 timer 立即保存，保存内容包含最后字符                                                                               |
+| EDT-UNDO-001  | EDIT-UNDO-001                       | 正文事务可 Undo/Redo；滚动、导航、后退不进入编辑 Undo                                                                               |
+| IME-001       | EDIT-IME-001                        | 中文拼音 composition 不重建当前编辑表面、不重复字符、不自动展开 Markdown                                                            |
+| TABLE-001     | EDIT-TABLE-001                      | GFM 单元格直接输入/选择、Tab/Shift-Tab、Undo/Redo、保存与重开，不出现 pipe 源码                                                     |
+| TABLE-010     | EDIT-TABLE-TOOLS-001                | P1 高级行列/对齐操作形成单一可撤销事务                                                                                              |
+| LINK-EDIT-001 | NAV-LINK-001                        | 可视编辑链接有蓝色下划线且单击/修饰键/中键走 Router；仅显式源码模式单击语法时定位                                                   |
+| FIND-001      | EDIT-FIND-001                       | Unicode literal 上/下一个与大小写切换正确；replace one/all 可 Undo，源码模式精确改匹配范围，可视模式允许等价序列化，sourceOnly 可用 |
 
 ### 5.2 Mermaid 与视觉块
 
-| Test ID | 覆盖需求 | 自动化断言 |
-|---|---|---|
-| VIS-001 | EDIT-MERMAID-001 | 仅视口附近懒渲染；一块语法/超时失败不影响输入和其他块 |
-| VIS-002 | EDIT-MERMAID-002 | 全屏支持 Fit、缩放、平移、复位、Esc、返回源码，SVG 保持清晰 |
+| Test ID | 覆盖需求            | 自动化断言                                                                |
+| ------- | ------------------- | ------------------------------------------------------------------------- |
+| VIS-001 | DIAGRAM-MERMAID-001 | 仅视口附近懒渲染；production CSP 下 SVG 文字/节点清晰，一块失败不影响正文 |
+| VIS-002 | DIAGRAM-VIEWER-001  | 全屏支持 Fit、缩放、平移、复位、Esc，SVG 保持清晰并恢复原可视节点焦点     |
 
 ### 5.3 导航与 Tab
 
-| Test ID | 覆盖需求 | 自动化断言 |
-|---|---|---|
-| NAV-CORE-001 | NAV-MODEL-001 | 同文件两个 Tab 共享 Session 内容/dirty，View/History 独立 |
-| NAV-CORE-002 | NAV-ASYNC-001 | A->B->C 快速导航时 B 的迟到加载不会覆盖 C |
-| HISTORY-001 | NAV-HISTORY-001 | 每 Tab back/forward 独立，后退后新导航截断该 Tab forward |
-| HISTORY-RESTORE-001 | NAV-RESTORE-001 | Back 恢复顶部源码块+像素偏移、selection 和 folds |
-| NAV-DISP-001 | NAV-DISPOSITION-001 | 点击、修饰键、中键、文件树和搜索入口 disposition 一致 |
-| PEEK-001 | NAV-PEEK-001 | Peek 只走有界、可取消 preview port，不取完整正文；不 push history、不创建可编辑 Session/View、不改变 dirty |
-| SPLIT-001 | NAV-SPLIT-001 | P1 两 View 共享 Session，选择/滚动独立，revision 顺序一致；恢复保留左右各自 activeTab 与 focusedPane |
-| LINK-001 | NAV-ANCHOR-001 | 中文/空格路径、相对链接、重复 heading slug 和跨文件 anchor 正确 |
-| WORKSPACE-001 | NAV-WORKSPACE-001 | 文件树/大纲/Quick Open 键盘可用、消费完整 generation，旧查询可取消且所有结果走统一 Router；空工作区 reveal 只提交 workspaceRoot target |
+| Test ID             | 覆盖需求            | 自动化断言                                                                                                                             |
+| ------------------- | ------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| NAV-CORE-001        | NAV-MODEL-001       | 同文件两个 Tab 共享 Session 内容/dirty，View/History 独立                                                                              |
+| NAV-CORE-002        | NAV-ASYNC-001       | A->B->C 快速导航时 B 的迟到加载不会覆盖 C                                                                                              |
+| HISTORY-001         | NAV-HISTORY-001     | 每 Tab back/forward 独立，后退后新导航截断该 Tab forward                                                                               |
+| HISTORY-RESTORE-001 | NAV-VIEW-001        | Back 恢复顶部语义块、像素偏移、`visual/source` 与当前表面 selection                                                                    |
+| NAV-DISP-001        | NAV-DISPOSITION-001 | 点击、修饰键、中键、文件树和搜索入口 disposition 一致                                                                                  |
+| PEEK-001            | NAV-PEEK-001        | Peek 只走有界、可取消 preview port，不取完整正文；不 push history、不创建可编辑 Session/View、不改变 dirty                             |
+| SPLIT-001           | NAV-SPLIT-001       | P1 两 View 共享 Session，选择/滚动独立，revision 顺序一致；恢复保留左右各自 activeTab 与 focusedPane                                   |
+| LINK-001            | NAV-ANCHOR-001      | 中文/空格路径、相对链接、重复 heading slug 和跨文件 anchor 正确                                                                        |
+| WORKSPACE-001       | NAV-WORKSPACE-001   | 文件树/大纲/Quick Open 键盘可用、消费完整 generation，旧查询可取消且所有结果走统一 Router；空工作区 reveal 只提交 workspaceRoot target |
 
 ### 5.4 文件、资产与恢复
 
-| Test ID | 覆盖需求 | 自动化断言 |
-|---|---|---|
-| SAFE-001 | FILE-PREFLIGHT-001 | Rust 先完成有序预检；normal/largeText、SafetyBlocked、Unsupported 四类边界正确；binary 有独立 Unsupported reason/actions，且只有 editable outcome 可携带正文 |
-| FILE-SCOPE-001 | FILE-OPEN-001 | 工作区与 standalone 文件均由原生 grant 打开；raw path、伪造/过期 grant 和 needsGrant 换目标被拒绝；native 批量 open/drop 去重、有序并遵守 focus/disposition policy |
-| FILE-001 | FILE-SAVE-001 | 各 I/O 故障点后目标文件始终为完整旧版或完整新版，无半写 |
-| FILE-002 | FILE-WATCH-001 | clean 自动重载、dirty 进入 conflict，Reloading 期间输入不被迟到结果覆盖；删除/move/permission/overflow 行为符合第 06 章；超 1 MiB 目录清单分页重扫只在完整 final page 后原子接纳 |
-| FILE-004 | DATA-CONFLICT-001 | compare-and-save 与 watcher 竞态均不能静默覆盖；读取磁盘 compare snapshot 不修改 dirty/undo/history |
-| ASSET-001 | ASSET-PASTE-001 | 工作区与 standalone 文件的资产原子落盘后才产生一个链接；needsGrant 以同 pasteIntentId 续接且不重复，typed I/O cause 可区分，授权/写入/插入失败正文按契约保持 |
-| SAFE-002 | ASSET-BASE64-001 | 图片、HTML data image 和文件 URL 各粘贴入口均不写 Base64 Markdown |
-| ASSET-002 | ASSET-STAGING-001 | 未保存文档图片以 draft ResourceScope/ledger 预览，崩溃恢复后仍可见；Save As 迁移完整且链接有效 |
-| ASSET-003 | ASSET-UNDO-001 | Undo 仅撤链接；有引用、宽限期内和用户原有资产不被 GC |
-| REC-001 | RECOVERY-DIRTY-001 | 强制终止后恢复最新合格 checkpoint，不改变磁盘文件 |
-| REC-002 | RECOVERY-LOOP-001 | 上次启动在打开某资源时异常退出后，下次启动隔离该资源且不自动创建 EditorView |
+| Test ID        | 覆盖需求           | 自动化断言                                                                                                                                                                       |
+| -------------- | ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| SAFE-001       | FILE-PREFLIGHT-001 | Rust 先完成有序预检；normal/sourceOnly/blocked 边界正确，且只有 editable outcome 可携带正文                                                                                      |
+| FILE-SCOPE-001 | FILE-OPEN-001      | 工作区与 standalone 文件均由原生 grant 打开；raw path、伪造/过期 grant 和 needsGrant 换目标被拒绝；native 批量 open/drop 去重、有序并遵守 focus/disposition policy               |
+| FILE-001       | FILE-SAVE-001      | 各 I/O 故障点后目标文件始终为完整旧版或完整新版，无半写                                                                                                                          |
+| FILE-002       | FILE-WATCH-001     | clean 自动重载、dirty 进入 conflict，Reloading 期间输入不被迟到结果覆盖；删除/move/permission/overflow 行为符合第 06 章；超 1 MiB 目录清单分页重扫只在完整 final page 后原子接纳 |
+| FILE-004       | DATA-CONFLICT-001  | compare-and-save 与 watcher 竞态均不能静默覆盖；读取磁盘 compare snapshot 不修改 dirty/undo/history                                                                              |
+| ASSET-001      | ASSET-PASTE-001    | 工作区与 standalone 文件的资产原子落盘后才产生一个链接；needsGrant 以同 pasteIntentId 续接且不重复，typed I/O cause 可区分，授权/写入/插入失败正文按契约保持                     |
+| SAFE-002       | ASSET-BASE64-001   | 图片、HTML data image 和文件 URL 各粘贴入口均不写 Base64 Markdown                                                                                                                |
+| ASSET-002      | ASSET-STAGING-001  | 未保存文档图片以 draft ResourceScope/ledger 预览，崩溃恢复后仍可见；Save As 迁移完整且链接有效                                                                                   |
+| ASSET-003      | ASSET-UNDO-001     | Undo 仅撤链接；有引用、宽限期内和用户原有资产不被 GC                                                                                                                             |
+| REC-001        | RECOVERY-DIRTY-001 | 强制终止后恢复最新合格 checkpoint，不改变磁盘文件                                                                                                                                |
+| REC-002        | RECOVERY-LOOP-001  | 上次启动在打开某资源时异常退出后，下次启动隔离该资源且不自动创建 EditorView                                                                                                      |
 
 ### 5.5 性能与安全
 
-| Test ID | 覆盖需求 | 自动化断言 |
-|---|---|---|
-| PERF-001 | PERF-VIEWPORT-001 | 屏外昂贵块未实例化，滚动增量创建/释放，内存有界 |
-| PERF-002 | PERF-OPEN-001 | 参考机真实最大文档冷开 p95 < 500 ms |
-| PERF-003 | PERF-TAB-001 | 已缓存 Tab 切换 p95 < 100 ms |
-| PERF-004 | NAV-RESTORE-001 | 已缓存 Back 恢复资源与锚点定位 p95 < 150 ms；不与 Tab 切换样本混算 |
-| PERF-010 | PERF-LARGE-001 | 10 MiB 普通多行文件 2 s 内进入 editable/largeText |
-| SAFE-003 | SAFE-DATAURI-001 | 10 MiB 单行 data URI 打开 1 s 内安全页；粘贴不产生 transaction |
-| SEC-001 | SAFE-IPC-001 | 未授权命令、伪造 ID、错误版本、超限载荷和重放被拒绝 |
-| SEC-002 | SAFE-URL-001 | 路径遍历、symlink 逃逸和危险/未知 scheme 默认拒绝；http/https/mailto 只由用户命令交系统应用 |
-| SEC-003 | SAFE-RENDER-001 | 恶意 HTML/SVG/Mermaid 无脚本、外部请求、本地读取或 UI 覆盖 |
-| SEC-010 | EXT-CAP-001 | 未声明/未授权/已撤销 capability 均失败且活动任务取消 |
+| Test ID  | 覆盖需求          | 自动化断言                                                                                  |
+| -------- | ----------------- | ------------------------------------------------------------------------------------------- |
+| PERF-001 | PERF-VIEWPORT-001 | 屏外昂贵块未实例化，滚动增量创建/释放，内存有界                                             |
+| PERF-002 | PERF-OPEN-001     | 参考机真实最大文档冷开 p95 < 500 ms                                                         |
+| PERF-003 | PERF-TAB-001      | 已缓存 Tab 切换 p95 < 100 ms                                                                |
+| PERF-004 | NAV-RESTORE-001   | 已缓存 Back 恢复资源与锚点定位 p95 < 150 ms；不与 Tab 切换样本混算                          |
+| PERF-010 | PERF-LARGE-001    | 10 MiB 普通多行文件 2 s 内进入 editable/sourceOnly                                          |
+| SAFE-003 | SAFE-DATAURI-001  | 10 MiB 单行 data URI 打开 1 s 内安全页；粘贴不产生 transaction                              |
+| SEC-001  | SAFE-IPC-001      | 未授权命令、伪造 ID、错误版本、超限载荷和重放被拒绝                                         |
+| SEC-002  | SAFE-URL-001      | 路径遍历、symlink 逃逸和危险/未知 scheme 默认拒绝；http/https/mailto 只由用户命令交系统应用 |
+| SEC-003  | SAFE-RENDER-001   | 恶意 HTML/SVG/Mermaid 无脚本、外部请求、本地读取或 UI 覆盖                                  |
+| SEC-010  | EXT-CAP-001       | 未声明/未授权/已撤销 capability 均失败且活动任务取消                                        |
 
 ### 5.6 扩展与操作
 
-| Test ID | 覆盖需求 | 自动化断言 |
-|---|---|---|
-| EXT-001 | EXT-ROUTER-001 | document/search/graph provider 均通过 Router 参与 Tab disposition/history |
-| EXT-002 | EXT-COMMAND-001 | 所有入口调用同一命令 ID、args schema 和 enabled 判定 |
-| EXT-010 | EXT-BLOCK-001 | BlockRenderer 遵守源码只读、视口、取消、净化和故障隔离 |
-| OBS-001 | OPS-LOG-001 | 日志/诊断包 secret scan 无正文、Base64、剪贴板和敏感绝对路径 |
-| PROC-001 | OPS-CONTEXT-001 | 新代理仅按仓库读取链可以确定状态、约束、下一任务和验证方式 |
-| PROC-002 | OPS-HANDOFF-001 | 每个完成任务含变更、验证、决策、风险和剩余工作字段 |
-| BUILD-001 | OPS-BUILD-001 | 干净 checkout 使用固定工具版本和单一命令可构建并启动 Tauri 壳 |
-| CI-001 | OPS-CI-001 | CI 在干净 runner 执行规定门禁，任一失败阻止合并且 artifact 可定位 |
-| RELEASE-001 | OPS-RELEASE-001 | macOS 首发包签名/公证可验证；干净机安装、文件关联、升级与回滚保留用户 Markdown/资产/恢复数据；隐私清单与依赖许可证完整且无未声明上传 |
+| Test ID     | 覆盖需求            | 自动化断言                                                                                                                           |
+| ----------- | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| EXT-001     | EXT-ROUTER-001      | document/search/graph provider 均通过 Router 参与 Tab disposition/history                                                            |
+| EXT-002     | EXT-COMMAND-001     | 所有入口调用同一命令 ID、args schema 和 enabled 判定                                                                                 |
+| EXT-010     | DIAGRAM-MERMAID-001 | 可视节点遵守视口、取消和故障隔离；失败不切换整个文档或修改正文                                                                       |
+| OBS-001     | OPS-LOG-001         | 日志/诊断包 secret scan 无正文、Base64、剪贴板和敏感绝对路径                                                                         |
+| PROC-001    | OPS-CONTEXT-001     | 新代理仅按仓库读取链可以确定状态、约束、下一任务和验证方式                                                                           |
+| PROC-002    | OPS-HANDOFF-001     | 每个完成任务含变更、验证、决策、风险和剩余工作字段                                                                                   |
+| BUILD-001   | OPS-BUILD-001       | 干净 checkout 使用固定工具版本和单一命令可构建并启动 Tauri 壳                                                                        |
+| CI-001      | OPS-CI-001          | CI 在干净 runner 执行规定门禁，任一失败阻止合并且 artifact 可定位                                                                    |
+| RELEASE-001 | OPS-RELEASE-001     | macOS 首发包签名/公证可验证；干净机安装、文件关联、升级与回滚保留用户 Markdown/资产/恢复数据；隐私清单与依赖许可证完整且无未声明上传 |
 
 ### 5.7 跨语言与跨模块契约
 
@@ -209,32 +212,32 @@ generatedBy: tools/generate-fixtures
 
 `CONTRACT-*` 专用于生成 schema、wire 兼容和跨模块不变量，不与 `CORE/FILE/ASSET/REC/...` 的行为验收争用 ID。一个 harness 可共享 fixture 或执行路径，但报告中必须保留每个独立稳定 ID；不得以 `CONTRACT-007` 通过替代 `FILE-001` 的完整故障注入证据。建议路径是所有权边界；Phase 0 冻结工具后可在目录内选用 Rust、TypeScript 或跨语言 runner，不得改变本表的测试层与断言。
 
-| Test ID | 具体测试层 | 建议路径 | 规范来源 | Canonical 断言摘要 |
-|---|---|---|---|---|
-| CONTRACT-001 | CI schema-drift 契约 | `tests/contract/schema/contract-001-schema-drift/` | 03 §17（第 1 项） | 重新生成 Rust request/response/event 的 TypeScript 绑定后仓库无 diff |
-| CONTRACT-002 | Rust serde + TypeScript fixture 跨语言往返 | `tests/contract/schema/contract-002-union-roundtrip/` | 03 §17（第 2 项） | 每个判别联合的 tag 与字段在 Rust -> JSON -> TypeScript 中一致 |
-| CONTRACT-003 | TypeScript 前向兼容/安全默认测试 | `tests/contract/schema/contract-003-forward-compat/` | 03 §17（第 3 项） | 未知 event/error/optional field 不使前端崩溃，未知写入 action fail closed |
-| CONTRACT-004 | Rust ResourceResolver 属性 + 集成契约 | `tests/contract/resource/contract-004-path-policy/` | 03 §17（第 4 项） | 大小写、Unicode、`..`、符号链接和越界授权满足 `RES-INV-*` |
-| CONTRACT-005 | Resolver + SessionRegistry 跨模块集成契约 | `tests/contract/session/contract-005-document-identity/` | 03 §17（第 5 项） | 同一文件的不同拼写解析为同一 `DocumentId`，registry 只建一个 session |
-| CONTRACT-006 | TypeScript session reducer + save fixture 契约 | `tests/contract/session/contract-006-save-snapshot/` | 03 §17（第 6 项） | 保存 snapshot 后继续编辑，接纳保存结果后 session 仍 dirty |
-| CONTRACT-007 | Rust compare-and-save 故障注入集成契约 | `tests/contract/file/contract-007-save-cas/` | 03 §17（第 7 项） | 保存前或提交前 revision 不符都不替换目标文件 |
-| CONTRACT-008 | Watcher + DocumentSession 跨模块集成契约 | `tests/contract/file/contract-008-external-change/` | 03 §17（第 8 项） | clean 自动重载；dirty 进入 conflict 且两份内容可恢复；Reloading 期间输入作废迟到结果 |
-| CONTRACT-009 | TypeScript event consumer + app ingress 属性契约 | `tests/contract/events/contract-009-sequence-reconcile/` | 03 §17（第 9 项） | duplicate/gap 按 scope reconcile；snapshot(S) 与实时事件任意交错仍只丢 <=S/连续重放 >S，二次 gap 重试；native-open 幂等重投 |
-| CONTRACT-010 | Rust task lifecycle + save 提交点集成契约 | `tests/contract/cancellation/contract-010-commit-point/` | 03 §17（第 10 项） | 提交点前取消返回 `ERR_CANCELLED`，提交点后只有与磁盘一致的唯一终态 |
-| CONTRACT-011 | Rust preflight outcome serde 负向契约 | `tests/contract/safety/contract-011-blocked-envelope/` | 03 §17（第 11 项） | blocked 无正文/Base64；binary/编码/超限只产生 UnsupportedReport，且 schema/UI actions 无 extract/delete |
-| CONTRACT-012 | CodeMirror harness + Asset gateway 故障集成契约 | `tests/contract/assets/contract-012-paste-failure/` | 03 §17（第 12 项） | 图片写入失败时 doc、session revision、dirty 和 undo history 全部不变 |
-| CONTRACT-013 | 真实浏览器导航集成契约 | `tests/contract/navigation/contract-013-history-anchor/` | 03 §17（第 13 项） | back/forward 恢复块锚点，图片/Mermaid 改变布局高度后仍回到原阅读位置 |
-| CONTRACT-014 | TypeScript SessionRegistry 引用计数集成契约 | `tests/contract/session/contract-014-tab-refcount/` | 03 §17（第 14 项） | 关闭一个同文档 Tab 不回收其他 Tab 仍在使用的 session |
-| CONTRACT-015 | Rust recovery + TypeScript persistence 集成契约 | `tests/contract/recovery/contract-015-checkpoint-dirty/` | 03 §17（第 15 项） | checkpoint 成功不把 dirty 变 clean，checkpoint 失败不阻断显式保存 |
-| CONTRACT-016 | Rust native grant/capability 集成契约 | `tests/contract/grants/contract-016-native-token/` | 03 §17（第 16 项） | document picker 与 needsGrant 续接只接受原生 token，伪造、过期或换目标均拒绝 |
-| CONTRACT-017 | Rust AssetService 授权/存储集成契约 | `tests/contract/assets/contract-017-resource-scope/` | 03 §17（第 17 项） | workspace/standalone/draft scope 均合法；draft crash recovery 后可预览，权限不足只返回 needsGrant(assetDirectory) |
-| CONTRACT-018 | Rust recovery preflight/丢弃集成契约 | `tests/contract/recovery/contract-018-recovery-preflight/` | 03 §17（第 18 项） | 恢复稿再预检；SafetyBlocked 不返回正文，丢弃不影响用户 Markdown/资产 |
-| CONTRACT-019 | CommandBroker user-activation + Rust capability 跨边界安全契约 | `tests/contract/security/contract-019-external-policy/` | 03 §17（第 19 项） | 无 frontend activation receipt 默认拒绝；Rust 独立拒绝 raw path、未知 scheme、draft/失效/越权 target；授权 workspace root/entry 与 standalone file 可 reveal |
-| CONTRACT-020 | Save As durable identity + Router/Registry 跨模块集成契约 | `tests/contract/save-as/contract-020-identity-rebind/` | 03 §17（第 20 项） | 同 intent 幂等返回 committed outcome；Save As 保持 identity/rebind/history；same target 与 target occupied 行为固定，接纳后才 ack |
-| CONTRACT-021 | Save As journal 跨 Rust/Session 回滚与故障注入契约 | `tests/contract/save-as/contract-021-rollback/` | 03 §17（第 21 项） | prepared cancel/expiry 幂等 abort；committing 后 abort 拒绝；每个 commit 子阶段 crash/响应丢失均可 status/reconcile 为唯一 committed 或完整 rollback，ack 前 alias 有效 |
-| CONTRACT-022 | Rust draft identity + SessionRegistry 幂等集成契约 | `tests/contract/session/contract-022-draft-create/` | 03 §17（第 22 项） | 同 draftIntent 只创建一个 DraftId/DocumentId；空白 draft 初始 dirty，普通 Save 拒绝且 Save As 原位晋升 |
-| CONTRACT-023 | Native close + Session discard + Recovery/Asset 跨模块故障契约 | `tests/contract/recovery/contract-023-explicit-discard/` | 03 §17（第 23 项） | closeRequest cancel 零变化；checkpoint-only 不 proceed；每项 save/explicit discard 决议全成功才继续 native close，任一失败保持 hold |
-| CONTRACT-024 | Tauri gateway + Rust/TypeScript 正文预算边界契约 | `tests/contract/ipc/contract-024-document-content-budget/` | 03 §17（第 24 项） | 所有正文方向共用 raw/wire 双预算；32 MiB 与最坏 escaping 往返，边界 +1 拒绝且不误用 1 MiB |
+| Test ID      | 具体测试层                                                     | 建议路径                                                   | 规范来源           | Canonical 断言摘要                                                                                                                                                      |
+| ------------ | -------------------------------------------------------------- | ---------------------------------------------------------- | ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| CONTRACT-001 | CI schema-drift 契约                                           | `tests/contract/schema/contract-001-schema-drift/`         | 03 §17（第 1 项）  | 重新生成 Rust request/response/event 的 TypeScript 绑定后仓库无 diff                                                                                                    |
+| CONTRACT-002 | Rust serde + TypeScript fixture 跨语言往返                     | `tests/contract/schema/contract-002-union-roundtrip/`      | 03 §17（第 2 项）  | 每个判别联合的 tag 与字段在 Rust -> JSON -> TypeScript 中一致                                                                                                           |
+| CONTRACT-003 | TypeScript 前向兼容/安全默认测试                               | `tests/contract/schema/contract-003-forward-compat/`       | 03 §17（第 3 项）  | 未知 event/error/optional field 不使前端崩溃，未知写入 action fail closed                                                                                               |
+| CONTRACT-004 | Rust ResourceResolver 属性 + 集成契约                          | `tests/contract/resource/contract-004-path-policy/`        | 03 §17（第 4 项）  | 大小写、Unicode、`..`、符号链接和越界授权满足 `RES-INV-*`                                                                                                               |
+| CONTRACT-005 | Resolver + SessionRegistry 跨模块集成契约                      | `tests/contract/session/contract-005-document-identity/`   | 03 §17（第 5 项）  | 同一文件的不同拼写解析为同一 `DocumentId`，registry 只建一个 session                                                                                                    |
+| CONTRACT-006 | TypeScript session reducer + save fixture 契约                 | `tests/contract/session/contract-006-save-snapshot/`       | 03 §17（第 6 项）  | 保存 snapshot 后继续编辑，接纳保存结果后 session 仍 dirty                                                                                                               |
+| CONTRACT-007 | Rust compare-and-save 故障注入集成契约                         | `tests/contract/file/contract-007-save-cas/`               | 03 §17（第 7 项）  | 保存前或提交前 revision 不符都不替换目标文件                                                                                                                            |
+| CONTRACT-008 | Watcher + DocumentSession 跨模块集成契约                       | `tests/contract/file/contract-008-external-change/`        | 03 §17（第 8 项）  | clean 自动重载；dirty 进入 conflict 且两份内容可恢复；Reloading 期间输入作废迟到结果                                                                                    |
+| CONTRACT-009 | TypeScript event consumer + app ingress 属性契约               | `tests/contract/events/contract-009-sequence-reconcile/`   | 03 §17（第 9 项）  | duplicate/gap 按 scope reconcile；snapshot(S) 与实时事件任意交错仍只丢 <=S/连续重放 >S，二次 gap 重试；native-open 幂等重投                                             |
+| CONTRACT-010 | Rust task lifecycle + save 提交点集成契约                      | `tests/contract/cancellation/contract-010-commit-point/`   | 03 §17（第 10 项） | 提交点前取消返回 `ERR_CANCELLED`，提交点后只有与磁盘一致的唯一终态                                                                                                      |
+| CONTRACT-011 | Rust preflight outcome serde 负向契约                          | `tests/contract/safety/contract-011-blocked-envelope/`     | 03 §17（第 11 项） | blocked 无正文/Base64；binary/编码/超限只产生 UnsupportedReport，且 schema/UI actions 无 extract/delete                                                                 |
+| CONTRACT-012 | 双表面 Editor harness + Asset gateway 故障集成契约             | `tests/contract/assets/contract-012-paste-failure/`        | 03 §17（第 12 项） | 图片写入失败时当前正文、session revision、dirty 和 undo history 全部不变                                                                                                |
+| CONTRACT-013 | 真实浏览器导航集成契约                                         | `tests/contract/navigation/contract-013-history-anchor/`   | 03 §17（第 13 项） | back/forward 恢复块锚点，图片/Mermaid 改变布局高度后仍回到原阅读位置                                                                                                    |
+| CONTRACT-014 | TypeScript SessionRegistry 引用计数集成契约                    | `tests/contract/session/contract-014-tab-refcount/`        | 03 §17（第 14 项） | 关闭一个同文档 Tab 不回收其他 Tab 仍在使用的 session                                                                                                                    |
+| CONTRACT-015 | Rust recovery + TypeScript persistence 集成契约                | `tests/contract/recovery/contract-015-checkpoint-dirty/`   | 03 §17（第 15 项） | checkpoint 成功不把 dirty 变 clean，checkpoint 失败不阻断显式保存                                                                                                       |
+| CONTRACT-016 | Rust native grant/capability 集成契约                          | `tests/contract/grants/contract-016-native-token/`         | 03 §17（第 16 项） | document picker 与 needsGrant 续接只接受原生 token，伪造、过期或换目标均拒绝                                                                                            |
+| CONTRACT-017 | Rust AssetService 授权/存储集成契约                            | `tests/contract/assets/contract-017-resource-scope/`       | 03 §17（第 17 项） | workspace/standalone/draft scope 均合法；draft crash recovery 后可预览，权限不足只返回 needsGrant(assetDirectory)                                                       |
+| CONTRACT-018 | Rust recovery preflight/丢弃集成契约                           | `tests/contract/recovery/contract-018-recovery-preflight/` | 03 §17（第 18 项） | 恢复稿再预检；SafetyBlocked 不返回正文，丢弃不影响用户 Markdown/资产                                                                                                    |
+| CONTRACT-019 | CommandBroker user-activation + Rust capability 跨边界安全契约 | `tests/contract/security/contract-019-external-policy/`    | 03 §17（第 19 项） | 无 frontend activation receipt 默认拒绝；Rust 独立拒绝 raw path、未知 scheme、draft/失效/越权 target；授权 workspace root/entry 与 standalone file 可 reveal            |
+| CONTRACT-020 | Save As durable identity + Router/Registry 跨模块集成契约      | `tests/contract/save-as/contract-020-identity-rebind/`     | 03 §17（第 20 项） | 同 intent 幂等返回 committed outcome；Save As 保持 identity/rebind/history；same target 与 target occupied 行为固定，接纳后才 ack                                       |
+| CONTRACT-021 | Save As journal 跨 Rust/Session 回滚与故障注入契约             | `tests/contract/save-as/contract-021-rollback/`            | 03 §17（第 21 项） | prepared cancel/expiry 幂等 abort；committing 后 abort 拒绝；每个 commit 子阶段 crash/响应丢失均可 status/reconcile 为唯一 committed 或完整 rollback，ack 前 alias 有效 |
+| CONTRACT-022 | Rust draft identity + SessionRegistry 幂等集成契约             | `tests/contract/session/contract-022-draft-create/`        | 03 §17（第 22 项） | 同 draftIntent 只创建一个 DraftId/DocumentId；空白 draft 初始 dirty，普通 Save 拒绝且 Save As 原位晋升                                                                  |
+| CONTRACT-023 | Native close + Session discard + Recovery/Asset 跨模块故障契约 | `tests/contract/recovery/contract-023-explicit-discard/`   | 03 §17（第 23 项） | closeRequest cancel 零变化；checkpoint-only 不 proceed；每项 save/explicit discard 决议全成功才继续 native close，任一失败保持 hold                                     |
+| CONTRACT-024 | Tauri gateway + Rust/TypeScript 正文预算边界契约               | `tests/contract/ipc/contract-024-document-content-budget/` | 03 §17（第 24 项） | 所有正文方向共用 raw/wire 双预算；32 MiB 与最坏 escaping 往返，边界 +1 拒绝且不误用 1 MiB                                                                               |
 
 ## 6. Round-trip 策略
 
@@ -250,14 +253,15 @@ generatedBy: tools/generate-fixtures
 
 不允许用“语义 AST 相等”代替字节一致。
 
-### 6.2 局部编辑
+### 6.2 首次编辑与序列化
 
-在 fixture 中用 marker 标出编辑区和保护区：
+同一 fixture 分别覆盖两个表面：
 
-- 在编辑区执行真实 CodeMirror transaction。
-- 保存后断言预期 diff 仅落在允许区间。
-- 未知语法、表格空格、围栏、链接目标和换行等保护区保持。
-- 测试不得先经过 formatter。
+- 源码模式执行真实 CodeMirror transaction，保存后断言 diff 只落在允许区间。
+- 可视模式执行真实 ProseMirror transaction，立即取得 serializer Markdown；允许整篇等价格式规范化，不以局部 diff 作为失败条件。
+- 未产生正文 transaction 时禁止运行 serializer，保存必须字节一致。
+- serializer 后重开并断言标题、列表、链接、代码、GFM 表格和 Mermaid 的语义/内容保持；不支持语法必须有明确源码模式退路。
+- 在可视输入后同一事件循环立刻调用保存，断言最后字符已进入保存 snapshot；测试不得等待 debounce timer。
 
 ### 6.3 属性测试
 
@@ -284,17 +288,17 @@ IME 最低场景：
 - 标题、粗体、链接文字、表格单元格、代码块中连续输入中文；
 - composition 中鼠标点击和方向键；
 - 候选确认/取消；
-- 跨渲染边界输入；
+- 跨可视节点边界输入；
 - Undo 一次撤销一次逻辑输入，而非拆散 composition；
 - 两个 View 共享 Session 时另一 View 同步但不打断本地 composition。
 
-每次 CodeMirror、WebView 或输入层升级都必须运行 IME-001。
+每次 Milkdown/ProseMirror、CodeMirror、WebView 或输入层升级都必须运行 IME-001。
 
 ## 8. 导航模型测试
 
 用纯 reducer/model test 生成动作序列：
 
-~~~text
+```text
 open(A,current)
 scroll(A,a1)
 open(B,current)
@@ -304,7 +308,7 @@ forward()
 edit(B)
 close/reopen tab
 externalRename(B)
-~~~
+```
 
 断言：
 
@@ -357,21 +361,21 @@ FileStore 抽象必须允许在以下阶段注入错误：
 
 ### 10.1 合成矩阵
 
-| Fixture | 规模 | 预期 |
-|---|---:|---|
-| normal-small | 8 KiB | editable/normal |
-| real-shape-max | 243 KiB，密集表格/链接 | editable/normal |
-| full-boundary | 恰好 8 MiB，多行且最大行不超过 256 KiB | editable/normal |
-| large-10m | 10 MiB，多行 | editable/largeText |
-| large-25m | 25 MiB，多行 | editable/largeText |
-| unsupported-50m | 50 MiB | Unsupported |
-| longline-256k | 最大行恰好 256 KiB、文件不超过 8 MiB | editable/normal |
-| longline-256k-plus | 最大行 256 KiB + 1 B、文件不超过 8 MiB | editable/largeText |
-| longline-1m | 单行恰好 1 MiB、文件不超过 8 MiB | editable/largeText |
-| longline-1m-plus | 单行 1 MiB + 1 B | safetyBlocked |
-| datauri-10m | 10 MiB 单行图片 Base64 | safetyBlocked |
-| tables-300 | 约 300 张 GFM 表 | editable/normal、视口增量 |
-| mermaid-many | 大量图块，仅少量可视 | 屏外不渲染 |
+| Fixture            |                                   规模 | 预期                                      |
+| ------------------ | -------------------------------------: | ----------------------------------------- |
+| normal-small       |                                  8 KiB | editable/normal                           |
+| real-shape-max     |                 243 KiB，密集表格/链接 | editable/normal                           |
+| full-boundary      | 恰好 8 MiB，多行且最大行不超过 256 KiB | editable/normal                           |
+| large-10m          |                           10 MiB，多行 | editable/sourceOnly                       |
+| large-25m          |                           25 MiB，多行 | editable/sourceOnly                       |
+| large-50m          |                           50 MiB，多行 | editable/sourceOnly；不因总字节数单独阻止 |
+| longline-256k      |   最大行恰好 256 KiB、文件不超过 8 MiB | editable/normal                           |
+| longline-256k-plus | 最大行 256 KiB + 1 B、文件不超过 8 MiB | editable/sourceOnly                       |
+| longline-1m        |       单行恰好 1 MiB、文件不超过 8 MiB | editable/sourceOnly                       |
+| longline-1m-plus   |                       单行 1 MiB + 1 B | safetyBlocked                             |
+| datauri-10m        |                 10 MiB 单行图片 Base64 | safetyBlocked                             |
+| tables-300         |                       约 300 张 GFM 表 | editable/normal、视口增量                 |
+| mermaid-many       |                   大量图块，仅少量可视 | 屏外不渲染                                |
 
 边界值测试同时覆盖 threshold-1、threshold、threshold+1，明确比较单位是 bytes 还是 decoded bytes。
 
@@ -412,17 +416,17 @@ FileStore 抽象必须允许在以下阶段注入错误：
 
 事件 envelope：
 
-~~~ts
+```ts
 interface DiagnosticEventV1 {
-  schemaVersion: 1
-  timestamp: string
-  level: "debug" | "info" | "warn" | "error"
-  component: string
-  event: string
-  operationId?: string
-  fields: Record<string, number | boolean | SafeEnum | SafeId>
+  schemaVersion: 1;
+  timestamp: string;
+  level: "debug" | "info" | "warn" | "error";
+  component: string;
+  event: string;
+  operationId?: string;
+  fields: Record<string, number | boolean | SafeEnum | SafeId>;
 }
-~~~
+```
 
 允许字段示例：
 
@@ -494,14 +498,14 @@ interface DiagnosticEventV1 {
 
 ## 14. 测试所有权与并行开发
 
-| 领域 | 实现代理同时负责 |
-|---|---|
-| Editor | CORE、EDT、IME、TABLE、RT |
-| Navigation | NAV、HISTORY、LINK、PEEK、SPLIT |
-| Native Core | FILE、ASSET、REC、SAFE-001/002 |
-| Platform | PERF、SAFE-003、SEC、OBS |
-| Rich Render / Extensions | VIS、EXT、SEC-003/010 |
-| QA / Integration | AC、跨领域 E2E、fixture 生成、release matrix |
+| 领域                     | 实现代理同时负责                             |
+| ------------------------ | -------------------------------------------- |
+| Editor                   | CORE、EDT、IME、TABLE、RT                    |
+| Navigation               | NAV、HISTORY、LINK、PEEK、SPLIT              |
+| Native Core              | FILE、ASSET、REC、SAFE-001/002               |
+| Platform                 | PERF、SAFE-003、SEC、OBS                     |
+| Rich Render / Extensions | VIS、EXT、SEC-003/010                        |
+| QA / Integration         | AC、跨领域 E2E、fixture 生成、release matrix |
 
 代理不得只提交实现并把单元/契约测试完全留给“最后集成代理”。跨领域 E2E 可以由 QA 所有，但提供可测接口和本领域测试属于实现任务 Definition of Done。
 
@@ -511,7 +515,7 @@ interface DiagnosticEventV1 {
 
 测试失败记录至少包含：
 
-~~~text
+```text
 Test ID:
 Requirement ID:
 Build / commit:
@@ -524,7 +528,7 @@ Reproduction command:
 First bad revision（若已知）:
 Artifacts（已脱敏）:
 Owner / next action:
-~~~
+```
 
 不得把大段正文或 Base64 粘贴进 issue、PROJECT_STATE 或聊天。保存最小脱敏 fixture 或确定性生成参数。
 

@@ -3,43 +3,105 @@ import {
   Suspense,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useReducer,
   useRef,
   useState,
+  type MouseEvent as ReactMouseEvent,
+  type PointerEvent as ReactPointerEvent,
 } from "react";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 
+import { useI18n } from "../i18n";
+import { useAppSettings } from "../settings";
 import {
   activateTab,
+  activateEditorGroup,
   appStateReducer,
   closeTab as closeTabAction,
   createInitialAppState,
   createViewState,
+  discardDocuments,
   editDocument,
-  goBack,
-  goForward,
+  goNavigationBack,
+  goNavigationForward,
   markDocumentSaved,
+  markDocumentExternalChange,
+  reloadDocument,
+  keepTabOpen,
+  moveTabToGroup,
+  navigateToView,
   openInCurrent,
   openInNewTab,
+  openPreviewTab,
+  relocateDocument,
   selectActiveTab,
-  selectCanGoBack,
-  selectCanGoForward,
+  selectActiveEditorGroup,
+  selectCanNavigateBack,
+  selectCanNavigateForward,
   selectCurrentSession,
-  selectOrderedTabs,
+  selectEditorGroups,
+  selectNavigationDestination,
+  selectTabGroupId,
+  moveTabRight,
   updateView,
+  type AppState,
+  type AppStateAction,
   type OpenDocument,
   type Tab,
 } from "../state";
 import type { LinkDisposition } from "../../features/editor/linkTarget";
-import type { PreviewVisual } from "../../features/editor/livePreview";
+import { DocumentStatisticsStatus } from "./DocumentStatisticsStatus";
+import { CodeFilePreview } from "../../features/code-preview/CodeFilePreview";
+import { ExternalChangeBanner } from "../../features/external-changes/ExternalChangeBanner";
+import { useFileSystemChanges } from "../../features/external-changes/useFileSystemChanges";
+import {
+  captureDocumentOwnership,
+  referencedFilePaths,
+  synchronizeDocuments,
+} from "../../features/external-changes/synchronizeDocuments";
+import { EditorGroupLayout } from "../../features/editor-groups/EditorGroupLayout";
+import { EditorGroupTabs } from "../../features/editor-groups/EditorGroupTabs";
+import {
+  EditorContextMenu,
+  useEditorContextMenu,
+  useNativeContextMenuPolicy,
+} from "../../features/context-menu";
+import { localFileReferenceFromText } from "../../features/navigation/localFileReference";
+import { imageReferenceFromLink } from "../../features/navigation/imageReference";
 import { resolveWorkspaceLink } from "../../features/navigation/resolveWorkspaceLink";
+import { SettingsDialog } from "../../features/settings";
+import {
+  buildSessionSnapshot,
+  loadSessionSnapshot,
+  saveSessionSnapshot,
+  reopenSessionSnapshot,
+} from "../../features/session-restore";
 import { VisualViewer } from "../../features/viewer/VisualViewer";
+import type { PreviewVisual } from "../../features/viewer/model";
 import { Outline } from "../../features/workspace/Outline";
 import { WorkspaceTree } from "../../features/workspace/WorkspaceTree";
-import { findMarkdownAnchorPosition } from "../../features/workspace/outlineModel";
+import {
+  activateRememberedWorkspace,
+  emptyWorkspaceHistory,
+  forgetOpenWorkspace,
+  loadWorkspaceHistory,
+  rememberFile,
+  rememberWorkspace,
+  saveWorkspaceHistory,
+  getWorkspaceShowHidden,
+  setWorkspaceShowHidden,
+  type WorkspaceHistoryState,
+} from "../../features/workspace/workspaceHistory";
+import {
+  extractOutline,
+  findMarkdownAnchorPosition,
+} from "../../features/workspace/outlineModel";
 import {
   createDesktopAdapter,
   type DesktopAdapter,
+  type LocalFilePreview,
   type WorkspaceNode,
   type WorkspaceSelection,
 } from "../../infrastructure/tauri/desktopAdapter";
@@ -50,13 +112,87 @@ import {
   MoreIcon,
   OutlineIcon,
   PanelLeftIcon,
-  PlusIcon,
   SearchIcon,
   WorkspaceMark,
 } from "./icons";
 import "./AppShell.css";
 
 type SidebarMode = "files" | "outline";
+
+function hasImageReferenceDialog(): boolean {
+  return Boolean(document.querySelector('.image-reference-dialog[aria-modal="true"]'));
+}
+
+interface PendingEditorReveal {
+  readonly documentId: string;
+  readonly anchor?: string;
+  readonly headingText?: string;
+  readonly position: number;
+  readonly requestId: number;
+  readonly scrollTop?: number;
+}
+
+interface DocumentOpenTarget {
+  readonly groupId?: string;
+  readonly sourceTabId?: string;
+  readonly treePreview?: boolean;
+  readonly keepOpen?: boolean;
+  readonly markdownLink?: boolean;
+}
+
+interface LocalPreviewOverlay {
+  readonly reference: string;
+  readonly sourceGroupId: string;
+  readonly left: number;
+  readonly top: number;
+  readonly preview?: LocalFilePreview;
+  readonly loading: boolean;
+  readonly error?: string;
+}
+
+interface OpenWorkspaceState {
+  readonly selection: WorkspaceSelection;
+  readonly nodes: readonly WorkspaceNode[];
+}
+
+interface QuickOpenCandidate {
+  readonly node: WorkspaceNode;
+  readonly workspace: WorkspaceSelection;
+}
+
+interface SaveFailure {
+  readonly documentId: string;
+  readonly error: string;
+}
+
+interface AutoSaveSchedule {
+  readonly text: string;
+  readonly delayMs: number;
+  readonly generation: number;
+  readonly timer: number;
+}
+
+interface WorkspaceRestoreRun {
+  readonly promise: Promise<readonly (OpenWorkspaceState | null)[]>;
+}
+
+type PendingCloseRequest =
+  | {
+      readonly kind: "tab";
+      readonly tabId: string;
+      readonly dirtyPaths: readonly string[];
+    }
+  | {
+      readonly kind: "window";
+      readonly dirtyPaths: readonly string[];
+    };
+
+interface PendingWorkspaceDelete {
+  readonly owner: WorkspaceSelection;
+  readonly node: WorkspaceNode;
+  readonly affectedDocumentIds: readonly string[];
+  readonly dirtyPaths: readonly string[];
+}
 
 const MarkdownEditor = lazy(async () => {
   const editor = await import("../../features/editor/MarkdownEditor");
@@ -68,11 +204,115 @@ function fileName(path: string): string {
   return parts.at(-1) || path;
 }
 
+function comparablePath(path: string): string {
+  const normalized = path.replaceAll("\\", "/").replace(/\/+$/u, "");
+  return /^[a-z]:\//iu.test(normalized)
+    ? normalized.toLocaleLowerCase("en-US")
+    : normalized;
+}
+
+function pathIsAtOrBelow(path: string, parentPath: string): boolean {
+  const candidate = comparablePath(path);
+  const parent = comparablePath(parentPath);
+  return candidate === parent || candidate.startsWith(`${parent}/`);
+}
+
+async function copyText(value: string): Promise<void> {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(value);
+    return;
+  }
+  const textarea = document.createElement("textarea");
+  textarea.value = value;
+  textarea.style.position = "fixed";
+  textarea.style.opacity = "0";
+  document.body.append(textarea);
+  textarea.select();
+  const copied = document.execCommand("copy");
+  textarea.remove();
+  if (!copied) throw new Error("Clipboard write failed");
+}
+
+function isUntitledPath(path: string): boolean {
+  return path.startsWith("untitled://");
+}
+
 function flattenMarkdown(nodes: readonly WorkspaceNode[]): WorkspaceNode[] {
   return nodes.flatMap((node) => [
-    ...(node.kind === "markdown" ? [node] : []),
+    ...(node.kind === "markdown" || node.kind === "text" ? [node] : []),
     ...flattenMarkdown(node.children ?? []),
   ]);
+}
+
+function withoutWorkspaceEntry(
+  nodes: readonly WorkspaceNode[],
+  removedPath: string,
+): readonly WorkspaceNode[] {
+  const target = comparablePath(removedPath);
+  return nodes.flatMap((node) => {
+    if (comparablePath(node.path) === target) return [];
+    if (!node.children) return [node];
+    return [{ ...node, children: withoutWorkspaceEntry(node.children, removedPath) }];
+  });
+}
+
+function tabHistoryEntries(tab: Tab) {
+  return [tab.current, ...tab.back, ...tab.forward];
+}
+
+function tabReferencesDocument(tab: Tab, documentId: string): boolean {
+  return tabHistoryEntries(tab).some((entry) => entry.documentId === documentId);
+}
+
+function referencedDirtyDocumentIds(state: AppState): readonly string[] {
+  const dirtyDocumentIds = new Set<string>();
+  for (const tabId of state.tabOrder) {
+    const tab = state.tabs[tabId];
+    if (!tab) continue;
+    for (const entry of tabHistoryEntries(tab)) {
+      const session = state.sessions[entry.documentId];
+      if (session?.dirty) dirtyDocumentIds.add(entry.documentId);
+    }
+  }
+  return [...dirtyDocumentIds];
+}
+
+function tabDirtyDocumentIds(state: AppState, tab: Tab): readonly string[] {
+  const dirtyDocumentIds = new Set<string>();
+  for (const entry of tabHistoryEntries(tab)) {
+    if (state.sessions[entry.documentId]?.dirty) {
+      dirtyDocumentIds.add(entry.documentId);
+    }
+  }
+  return [...dirtyDocumentIds];
+}
+
+function hasReferencedDirtyDocuments(state: AppState): boolean {
+  return referencedDirtyDocumentIds(state).length > 0;
+}
+
+function referencedDocumentIds(state: AppState): Set<string> {
+  const ids = new Set<string>();
+  for (const tabId of state.tabOrder) {
+    const tab = state.tabs[tabId];
+    if (!tab) continue;
+    for (const entry of tabHistoryEntries(tab)) ids.add(entry.documentId);
+  }
+  return ids;
+}
+
+function appendUniqueWorkspaces(
+  current: readonly OpenWorkspaceState[],
+  incoming: readonly OpenWorkspaceState[],
+): readonly OpenWorkspaceState[] {
+  const seen = new Set(current.map((item) => item.selection.path));
+  const appended = [...current];
+  for (const workspace of incoming) {
+    if (seen.has(workspace.selection.path)) continue;
+    seen.add(workspace.selection.path);
+    appended.push(workspace);
+  }
+  return appended;
 }
 
 function readableError(error: unknown): string {
@@ -93,29 +333,35 @@ function toOpenDocument(
     path: result.path,
     text: result.content,
     diskMtimeMs: 0,
+    diskRevision: result.diskRevision,
     mode: result.mode,
+    kind: result.documentKind,
+    language: result.language,
   };
 }
 
 function Welcome({
   adapterKind,
   busy,
+  onNewDocument,
+  onOpenFile,
   onOpenWorkspace,
 }: {
   readonly adapterKind: DesktopAdapter["kind"];
   readonly busy: boolean;
+  readonly onNewDocument: () => void;
+  readonly onOpenFile: () => void;
   readonly onOpenWorkspace: () => void;
 }) {
+  const { t } = useI18n();
   return (
     <section className="welcome" aria-labelledby="welcome-title">
       <div className="welcome__symbol" aria-hidden="true">
         <WorkspaceMark />
       </div>
-      <p className="welcome__eyebrow">Paper &amp; Ink · 本地优先</p>
-      <h1 id="welcome-title">把本地文档，当作可以编辑的浏览器。</h1>
-      <p className="welcome__lead">
-        单画面编辑 Markdown，在本地链接之间前进和后退；截图自动落盘，图表可以深入查看。
-      </p>
+      <p className="welcome__eyebrow">{t("welcome.eyebrow")}</p>
+      <h1 id="welcome-title">{t("welcome.title")}</h1>
+      <p className="welcome__lead">{t("welcome.lead")}</p>
 
       <div className="welcome__actions">
         <button
@@ -124,40 +370,259 @@ function Welcome({
           onClick={onOpenWorkspace}
           type="button"
         >
-          {busy ? "正在打开…" : adapterKind === "demo" ? "打开演示工作区" : "打开工作区"}
+          {busy
+            ? t("welcome.opening")
+            : adapterKind === "demo"
+              ? t("welcome.openDemoWorkspace")
+              : t("welcome.openWorkspace")}
+        </button>
+        <button
+          className="secondary-button"
+          disabled={busy}
+          onClick={onOpenFile}
+          type="button"
+        >
+          {t("menu.openFile")}
+        </button>
+        <button
+          className="secondary-button"
+          disabled={busy}
+          onClick={onNewDocument}
+          type="button"
+        >
+          {t("menu.newMarkdown")}
         </button>
       </div>
 
       <p className="welcome__availability">
         {adapterKind === "demo"
-          ? "当前是浏览器演示模式；启动桌面应用后可读写真实本地文件。"
-          : "文档只在本机处理，不需要账户或服务端。"}
+          ? t("welcome.demoAvailability")
+          : t("welcome.localAvailability")}
       </p>
 
-      <ol className="foundation-progress" aria-label="首版核心能力">
+      <ol className="foundation-progress" aria-label={t("welcome.foundationLabel")}>
         <li className="foundation-progress__item foundation-progress__item--ready">
           <span className="foundation-progress__index">01</span>
           <span>
-            <strong>单画布编辑</strong>
-            <small>源码是唯一真相</small>
+            <strong>{t("welcome.singleCanvas")}</strong>
+            <small>{t("welcome.singleCanvasDetail")}</small>
           </span>
         </li>
         <li className="foundation-progress__item foundation-progress__item--ready">
           <span className="foundation-progress__index">02</span>
           <span>
-            <strong>浏览器式导航</strong>
-            <small>Tab、前进与后退</small>
+            <strong>{t("welcome.browserNavigation")}</strong>
+            <small>{t("welcome.browserNavigationDetail")}</small>
           </span>
         </li>
         <li className="foundation-progress__item foundation-progress__item--ready">
           <span className="foundation-progress__index">03</span>
           <span>
-            <strong>桌面文件能力</strong>
-            <small>原子保存与截图落盘</small>
+            <strong>{t("welcome.desktopFiles")}</strong>
+            <small>{t("welcome.desktopFilesDetail")}</small>
           </span>
         </li>
       </ol>
     </section>
+  );
+}
+
+function trapConfirmationFocus(event: KeyboardEvent, button: HTMLButtonElement | null) {
+  if (event.key !== "Tab") return;
+  const dialog = button?.closest('[role="alertdialog"]');
+  if (!dialog) return;
+  const buttons = dialog.querySelectorAll<HTMLButtonElement>("button:not(:disabled)");
+  const first = buttons[0];
+  const last = buttons[buttons.length - 1];
+  if (!first || !last) {
+    event.preventDefault();
+  } else if (!dialog.contains(document.activeElement)) {
+    event.preventDefault();
+    (event.shiftKey ? last : first).focus();
+  } else if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault();
+    first.focus();
+  }
+}
+
+function UnsavedCloseDialog({
+  dirtyPaths,
+  kind,
+  onCancel,
+  onConfirm,
+}: {
+  readonly dirtyPaths: readonly string[];
+  readonly kind: PendingCloseRequest["kind"];
+  readonly onCancel: () => void;
+  readonly onConfirm: () => void;
+}) {
+  const { t } = useI18n();
+  const cancelButtonRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    const returnFocus =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    cancelButtonRef.current?.focus();
+    const handleKeyDown = (event: KeyboardEvent) => {
+      trapConfirmationFocus(event, cancelButtonRef.current);
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      onCancel();
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      returnFocus?.focus();
+    };
+  }, [onCancel]);
+
+  return (
+    <div
+      className="settings-dialog-layer"
+      onMouseDown={(event) => {
+        if (event.currentTarget === event.target) onCancel();
+      }}
+    >
+      <section
+        aria-label={t("closeConfirm.title")}
+        aria-modal="true"
+        className="settings-dialog confirmation-dialog"
+        role="alertdialog"
+      >
+        <header className="settings-dialog__titlebar">
+          <h2>{t("closeConfirm.title")}</h2>
+        </header>
+        <div className="confirmation-dialog__body">
+          <p style={{ margin: "0 0 14px", lineHeight: 1.6 }}>
+            {t(
+              kind === "window" ? "closeConfirm.windowMessage" : "closeConfirm.tabMessage",
+              { count: dirtyPaths.length },
+            )}
+          </p>
+          <ul
+            style={{
+              maxHeight: 180,
+              margin: 0,
+              overflow: "auto",
+              paddingLeft: 22,
+              color: "var(--ink-700)",
+            }}
+          >
+            {dirtyPaths.map((path) => (
+              <li key={path} title={path}>
+                {fileName(path)}
+              </li>
+            ))}
+          </ul>
+        </div>
+        <footer className="settings-dialog__footer confirmation-dialog__footer">
+          <button
+            className="settings-reset-button"
+            onClick={onCancel}
+            ref={cancelButtonRef}
+            type="button"
+          >
+            {t("common.cancel")}
+          </button>
+          <button className="primary-button" onClick={onConfirm} type="button">
+            {t(
+              kind === "window" ? "closeConfirm.discardWindow" : "closeConfirm.discardTab",
+            )}
+          </button>
+        </footer>
+      </section>
+    </div>
+  );
+}
+
+function WorkspaceDeleteDialog({
+  busy,
+  pending,
+  onCancel,
+  onConfirm,
+}: {
+  readonly busy: boolean;
+  readonly pending: PendingWorkspaceDelete;
+  readonly onCancel: () => void;
+  readonly onConfirm: () => void;
+}) {
+  const { t } = useI18n();
+  const cancelButtonRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    const returnFocus =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    cancelButtonRef.current?.focus();
+    const handleKeyDown = (event: KeyboardEvent) => {
+      trapConfirmationFocus(event, cancelButtonRef.current);
+      if (event.key !== "Escape" || busy) return;
+      event.preventDefault();
+      onCancel();
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      returnFocus?.focus();
+    };
+  }, [busy, onCancel]);
+
+  return (
+    <div
+      className="settings-dialog-layer"
+      onMouseDown={(event) => {
+        if (!busy && event.currentTarget === event.target) onCancel();
+      }}
+    >
+      <section
+        aria-label={t("deleteConfirm.title", { name: pending.node.name })}
+        aria-modal="true"
+        className="settings-dialog confirmation-dialog"
+        role="alertdialog"
+      >
+        <header className="settings-dialog__titlebar">
+          <h2>{t("deleteConfirm.title", { name: pending.node.name })}</h2>
+        </header>
+        <div className="confirmation-dialog__body">
+          <p className="confirmation-dialog__path">{pending.node.path}</p>
+          <p>{t("deleteConfirm.message")}</p>
+          {pending.dirtyPaths.length > 0 && (
+            <p
+              style={{
+                margin: "14px 0 0",
+                color: "#b42318",
+                lineHeight: 1.6,
+              }}
+            >
+              {t("deleteConfirm.dirtyMessage", {
+                count: pending.dirtyPaths.length,
+              })}
+            </p>
+          )}
+        </div>
+        <footer className="settings-dialog__footer confirmation-dialog__footer">
+          <button
+            className="settings-reset-button"
+            disabled={busy}
+            onClick={onCancel}
+            ref={cancelButtonRef}
+            type="button"
+          >
+            {t("common.cancel")}
+          </button>
+          <button
+            className="primary-button confirmation-dialog__destructive"
+            disabled={busy}
+            onClick={onConfirm}
+            type="button"
+          >
+            {t("deleteConfirm.moveToTrash")}
+          </button>
+        </footer>
+      </section>
+    </div>
   );
 }
 
@@ -166,6 +631,10 @@ export function AppShell({
 }: {
   readonly adapter?: DesktopAdapter;
 } = {}) {
+  const { locale, t } = useI18n();
+  const { settings } = useAppSettings();
+  const { contextMenu, onContextMenu, onPointerDownCapture, closeContextMenu } =
+    useEditorContextMenu();
   const adapter = useMemo(
     () => providedAdapter ?? createDesktopAdapter(),
     [providedAdapter],
@@ -176,112 +645,745 @@ export function AppShell({
     createInitialAppState,
   );
   const appStateRef = useRef(appState);
+  const startupBehaviorRef = useRef(settings.startupBehavior);
+  const [initialSnapshot] = useState(() =>
+    adapter.kind === "tauri" ? loadSessionSnapshot() : null,
+  );
+  const restoreCancelledRef = useRef(false);
+  const [sessionRestored, setSessionRestored] = useState(
+    adapter.kind !== "tauri" || settings.startupBehavior === "empty" || !initialSnapshot,
+  );
+  const [workspaceRestored, setWorkspaceRestored] = useState(adapter.kind !== "tauri");
   const tabCounter = useRef(1);
-  const [workspace, setWorkspace] = useState<WorkspaceSelection | null>(null);
-  const [workspaceNodes, setWorkspaceNodes] = useState<readonly WorkspaceNode[]>([]);
+  const groupCounter = useRef(1);
+  const documentOpenRequestsRef = useRef(new Map<string, number>());
+  const workspaceVisibilityRequestsRef = useRef(new Map<string, number>());
+  const [draggedTabId, setDraggedTabId] = useState<string | null>(null);
+  const untitledCounter = useRef(1);
+  const [workspaces, setWorkspaces] = useState<readonly OpenWorkspaceState[]>([]);
+  const [workspaceHistory, setWorkspaceHistory] = useState<WorkspaceHistoryState>(() => {
+    const history =
+      adapter.kind === "tauri" ? loadWorkspaceHistory() : emptyWorkspaceHistory;
+    if (settings.startupBehavior === "empty")
+      return {
+        ...history,
+        openWorkspaces: [],
+        activeWorkspacePath: null,
+      };
+    if (!initialSnapshot) return history;
+    return {
+      ...history,
+      openWorkspaces: initialSnapshot.workspacePaths.map(
+        (path) =>
+          history.openWorkspaces.find((item) => item.path === path) ??
+          history.recentWorkspaces.find((item) => item.path === path) ?? {
+            path,
+            name: fileName(path),
+            lastOpenedAt: 0,
+          },
+      ),
+      activeWorkspacePath: initialSnapshot.activeWorkspacePath,
+    };
+  });
+  const workspaceHistoryRef = useRef(workspaceHistory);
+  const listWorkspaceFiles = useCallback(
+    (path: string) =>
+      getWorkspaceShowHidden(workspaceHistoryRef.current, path)
+        ? adapter.listWorkspace(path, true)
+        : adapter.listWorkspace(path),
+    [adapter],
+  );
+  const refreshWorkspaceFiles = useCallback(
+    async (path: string) => {
+      const visibilityRequest = (workspaceVisibilityRequestsRef.current.get(path) ?? 0) + 1;
+      workspaceVisibilityRequestsRef.current.set(path, visibilityRequest);
+      const nodes = await listWorkspaceFiles(path);
+      setWorkspaces((current) => {
+        if ((workspaceVisibilityRequestsRef.current.get(path) ?? 0) !== visibilityRequest)
+          return current;
+        return current.map((item) =>
+          item.selection.path === path ? { ...item, nodes } : item,
+        );
+      });
+    },
+    [listWorkspaceFiles],
+  );
+  const workspacesRef = useRef(workspaces);
+  const restorationReadyRef = useRef(false);
+  useLayoutEffect(() => {
+    workspaceHistoryRef.current = workspaceHistory;
+    workspacesRef.current = workspaces;
+    restorationReadyRef.current = sessionRestored && workspaceRestored;
+  }, [workspaceHistory, workspaces, sessionRestored, workspaceRestored]);
+  const [workspaceMenuVisible, setWorkspaceMenuVisible] = useState(false);
+  const restoredWorkspacesRef = useRef(false);
+  const workspaceRestoreRunRef = useRef<WorkspaceRestoreRun | null>(null);
+  const closedWorkspaceRestorePathsRef = useRef(new Set<string>());
+  const initialWorkspaceRestoreCandidatesRef = useRef(workspaceHistory.openWorkspaces);
+  const translateRef = useRef(t);
   const [sidebarMode, setSidebarMode] = useState<SidebarMode>("files");
+  const workspaceContextRequestId = useRef(0);
+  const [workspaceContextRequest, setWorkspaceContextRequest] = useState<{
+    rootPath: string;
+    x: number;
+    y: number;
+    id: number;
+  } | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [status, setStatus] = useState("准备就绪");
+  const [localizedStatus, setStatus] = useReducer(
+    (_current: { locale: string; message: string }, message: string) => ({
+      locale,
+      message,
+    }),
+    { locale, message: t("status.ready") },
+  );
+  const status =
+    localizedStatus.locale === locale ? localizedStatus.message : t("status.ready");
+  const [saveFailure, setSaveFailure] = useState<SaveFailure | null>(null);
   const [quickOpenVisible, setQuickOpenVisible] = useState(false);
   const [quickOpenQuery, setQuickOpenQuery] = useState("");
   const [visual, setVisual] = useState<PreviewVisual | null>(null);
-  const [editorReveal, setEditorReveal] = useState<{
-    readonly documentId: string;
-    readonly position: number;
-    readonly requestId: number;
-  } | null>(null);
+  const [settingsVisible, setSettingsVisible] = useState(false);
+  const [moreMenuVisible, setMoreMenuVisible] = useState(false);
+  const [pendingCloseRequest, setPendingCloseRequest] =
+    useState<PendingCloseRequest | null>(null);
+  const [pendingWorkspaceDelete, setPendingWorkspaceDelete] =
+    useState<PendingWorkspaceDelete | null>(null);
+  useNativeContextMenuPolicy(Boolean(pendingCloseRequest || pendingWorkspaceDelete));
+  const [localPreview, setLocalPreview] = useState<LocalPreviewOverlay | null>(null);
+  const [codeTargetLines, setCodeTargetLines] = useState<Readonly<Record<string, number>>>(
+    {},
+  );
+  const localPreviewTimerRef = useRef<number | null>(null);
+  const localPreviewRequestRef = useRef(0);
+  const sidePreviewRequestRef = useRef(0);
+  const clearLocalPreviewTimer = useCallback(() => {
+    if (localPreviewTimerRef.current !== null) {
+      window.clearTimeout(localPreviewTimerRef.current);
+      localPreviewTimerRef.current = null;
+    }
+  }, []);
+  const closeLocalPreview = useCallback(() => {
+    clearLocalPreviewTimer();
+    localPreviewRequestRef.current += 1;
+    setLocalPreview(null);
+  }, [clearLocalPreviewTimer]);
+  const [findRequests, setFindRequests] = useState<Readonly<Record<string, number>>>({});
+  const findRequestCounter = useRef(1);
+  const findInActivePage = useCallback(() => {
+    if (
+      settingsVisible ||
+      quickOpenVisible ||
+      visual ||
+      pendingCloseRequest ||
+      pendingWorkspaceDelete
+    )
+      return;
+    const tabId = appStateRef.current.activeTabId;
+    if (tabId) {
+      const request = findRequestCounter.current++;
+      setFindRequests((current) => ({ ...current, [tabId]: request }));
+    }
+  }, [
+    settingsVisible,
+    quickOpenVisible,
+    visual,
+    pendingCloseRequest,
+    pendingWorkspaceDelete,
+  ]);
+  const consumeFindRequest = useCallback((tabId: string, request: number) => {
+    setFindRequests((current) =>
+      current[tabId] === request ? { ...current, [tabId]: 0 } : current,
+    );
+  }, []);
+  const [editorReveals, setEditorReveals] = useState<
+    Readonly<Record<string, PendingEditorReveal>>
+  >({});
   const revealCounter = useRef(1);
+  const autoSaveTimersRef = useRef(new Map<string, AutoSaveSchedule>());
+  const autoSaveGenerationsRef = useRef(new Map<string, number>());
+  const saveQueuesRef = useRef(new Map<string, Promise<void>>());
+  const nativeCloseCommittedRef = useRef(false);
+  const confirmationPendingRef = useRef(false);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
+    confirmationPendingRef.current = Boolean(pendingCloseRequest || pendingWorkspaceDelete);
+  }, [pendingCloseRequest, pendingWorkspaceDelete]);
+
+  useLayoutEffect(() => {
     appStateRef.current = appState;
   }, [appState]);
+
+  const commitAction = useCallback((action: AppStateAction) => {
+    if (action.type !== "session/restore") restoreCancelledRef.current = true;
+    const next = appStateReducer(appStateRef.current, action);
+    appStateRef.current = next;
+    dispatch(action);
+    return next;
+  }, []);
+
+  const persistBrowsing = useCallback(() => {
+    if (adapter.kind !== "tauri" || !restorationReadyRef.current) return;
+    saveSessionSnapshot(
+      buildSessionSnapshot(appStateRef.current, {
+        workspacePaths: workspacesRef.current.map((workspace) => workspace.selection.path),
+        activeWorkspacePath: workspaceHistoryRef.current.activeWorkspacePath,
+      }),
+    );
+  }, [adapter.kind]);
+
+  useEffect(() => {
+    if (sessionRestored) return;
+    let cancelled = false;
+    if (initialSnapshot && startupBehaviorRef.current === "restore") {
+      void reopenSessionSnapshot(
+        initialSnapshot,
+        adapter,
+        () =>
+          !cancelled && !restoreCancelledRef.current && !nativeCloseCommittedRef.current,
+      ).then((result) => {
+        if (cancelled) return;
+        if (result && !restoreCancelledRef.current) {
+          commitAction({ type: "session/restore", state: result.state });
+        }
+        setSessionRestored(true);
+      });
+    } else setSessionRestored(true);
+    return () => {
+      cancelled = true;
+    };
+  }, [adapter, commitAction, initialSnapshot, sessionRestored]);
+
+  useEffect(() => {
+    if (!sessionRestored || !workspaceRestored) return;
+    const timer = window.setTimeout(persistBrowsing, 300);
+    window.addEventListener("pagehide", persistBrowsing);
+    return () => {
+      window.clearTimeout(timer);
+      window.removeEventListener("pagehide", persistBrowsing);
+    };
+  }, [
+    appState,
+    workspaces,
+    workspaceHistory,
+    sessionRestored,
+    workspaceRestored,
+    persistBrowsing,
+  ]);
+
+  useEffect(() => {
+    translateRef.current = t;
+  }, [t]);
+
+  const destroyNativeWindow = useCallback(() => {
+    if (adapter.kind !== "tauri" || nativeCloseCommittedRef.current) return;
+    persistBrowsing();
+    nativeCloseCommittedRef.current = true;
+    setPendingCloseRequest(null);
+    void getCurrentWindow()
+      .destroy()
+      .catch((error: unknown) => {
+        nativeCloseCommittedRef.current = false;
+        console.error("Failed to destroy the native application window", error);
+      });
+  }, [adapter.kind, persistBrowsing]);
+
+  const requestNativeWindowClose = useCallback(() => {
+    if (
+      adapter.kind !== "tauri" ||
+      nativeCloseCommittedRef.current ||
+      confirmationPendingRef.current ||
+      hasImageReferenceDialog()
+    ) {
+      return;
+    }
+    const state = appStateRef.current;
+    const dirtyDocumentIds = referencedDirtyDocumentIds(state);
+    if (dirtyDocumentIds.length > 0) {
+      setPendingCloseRequest({
+        kind: "window",
+        dirtyPaths: dirtyDocumentIds.flatMap((documentId) => {
+          const session = state.sessions[documentId];
+          return session ? [session.path] : [];
+        }),
+      });
+      return;
+    }
+    destroyNativeWindow();
+  }, [adapter.kind, destroyNativeWindow]);
+
+  useEffect(() => {
+    if (adapter.kind === "tauri") return undefined;
+    const preventAccidentalClose = (event: BeforeUnloadEvent) => {
+      if (!hasReferencedDirtyDocuments(appStateRef.current)) return;
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", preventAccidentalClose);
+    return () => window.removeEventListener("beforeunload", preventAccidentalClose);
+  }, [adapter.kind]);
+
+  useEffect(() => {
+    if (adapter.kind !== "tauri") return undefined;
+    let disposed = false;
+    let unlisten: (() => void) | undefined;
+    const appWindow = getCurrentWindow();
+    void appWindow
+      .onCloseRequested((event) => {
+        event.preventDefault();
+        requestNativeWindowClose();
+      })
+      .then((dispose) => {
+        if (disposed) dispose();
+        else unlisten = dispose;
+      })
+      .catch(() => undefined);
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
+  }, [adapter.kind, requestNativeWindowClose]);
+
+  useEffect(() => {
+    void adapter.setNativeMenuLocale?.(locale).catch(() => undefined);
+  }, [adapter, locale]);
+
+  useEffect(() => {
+    if (adapter.kind !== "tauri") return;
+    saveWorkspaceHistory(workspaceHistory);
+  }, [adapter.kind, workspaceHistory]);
+
+  useEffect(() => {
+    if (adapter.kind !== "tauri" || restoredWorkspacesRef.current) return;
+    let cancelled = false;
+    const restoreCandidates = initialWorkspaceRestoreCandidatesRef.current;
+    let restoreRun = workspaceRestoreRunRef.current;
+    if (!restoreRun) {
+      restoreRun = {
+        promise: Promise.all(
+          restoreCandidates.map(async (selection) => {
+            try {
+              const nodes = await listWorkspaceFiles(selection.path);
+              return {
+                selection: { path: selection.path, name: selection.name },
+                nodes,
+              } satisfies OpenWorkspaceState;
+            } catch {
+              return null;
+            }
+          }),
+        ),
+      };
+      workspaceRestoreRunRef.current = restoreRun;
+    }
+    void restoreRun.promise.then((restored) => {
+      if (cancelled || restoredWorkspacesRef.current) return;
+      restoredWorkspacesRef.current = true;
+      setWorkspaceRestored(true);
+      workspaceRestoreRunRef.current = null;
+      const available: OpenWorkspaceState[] = [];
+      for (const workspace of restored) {
+        if (
+          workspace &&
+          !closedWorkspaceRestorePathsRef.current.has(workspace.selection.path)
+        )
+          available.push(workspace);
+      }
+      const manuallyOpenedPaths = workspacesRef.current.map((item) => item.selection.path);
+      setWorkspaces((current) =>
+        appendUniqueWorkspaces(
+          current,
+          available.filter(
+            (item) => !closedWorkspaceRestorePathsRef.current.has(item.selection.path),
+          ),
+        ),
+      );
+      setWorkspaceHistory((current) => {
+        const requestedPaths = new Set(restoreCandidates.map((item) => item.path));
+        const validPaths = new Set([
+          ...available.map((item) => item.selection.path),
+          ...manuallyOpenedPaths,
+        ]);
+        const openWorkspaces = current.openWorkspaces.filter(
+          (item) => !requestedPaths.has(item.path) || validPaths.has(item.path),
+        );
+        return {
+          ...current,
+          openWorkspaces,
+          activeWorkspacePath: openWorkspaces.some(
+            (item) => item.path === current.activeWorkspacePath,
+          )
+            ? current.activeWorkspacePath
+            : (openWorkspaces.at(-1)?.path ?? null),
+        };
+      });
+      if (available.length > 0) {
+        setStatus(
+          translateRef.current("status.workspaceRestored", { count: available.length }),
+        );
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [adapter, listWorkspaceFiles]);
+
+  useEffect(() => {
+    if (!moreMenuVisible && !workspaceMenuVisible) return undefined;
+    const close = (event: PointerEvent) => {
+      const element = event.target instanceof Element ? event.target : null;
+      if (!element?.closest(".more-menu-host")) setMoreMenuVisible(false);
+      if (!element?.closest(".workspace-identity-host")) setWorkspaceMenuVisible(false);
+    };
+    document.addEventListener("pointerdown", close);
+    return () => document.removeEventListener("pointerdown", close);
+  }, [moreMenuVisible, workspaceMenuVisible]);
 
   const activeTab = selectActiveTab(appState);
   const activeSession = activeTab
     ? selectCurrentSession(appState, activeTab.id)
     : undefined;
-  const orderedTabs = selectOrderedTabs(appState);
-  const canGoBack = activeTab ? selectCanGoBack(appState, activeTab.id) : false;
-  const canGoForward = activeTab ? selectCanGoForward(appState, activeTab.id) : false;
-  const markdownFiles = useMemo(() => flattenMarkdown(workspaceNodes), [workspaceNodes]);
+  const editorGroups = selectEditorGroups(appState);
+  const canGoBack = selectCanNavigateBack(appState);
+  const canGoForward = selectCanNavigateForward(appState);
+  const editorMode =
+    activeSession?.mode === "sourceOnly"
+      ? "source"
+      : (activeTab?.current.view.editorMode ?? "visual");
+  const activeDocumentPath = activeSession?.path;
+  const activeDocumentWorkspacePath = activeDocumentPath
+    ? workspaces
+        .filter((item) => pathIsAtOrBelow(activeDocumentPath, item.selection.path))
+        .sort((left, right) => right.selection.path.length - left.selection.path.length)[0]
+        ?.selection.path
+    : undefined;
+  const followedDocumentKey = JSON.stringify([
+    activeTab?.id,
+    activeDocumentPath,
+    activeDocumentWorkspacePath,
+  ]);
+  const [lastFollowedDocumentKey, setLastFollowedDocumentKey] = useState("");
+  if (lastFollowedDocumentKey !== followedDocumentKey) {
+    // Follow navigation before rendering; typing or choosing an action root does not
+    // pull the sidebar back to the document's workspace on the next render.
+    setLastFollowedDocumentKey(followedDocumentKey);
+    if (activeDocumentWorkspacePath) {
+      setWorkspaceHistory((current) =>
+        activateRememberedWorkspace(current, activeDocumentWorkspacePath),
+      );
+    }
+  }
+  const activeWorkspace = useMemo(
+    () =>
+      workspaces.find(
+        (item) => item.selection.path === workspaceHistory.activeWorkspacePath,
+      ) ??
+      workspaces[0] ??
+      null,
+    [workspaceHistory.activeWorkspacePath, workspaces],
+  );
+  const workspace = activeWorkspace?.selection ?? null;
+  const allWorkspaceFiles = useMemo<readonly QuickOpenCandidate[]>(
+    () =>
+      workspaces.flatMap((item) =>
+        flattenMarkdown(item.nodes).map((node) => ({
+          node,
+          workspace: item.selection,
+        })),
+      ),
+    [workspaces],
+  );
   const quickOpenFiles = useMemo(() => {
     const query = quickOpenQuery.trim().toLocaleLowerCase();
     return query
-      ? markdownFiles.filter((node) =>
-          node.relativePath.toLocaleLowerCase().includes(query),
+      ? allWorkspaceFiles.filter(({ node, workspace: candidateWorkspace }) =>
+          `${candidateWorkspace.name}/${node.relativePath}`
+            .toLocaleLowerCase()
+            .includes(query),
         )
-      : markdownFiles;
-  }, [markdownFiles, quickOpenQuery]);
+      : allWorkspaceFiles;
+  }, [allWorkspaceFiles, quickOpenQuery]);
 
   const nextTabId = useCallback(() => `tab-${tabCounter.current++}`, []);
 
+  const editSessionDocument = useCallback((documentId: string, text: string) => {
+    const action = editDocument(documentId, text);
+    appStateRef.current = appStateReducer(appStateRef.current, action);
+    dispatch(action);
+  }, []);
+
+  const setEditorRevealForTab = useCallback(
+    (tabId: string, reveal: PendingEditorReveal | null) => {
+      setEditorReveals((current) => {
+        if (reveal) return { ...current, [tabId]: reveal };
+        if (!current[tabId]) return current;
+        const next = { ...current };
+        delete next[tabId];
+        return next;
+      });
+    },
+    [],
+  );
+
+  const activateWorkspace = useCallback((path: string) => {
+    setWorkspaceHistory((current) => activateRememberedWorkspace(current, path));
+  }, []);
+
+  const addWorkspace = useCallback(
+    async (selection: WorkspaceSelection) => {
+      const existing = workspaces.find((item) => item.selection.path === selection.path);
+      if (existing) {
+        activateWorkspace(selection.path);
+        return existing;
+      }
+      const nodes = await listWorkspaceFiles(selection.path);
+      const opened = { selection, nodes } satisfies OpenWorkspaceState;
+      setWorkspaces((current) => appendUniqueWorkspaces(current, [opened]));
+      setWorkspaceHistory((current) => rememberWorkspace(current, selection));
+      return opened;
+    },
+    [activateWorkspace, listWorkspaceFiles, workspaces],
+  );
+
   const openDocument = useCallback(
-    async (path: string, disposition: LinkDisposition = "current", anchor?: string) => {
+    async (
+      path: string,
+      disposition: LinkDisposition = "current",
+      anchor?: string,
+      targetLine?: number,
+      target: DocumentOpenTarget = {},
+    ) => {
+      restoreCancelledRef.current = true;
+      const initialState = appStateRef.current;
+      const initialTab = target.sourceTabId
+        ? initialState.tabs[target.sourceTabId]
+        : selectActiveTab(initialState);
+      const groupId =
+        target.groupId ??
+        (initialTab ? selectTabGroupId(initialState, initialTab.id) : undefined) ??
+        selectActiveEditorGroup(initialState)?.id;
+      if (!groupId) return;
+      const initialGroupTabId = initialState.editorGroups.find(
+        (group) => group.id === groupId,
+      )?.activeTabId;
+      // Capture the destination before disk I/O. A later click in another split
+      // must not redirect this request, and a double-click must win over preview.
+      const requestId = (documentOpenRequestsRef.current.get(groupId) ?? 0) + 1;
+      if (disposition === "current")
+        documentOpenRequestsRef.current.set(groupId, requestId);
+      const initialSession = initialTab
+        ? selectCurrentSession(initialState, initialTab.id)
+        : undefined;
+      if (
+        target.markdownLink &&
+        disposition === "current" &&
+        initialTab?.current.path === path &&
+        initialSession?.kind === "markdown"
+      ) {
+        // In-page navigation uses the current (possibly unsaved) body. Reading
+        // the disk here breaks anchors in untitled or externally moved files.
+        if (anchor) {
+          const position = findMarkdownAnchorPosition(initialSession.text, anchor) ?? 0;
+          commitAction(
+            navigateToView(
+              initialTab.id,
+              createViewState({
+                ...initialTab.current.view,
+                anchor,
+                selectionFrom: position,
+                selectionTo: position,
+                visualSelectionFrom: position,
+                visualSelectionTo: position,
+              }),
+            ),
+          );
+          setEditorRevealForTab(initialTab.id, {
+            documentId: initialSession.id,
+            anchor,
+            headingText: extractOutline(initialSession.text).find(
+              (item) => item.from === position,
+            )?.title,
+            position,
+            requestId: revealCounter.current++,
+          });
+        }
+        return;
+      }
+      const requestIsCurrent = () => {
+        const state = appStateRef.current;
+        const group = state.editorGroups.find((item) => item.id === groupId);
+        if (!group) return false;
+        if (disposition !== "current") return true;
+        if (documentOpenRequestsRef.current.get(groupId) !== requestId) return false;
+        // New, moved, or explicitly opened tabs can change the displayed page
+        // without passing through the tab-selection handler.
+        if (group.activeTabId !== initialGroupTabId) return false;
+        // A current-tab navigation belongs to that exact Tab in that exact group.
+        // Closing or moving it while disk I/O runs must not resurrect or overwrite it.
+        return (
+          target.treePreview ||
+          !initialTab ||
+          selectTabGroupId(state, initialTab.id) === groupId
+        );
+      };
       setBusy(true);
       try {
         const result = await adapter.openDocument(path);
+        if (!requestIsCurrent()) return;
         if (result.status === "blocked") {
-          const reason =
+          setStatus(
             result.reason === "largeDataUri"
-              ? "包含很大的内嵌图片数据"
+              ? t("status.openFailedDataUri")
               : result.reason === "lineTooLong"
-                ? "包含过长的单行文本"
-                : "不是可编辑的 UTF-8 文本";
-          setStatus(`未打开：${reason}。原文件没有被修改。`);
+                ? t("status.openFailedLongLine")
+                : t("status.openFailedUtf8"),
+          );
+          return;
+        }
+        if (target.markdownLink && result.documentKind !== "markdown") {
+          setStatus(t("status.linkNotFound", { target: path }));
           return;
         }
 
         const document = toOpenDocument(result);
-        const anchorPosition = findMarkdownAnchorPosition(result.content, anchor) ?? 0;
+        const currentState = appStateRef.current;
+        const focusedGroupAfterRead = currentState.activeEditorGroupId;
+        const currentTab = initialTab ? currentState.tabs[initialTab.id] : undefined;
+        const cached = currentState.sessions[document.path];
+        const navigationText =
+          cached && (cached.dirty || referencedDocumentIds(currentState).has(cached.id))
+            ? cached.text
+            : result.content;
+        const anchorPosition =
+          result.documentKind === "markdown"
+            ? (findMarkdownAnchorPosition(navigationText, anchor) ?? 0)
+            : 0;
+        const anchorHeading =
+          result.documentKind === "markdown"
+            ? extractOutline(navigationText).find((item) => item.from === anchorPosition)
+                ?.title
+            : undefined;
         const targetView = createViewState({
           anchor,
+          editorMode:
+            result.documentKind === "text" || result.mode === "sourceOnly"
+              ? "source"
+              : currentTab?.current.path === document.path
+                ? currentTab.current.view.editorMode
+                : "visual",
           selectionFrom: anchorPosition,
           selectionTo: anchorPosition,
+          visualSelectionFrom: anchorPosition,
+          visualSelectionTo: anchorPosition,
         });
-        const currentState = appStateRef.current;
-        const currentTab = selectActiveTab(currentState);
 
-        if (disposition === "current" && currentTab) {
-          if (currentTab.current.path === path) {
-            dispatch(updateView(currentTab.id, targetView));
-          } else {
-            dispatch(
+        // An explicit Markdown navigation must not replace a kept/edited page.
+        // Its destination is a new preview tab, so subsequent ordinary links can
+        // replace that preview. Same-document anchors always stay in their tab.
+        const keepSourceTab =
+          target.markdownLink &&
+          disposition === "current" &&
+          currentTab &&
+          currentTab.current.path !== document.path &&
+          (!currentTab.preview ||
+            currentState.sessions[currentTab.current.documentId]?.dirty);
+        const focusDestination = focusedGroupAfterRead === groupId;
+
+        let targetTabId: string;
+        if (target.treePreview) {
+          const next = commitAction(
+            openPreviewTab(
+              nextTabId(),
+              document,
+              groupId,
+              target.keepOpen,
+              focusDestination,
+            ),
+          );
+          const group = selectEditorGroups(next).find((item) => item.id === groupId);
+          if (!group?.activeTab) return;
+          targetTabId = group.activeTab.id;
+        } else if (disposition === "current" && currentTab && !keepSourceTab) {
+          targetTabId = currentTab.id;
+          if (currentTab.current.path !== document.path || anchor) {
+            commitAction(
               openInCurrent(currentTab.id, document, currentTab.current.view, targetView),
             );
           }
         } else {
-          dispatch(
+          targetTabId = nextTabId();
+          commitAction(
             openInNewTab(
-              nextTabId(),
+              targetTabId,
               document,
               disposition !== "newBackground",
               targetView,
+              groupId,
+              Boolean(keepSourceTab),
+              focusDestination,
             ),
           );
         }
-        if (anchor && disposition !== "newBackground") {
-          setEditorReveal({
-            documentId: document.path,
-            position: anchorPosition,
-            requestId: revealCounter.current++,
-          });
-        }
+        setEditorRevealForTab(
+          targetTabId,
+          anchor
+            ? {
+                documentId: document.path,
+                anchor,
+                headingText: anchorHeading,
+                position: anchorPosition,
+                requestId: revealCounter.current++,
+              }
+            : null,
+        );
+        setCodeTargetLines((current) => {
+          const next = { ...current };
+          if (targetLine) next[targetTabId] = targetLine;
+          else delete next[targetTabId];
+          return next;
+        });
         setStatus(
           disposition === "newBackground"
-            ? `${fileName(path)} 已在后台标签页打开`
+            ? t("status.openedBackground", { name: fileName(path) })
             : result.mode === "sourceOnly"
-              ? `${fileName(path)} 已用纯源码模式打开`
-              : `${fileName(path)} 已打开`,
+              ? t("status.openedSource", { name: fileName(path) })
+              : t("status.opened", { name: fileName(path) }),
         );
+        const containingWorkspace = workspaces
+          .filter(
+            (item) =>
+              result.path === item.selection.path ||
+              result.path.startsWith(`${item.selection.path.replace(/\/$/u, "")}/`),
+          )
+          .sort(
+            (left, right) => right.selection.path.length - left.selection.path.length,
+          )[0];
+        setWorkspaceHistory((current) => {
+          let next = rememberFile(
+            current,
+            { path: result.path, name: fileName(result.path) },
+            Date.now(),
+          );
+          if (
+            containingWorkspace &&
+            disposition !== "newBackground" &&
+            focusedGroupAfterRead === groupId
+          ) {
+            next = activateRememberedWorkspace(next, containingWorkspace.selection.path);
+          }
+          return next;
+        });
         setQuickOpenVisible(false);
       } catch (error) {
-        setStatus(`打开失败：${readableError(error)}`);
+        if (requestIsCurrent()) {
+          setStatus(t("status.openFailed", { error: readableError(error) }));
+        }
       } finally {
         setBusy(false);
       }
     },
-    [adapter, nextTabId],
+    [adapter, commitAction, nextTabId, setEditorRevealForTab, t, workspaces],
   );
 
   const openWorkspace = useCallback(async () => {
@@ -289,121 +1391,1540 @@ export function AppShell({
     try {
       const selection = await adapter.pickWorkspace();
       if (!selection) {
-        setStatus("已取消打开工作区");
+        setStatus(t("status.workspaceCancelled"));
         return;
       }
-      const nodes = await adapter.listWorkspace(selection.path);
-      setWorkspace(selection);
-      setWorkspaceNodes(nodes);
-      setStatus(`已打开工作区：${selection.name}`);
+      await addWorkspace(selection);
+      setStatus(t("status.workspaceOpened", { name: selection.name }));
     } catch (error) {
-      setStatus(`工作区打开失败：${readableError(error)}`);
+      setStatus(t("status.workspaceFailed", { error: readableError(error) }));
     } finally {
       setBusy(false);
     }
-  }, [adapter]);
+  }, [adapter, addWorkspace, t]);
 
-  const saveActiveDocument = useCallback(async () => {
-    const currentState = appStateRef.current;
-    const tab = selectActiveTab(currentState);
-    const session = tab ? selectCurrentSession(currentState, tab.id) : undefined;
-    if (!session) return;
-
-    setStatus(`正在保存 ${fileName(session.path)}…`);
-    try {
-      await adapter.saveDocument(session.path, session.text);
-      dispatch(markDocumentSaved(session.id, session.text, Date.now()));
-      setStatus(`${fileName(session.path)} 已保存`);
-    } catch (error) {
-      setStatus(`保存失败：${readableError(error)}`);
-    }
-  }, [adapter]);
-
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setQuickOpenVisible(false);
+  const reopenWorkspace = useCallback(
+    async (selection: WorkspaceSelection) => {
+      setBusy(true);
+      try {
+        await addWorkspace(selection);
+        setStatus(t("status.workspaceOpened", { name: selection.name }));
+      } catch (error) {
+        setStatus(t("status.workspaceFailed", { error: readableError(error) }));
+      } finally {
+        setBusy(false);
       }
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "s") {
-        event.preventDefault();
-        void saveActiveDocument();
-      }
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
-        event.preventDefault();
-        if (workspace) setQuickOpenVisible(true);
-        else void openWorkspace();
-      }
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [openWorkspace, saveActiveDocument, workspace]);
+    },
+    [addWorkspace, t],
+  );
 
-  const closeTab = useCallback((tab: Tab) => {
-    const state = appStateRef.current;
-    const session = state.sessions[tab.current.documentId];
-    const otherReferences = state.tabOrder.some(
-      (tabId) => tabId !== tab.id && state.tabs[tabId]?.current.documentId === session?.id,
+  const removeWorkspace = useCallback(
+    (selection: WorkspaceSelection) => {
+      closedWorkspaceRestorePathsRef.current.add(selection.path);
+      workspaceVisibilityRequestsRef.current.set(
+        selection.path,
+        (workspaceVisibilityRequestsRef.current.get(selection.path) ?? 0) + 1,
+      );
+      setWorkspaces((current) =>
+        current.filter((item) => item.selection.path !== selection.path),
+      );
+      setWorkspaceHistory((current) => forgetOpenWorkspace(current, selection.path));
+      setStatus(t("status.workspaceClosed", { name: selection.name }));
+    },
+    [t],
+  );
+
+  const newDocument = useCallback(
+    (kind: "markdown" | "text" = "markdown", groupId?: string) => {
+      const index = untitledCounter.current++;
+      const extension = kind === "markdown" ? "md" : "txt";
+      const baseName = locale === "zh-CN" ? `未命名-${index}` : `Untitled-${index}`;
+      const name = `${baseName}.${extension}`;
+      const path = `untitled://${name}`;
+      const tabId = nextTabId();
+      commitAction(
+        openInNewTab(
+          tabId,
+          {
+            path,
+            text: "",
+            diskMtimeMs: 0,
+            mode: "normal",
+            kind,
+            language: kind === "markdown" ? "markdown" : "text",
+          },
+          true,
+          createViewState({ editorMode: kind === "markdown" ? "visual" : "source" }),
+          groupId,
+        ),
+      );
+      setEditorRevealForTab(tabId, null);
+      setStatus(t("status.created", { name }));
+      setMoreMenuVisible(false);
+    },
+    [commitAction, locale, nextTabId, setEditorRevealForTab, t],
+  );
+
+  const changeWorkspaceHiddenFiles = async (rootPath: string, showHidden: boolean) => {
+    const previous = getWorkspaceShowHidden(workspaceHistoryRef.current, rootPath);
+    const request = (workspaceVisibilityRequestsRef.current.get(rootPath) ?? 0) + 1;
+    workspaceVisibilityRequestsRef.current.set(rootPath, request);
+    const nextHistory = setWorkspaceShowHidden(
+      workspaceHistoryRef.current,
+      rootPath,
+      showHidden,
     );
-    if (
-      session?.dirty &&
-      !otherReferences &&
-      !window.confirm(`${fileName(session.path)} 尚未保存，仍然关闭这个标签页吗？`)
-    ) {
-      return;
-    }
-    dispatch(closeTabAction(tab.id));
-  }, []);
-
-  const handleInternalLink = (target: string, disposition: LinkDisposition) => {
-    const session = activeSession;
-    if (!session) return;
-    const resolved = resolveWorkspaceLink(session.path, target, workspaceNodes);
-    if (resolved.kind === "internal") {
-      void openDocument(resolved.path, disposition, resolved.anchor);
-    } else if (resolved.kind === "external") {
-      window.open(resolved.href, "_blank", "noopener,noreferrer");
-      setStatus("已交给浏览器打开外部链接");
-    } else {
-      setStatus(`没有找到链接目标：${target}`);
+    workspaceHistoryRef.current = nextHistory;
+    setWorkspaceHistory(nextHistory);
+    try {
+      await refreshWorkspaceFiles(rootPath);
+    } catch (error) {
+      if (workspaceVisibilityRequestsRef.current.get(rootPath) !== request) return;
+      setWorkspaceHistory((current) => setWorkspaceShowHidden(current, rootPath, previous));
+      setStatus(t("status.openFailed", { error: readableError(error) }));
     }
   };
 
-  const pasteClipboardImage = useCallback(async (): Promise<string> => {
-    const state = appStateRef.current;
-    const tab = selectActiveTab(state);
-    const session = tab ? selectCurrentSession(state, tab.id) : undefined;
-    if (!session) throw new Error("请先保存文档，再粘贴截图");
-    const saved = await adapter.saveClipboardImage(session.path);
-    setStatus(`截图已保存到 ${saved.markdownUri}`);
-    return `![](${saved.markdownUri})`;
-  }, [adapter]);
+  const openSingleFile = useCallback(async () => {
+    restoreCancelledRef.current = true;
+    setBusy(true);
+    try {
+      const selection = await adapter.pickDocument();
+      if (!selection) {
+        setStatus(t("status.workspaceCancelled"));
+        return;
+      }
+      await openDocument(selection.path, "newForeground");
+    } catch (error) {
+      setStatus(t("status.openFailed", { error: readableError(error) }));
+    } finally {
+      setBusy(false);
+    }
+  }, [adapter, openDocument, t]);
 
-  const wordCount = activeSession
-    ? activeSession.text.trim()
-      ? activeSession.text.trim().split(/\s+/u).length
-      : 0
-    : 0;
+  const refreshWorkspaceContaining = useCallback(
+    async (path: string) => {
+      const owner = workspaces
+        .filter((item) => path.startsWith(`${item.selection.path.replace(/\/$/u, "")}/`))
+        .sort((left, right) => right.selection.path.length - left.selection.path.length)[0];
+      if (!owner) return;
+      try {
+        await refreshWorkspaceFiles(owner.selection.path);
+      } catch {
+        // A successful save must not be reported as failed only because the tree refresh did.
+      }
+    },
+    [refreshWorkspaceFiles, workspaces],
+  );
+
+  const revealInFileManager = useCallback(
+    async (path: string) => {
+      try {
+        await adapter.revealInFileManager(path);
+        setStatus(t("status.revealed", { name: fileName(path) }));
+      } catch (error) {
+        setStatus(t("status.revealFailed", { error: readableError(error) }));
+      }
+    },
+    [adapter, t],
+  );
+
+  const copyPath = useCallback(
+    async (path: string) => {
+      try {
+        await copyText(path);
+        setStatus(t("status.pathCopied", { path }));
+      } catch (error) {
+        setStatus(t("status.pathCopyFailed", { error: readableError(error) }));
+      }
+    },
+    [t],
+  );
+
+  const createWorkspaceFile = useCallback(
+    async (owner: WorkspaceSelection, directoryPath: string, requestedFileName: string) => {
+      setBusy(true);
+      try {
+        const created = await adapter.createWorkspaceTextFile(
+          owner.path,
+          directoryPath,
+          requestedFileName,
+        );
+        if (created.status === "blocked") {
+          throw new Error(t("status.openFailedUtf8"));
+        }
+        const document = toOpenDocument(created);
+        const tabId = nextTabId();
+        dispatch(
+          openInNewTab(
+            tabId,
+            document,
+            true,
+            createViewState({
+              editorMode:
+                created.documentKind === "text" || created.mode === "sourceOnly"
+                  ? "source"
+                  : "visual",
+            }),
+          ),
+        );
+        setEditorRevealForTab(tabId, null);
+        activateWorkspace(owner.path);
+        setWorkspaceHistory((current) =>
+          activateRememberedWorkspace(
+            rememberFile(current, {
+              path: created.path,
+              name: fileName(created.path),
+            }),
+            owner.path,
+          ),
+        );
+        setStatus(t("status.workspaceFileCreated", { name: fileName(created.path) }));
+        void refreshWorkspaceFiles(owner.path).catch(() => undefined);
+      } catch (error) {
+        setStatus(t("status.workspaceFileCreateFailed", { error: readableError(error) }));
+        throw error;
+      } finally {
+        setBusy(false);
+      }
+    },
+    [
+      activateWorkspace,
+      adapter,
+      refreshWorkspaceFiles,
+      nextTabId,
+      setEditorRevealForTab,
+      t,
+    ],
+  );
+
+  const createWorkspaceFolder = useCallback(
+    async (owner: WorkspaceSelection, directoryPath: string, folderName: string) => {
+      if (!adapter.createWorkspaceFolder) return;
+      setBusy(true);
+      try {
+        await adapter.createWorkspaceFolder(owner.path, directoryPath, folderName);
+        activateWorkspace(owner.path);
+        setStatus(t("status.workspaceFolderCreated", { name: folderName }));
+        // The folder already exists even if a subsequent tree refresh fails.
+        void refreshWorkspaceFiles(owner.path).catch(() => undefined);
+      } catch (error) {
+        setStatus(t("status.workspaceFolderCreateFailed", { error: readableError(error) }));
+        throw error;
+      } finally {
+        setBusy(false);
+      }
+    },
+    [activateWorkspace, adapter, refreshWorkspaceFiles, t],
+  );
+
+  const invalidateScheduledAutoSave = useCallback((documentId: string) => {
+    const scheduled = autoSaveTimersRef.current.get(documentId);
+    if (scheduled) {
+      window.clearTimeout(scheduled.timer);
+      autoSaveTimersRef.current.delete(documentId);
+    }
+    const nextGeneration = (autoSaveGenerationsRef.current.get(documentId) ?? 0) + 1;
+    autoSaveGenerationsRef.current.set(documentId, nextGeneration);
+  }, []);
+
+  const requestWorkspaceDelete = useCallback(
+    (owner: WorkspaceSelection, node: WorkspaceNode) => {
+      const state = appStateRef.current;
+      const affectedDocumentIds = Object.values(state.sessions)
+        .filter((session) => pathIsAtOrBelow(session.path, node.path))
+        .map((session) => session.id);
+      const dirtyPaths = affectedDocumentIds.flatMap((documentId) => {
+        const session = state.sessions[documentId];
+        return session?.dirty ? [session.path] : [];
+      });
+      setPendingWorkspaceDelete({
+        owner,
+        node,
+        affectedDocumentIds,
+        dirtyPaths,
+      });
+    },
+    [],
+  );
+
+  const cancelWorkspaceDelete = useCallback(() => {
+    if (busy) return;
+    setPendingWorkspaceDelete(null);
+  }, [busy]);
+
+  const confirmWorkspaceDelete = useCallback(async () => {
+    const pending = pendingWorkspaceDelete;
+    if (!pending || busy) return;
+    setBusy(true);
+    try {
+      await adapter.moveWorkspaceEntryToTrash(pending.owner.path, pending.node.path);
+      for (const documentId of pending.affectedDocumentIds) {
+        invalidateScheduledAutoSave(documentId);
+      }
+      if (pending.affectedDocumentIds.length > 0) {
+        const action = discardDocuments(pending.affectedDocumentIds);
+        appStateRef.current = appStateReducer(appStateRef.current, action);
+        dispatch(action);
+      }
+      setEditorReveals((current) =>
+        Object.fromEntries(
+          Object.entries(current).filter(
+            ([, reveal]) => !pending.affectedDocumentIds.includes(reveal.documentId),
+          ),
+        ),
+      );
+      setCodeTargetLines((current) =>
+        Object.fromEntries(
+          Object.entries(current).filter(([tabId]) =>
+            Boolean(appStateRef.current.tabs[tabId]),
+          ),
+        ),
+      );
+      setLocalPreview((current) =>
+        current?.preview && pathIsAtOrBelow(current.preview.path, pending.node.path)
+          ? null
+          : current,
+      );
+      setWorkspaces((current) =>
+        current.map((item) =>
+          item.selection.path === pending.owner.path
+            ? {
+                ...item,
+                nodes: withoutWorkspaceEntry(item.nodes, pending.node.path),
+              }
+            : item,
+        ),
+      );
+      try {
+        const nodes = await listWorkspaceFiles(pending.owner.path);
+        setWorkspaces((current) =>
+          current.map((item) =>
+            item.selection.path === pending.owner.path ? { ...item, nodes } : item,
+          ),
+        );
+      } catch {
+        // The item is already in Trash; keep the local tree update if refresh fails.
+      }
+      setPendingWorkspaceDelete(null);
+      setStatus(t("status.workspaceEntryTrashed", { name: pending.node.name }));
+    } catch (error) {
+      setPendingWorkspaceDelete(null);
+      setStatus(
+        t("status.workspaceEntryTrashFailed", {
+          name: pending.node.name,
+          error: readableError(error),
+        }),
+      );
+    } finally {
+      setBusy(false);
+    }
+  }, [
+    adapter,
+    busy,
+    invalidateScheduledAutoSave,
+    listWorkspaceFiles,
+    pendingWorkspaceDelete,
+    t,
+  ]);
+
+  const enqueueDocumentSave = useCallback(function enqueueDocumentSave<T>(
+    documentId: string,
+    operation: () => Promise<T>,
+  ): Promise<T> {
+    const queues = saveQueuesRef.current;
+    const previous = queues.get(documentId) ?? Promise.resolve();
+    const completed = previous.then(operation);
+    const tail = completed.then(
+      () => undefined,
+      () => undefined,
+    );
+    queues.set(documentId, tail);
+    void tail.then(() => {
+      if (queues.get(documentId) === tail) queues.delete(documentId);
+    });
+    return completed;
+  }, []);
+
+  const externalSyncRef = useRef<{
+    running: boolean;
+    pending: Set<string> | null | undefined;
+    disposed: boolean;
+  }>({ running: false, pending: undefined, disposed: false });
+  useEffect(() => {
+    const sync = externalSyncRef.current;
+    sync.disposed = false;
+    return () => {
+      sync.disposed = true;
+      sync.pending = undefined;
+    };
+  }, []);
+
+  const synchronizeFileSystem = useCallback(
+    async (paths: readonly string[] | null) => {
+      const sync = externalSyncRef.current;
+      if (sync.disposed) return;
+      sync.pending =
+        paths === null || sync.pending === null
+          ? null
+          : new Set([...(sync.pending ?? []), ...paths]);
+      if (sync.running) return;
+      sync.running = true;
+      try {
+        while (sync.pending !== undefined && !sync.disposed) {
+          const changed = sync.pending;
+          sync.pending = undefined;
+          // Only roots affected by an event are relisted; focus/fallback checks use all.
+          const affected = workspacesRef.current.filter(
+            ({ selection }) =>
+              !changed ||
+              [...changed].some(
+                (path) =>
+                  pathIsAtOrBelow(path, selection.path) ||
+                  pathIsAtOrBelow(selection.path, path),
+              ),
+          );
+          await Promise.all(
+            affected.map(async ({ selection }) => {
+              const refresh = refreshWorkspaceFiles(selection.path);
+              const request = workspaceVisibilityRequestsRef.current.get(selection.path);
+              try {
+                await refresh;
+              } catch {
+                if (
+                  sync.disposed ||
+                  workspaceVisibilityRequestsRef.current.get(selection.path) !== request ||
+                  !workspacesRef.current.some(
+                    (item) => item.selection.path === selection.path,
+                  )
+                )
+                  return;
+                setWorkspaces((current) =>
+                  current.map((item) =>
+                    item.selection.path === selection.path ? { ...item, nodes: [] } : item,
+                  ),
+                );
+                setStatus(
+                  translateRef.current("external.workspaceUnavailable", {
+                    name: selection.name,
+                  }),
+                );
+              }
+            }),
+          );
+          if (sync.disposed) break;
+          try {
+            await synchronizeDocuments({
+              adapter,
+              getState: () => appStateRef.current,
+              commit: (action) => {
+                if (!sync.disposed) commitAction(action);
+              },
+              isSaving: (id) => sync.disposed || saveQueuesRef.current.has(id),
+              onNotice: (session, kind) => {
+                if (!sync.disposed)
+                  setStatus(
+                    translateRef.current(
+                      kind === "reloaded"
+                        ? "external.reloadedStatus"
+                        : "external.changedStatus",
+                      { name: fileName(session.path) },
+                    ),
+                  );
+              },
+            });
+          } catch {
+            if (!sync.disposed) setStatus(translateRef.current("external.watchFailed"));
+          }
+        }
+      } finally {
+        sync.running = false;
+      }
+    },
+    [adapter, commitAction, refreshWorkspaceFiles],
+  );
+
+  useFileSystemChanges({
+    adapter,
+    workspaceRoots: workspaces.map(({ selection }) => selection.path),
+    documentPaths: referencedFilePaths(appState),
+    onChange: (paths) => {
+      void synchronizeFileSystem(paths);
+    },
+    onError: () => setStatus(translateRef.current("external.watchFailed")),
+  });
+
+  const reportExternalSaveConflict = useCallback(
+    (documentId: string, error: unknown) => {
+      if (
+        typeof error !== "object" ||
+        error === null ||
+        !("code" in error) ||
+        error.code !== "externalChange"
+      )
+        return false;
+      commitAction(markDocumentExternalChange(documentId, { status: "modified" }));
+      setStatus(t("external.changedStatus", { name: fileName(documentId) }));
+      void synchronizeFileSystem([]);
+      return true;
+    },
+    [commitAction, synchronizeFileSystem, t],
+  );
+
+  const saveActiveDocument = useCallback(
+    async (forceSaveAs = false, targetDocumentId?: string) => {
+      const currentState = appStateRef.current;
+      const tab = selectActiveTab(currentState);
+      const session = targetDocumentId
+        ? currentState.sessions[targetDocumentId]
+        : tab
+          ? selectCurrentSession(currentState, tab.id)
+          : undefined;
+      if (!session) return;
+
+      if (!forceSaveAs && session.externalChange) {
+        setStatus(t("external.changedStatus", { name: fileName(session.path) }));
+        return;
+      }
+
+      const stillOwned = captureDocumentOwnership(currentState, session.id);
+
+      invalidateScheduledAutoSave(session.id);
+      setSaveFailure(null);
+      setStatus(t("status.saving", { name: fileName(session.path) }));
+      try {
+        if (forceSaveAs || isUntitledPath(session.path)) {
+          const savedText = session.text;
+          const saveState = appStateRef.current;
+          const referenced = referencedDocumentIds(saveState);
+          const excludedPaths = Object.values(saveState.sessions)
+            .filter(
+              (candidate) =>
+                candidate.id !== session.id &&
+                referenced.has(candidate.id) &&
+                !isUntitledPath(candidate.path),
+            )
+            .map((candidate) => candidate.path);
+          const saveAsResult = await enqueueDocumentSave(session.id, async () => {
+            if (!stillOwned(appStateRef.current)) return null;
+            const saved = await adapter.saveDocumentAs(
+              fileName(session.path),
+              savedText,
+              excludedPaths,
+            );
+            if (!saved) return null;
+            const latestState = appStateRef.current;
+            if (
+              saved.path !== session.id &&
+              referencedDocumentIds(latestState).has(saved.path)
+            ) {
+              throw new Error(
+                locale === "zh-CN"
+                  ? "目标文件已经在另一个标签页中打开"
+                  : "The destination is already open in another tab",
+              );
+            }
+
+            const reopened = await adapter.openDocument(saved.path);
+            const relocated: OpenDocument =
+              reopened.status === "editable"
+                ? { ...toOpenDocument(reopened), diskMtimeMs: Date.now() }
+                : {
+                    path: saved.path,
+                    text: savedText,
+                    diskMtimeMs: Date.now(),
+                    mode: "sourceOnly",
+                    kind: /\.(?:md|markdown)$/iu.test(saved.path) ? "markdown" : "text",
+                    language: session.language,
+                  };
+            return { relocated: { ...relocated, diskRevision: saved.diskRevision }, saved };
+          });
+          if (!saveAsResult) {
+            setStatus(t("status.saveCancelled"));
+            return;
+          }
+          if (stillOwned(appStateRef.current))
+            commitAction(relocateDocument(session.id, saveAsResult.relocated, savedText));
+          setSaveFailure(null);
+          setWorkspaceHistory((current) =>
+            rememberFile(current, {
+              path: saveAsResult.saved.path,
+              name: fileName(saveAsResult.saved.path),
+            }),
+          );
+          await refreshWorkspaceContaining(saveAsResult.saved.path);
+          setStatus(t("status.saved", { name: fileName(saveAsResult.saved.path) }));
+          return;
+        }
+
+        const savedText = session.text;
+        await enqueueDocumentSave(session.id, async () => {
+          if (!stillOwned(appStateRef.current)) return;
+          const latest = appStateRef.current.sessions[session.id];
+          if (!latest || latest.externalChange) throw { code: "externalChange" };
+          const saved =
+            latest.diskRevision === undefined
+              ? await adapter.saveDocument(session.path, savedText)
+              : await adapter.saveDocument(session.path, savedText, latest.diskRevision);
+          if (stillOwned(appStateRef.current))
+            commitAction(
+              markDocumentSaved(session.id, savedText, Date.now(), saved.diskRevision),
+            );
+        });
+        setSaveFailure(null);
+        setStatus(t("status.saved", { name: fileName(session.path) }));
+      } catch (error) {
+        if (!stillOwned(appStateRef.current)) return;
+        if (reportExternalSaveConflict(session.id, error)) return;
+        setSaveFailure({ documentId: session.id, error: readableError(error) });
+        setStatus(t("status.saveFailed", { error: readableError(error) }));
+      }
+    },
+    [
+      adapter,
+      commitAction,
+      enqueueDocumentSave,
+      invalidateScheduledAutoSave,
+      locale,
+      refreshWorkspaceContaining,
+      reportExternalSaveConflict,
+      t,
+    ],
+  );
+
+  const autoSaveDocument = useCallback(
+    async (documentId: string, expectedText: string, generation: number) => {
+      const stillOwned = captureDocumentOwnership(appStateRef.current, documentId);
+      const session = appStateRef.current.sessions[documentId];
+      if (
+        !session?.dirty ||
+        !stillOwned(appStateRef.current) ||
+        session.externalChange ||
+        isUntitledPath(session.path) ||
+        session.text !== expectedText ||
+        autoSaveGenerationsRef.current.get(documentId) !== generation
+      ) {
+        return;
+      }
+      try {
+        const saved = await enqueueDocumentSave(documentId, async () => {
+          const latest = appStateRef.current.sessions[documentId];
+          if (
+            !latest?.dirty ||
+            !stillOwned(appStateRef.current) ||
+            latest.externalChange ||
+            isUntitledPath(latest.path) ||
+            latest.text !== expectedText ||
+            autoSaveGenerationsRef.current.get(documentId) !== generation
+          ) {
+            return false;
+          }
+          const result =
+            latest.diskRevision === undefined
+              ? await adapter.saveDocument(latest.path, expectedText)
+              : await adapter.saveDocument(latest.path, expectedText, latest.diskRevision);
+          if (stillOwned(appStateRef.current))
+            commitAction(
+              markDocumentSaved(session.id, expectedText, Date.now(), result.diskRevision),
+            );
+          return true;
+        });
+        if (!saved) return;
+        if (autoSaveGenerationsRef.current.get(documentId) !== generation) return;
+        setSaveFailure((current) => (current?.documentId === documentId ? null : current));
+        setStatus(t("status.autoSaved", { name: fileName(session.path) }));
+      } catch (error) {
+        if (!stillOwned(appStateRef.current)) return;
+        if (reportExternalSaveConflict(documentId, error)) return;
+        if (autoSaveGenerationsRef.current.get(documentId) !== generation) return;
+        setSaveFailure({ documentId, error: readableError(error) });
+        setStatus(t("status.saveFailed", { error: readableError(error) }));
+      }
+    },
+    [adapter, commitAction, enqueueDocumentSave, reportExternalSaveConflict, t],
+  );
+
+  const resolveExternalChange = useCallback(
+    async (documentId: string, overwrite: boolean) => {
+      const stillOwned = captureDocumentOwnership(appStateRef.current, documentId);
+      const session = appStateRef.current.sessions[documentId];
+      if (
+        !session?.externalChange ||
+        !referencedDocumentIds(appStateRef.current).has(documentId)
+      )
+        return;
+      invalidateScheduledAutoSave(documentId);
+      try {
+        if (overwrite) {
+          const revision = session.externalChange.revision;
+          if (!revision || session.externalChange.status !== "modified") return;
+          await enqueueDocumentSave(documentId, async () => {
+            if (!stillOwned(appStateRef.current)) return;
+            const latest = appStateRef.current.sessions[documentId];
+            if (
+              !latest ||
+              latest.text !== session.text ||
+              latest.externalChange?.revision !== revision
+            ) {
+              setStatus(t("external.retry"));
+              return;
+            }
+            const saved = await adapter.saveDocument(session.path, session.text, revision);
+            if (stillOwned(appStateRef.current))
+              commitAction(
+                markDocumentSaved(documentId, session.text, Date.now(), saved.diskRevision),
+              );
+            setSaveFailure(null);
+            setStatus(t("status.saved", { name: fileName(session.path) }));
+          });
+          return;
+        }
+        // Capture the consented buffer before awaiting I/O; later edits win.
+        const result = await adapter.openDocument(session.path);
+        const latest = appStateRef.current.sessions[documentId];
+        if (
+          !latest ||
+          !stillOwned(appStateRef.current) ||
+          latest.text !== session.text ||
+          latest.diskRevision !== session.diskRevision ||
+          saveQueuesRef.current.has(documentId)
+        ) {
+          setStatus(t("external.retry"));
+          return;
+        }
+        if (result.status !== "editable") {
+          commitAction(
+            markDocumentExternalChange(documentId, {
+              status: "blocked",
+              revision: session.externalChange.revision,
+            }),
+          );
+          return;
+        }
+        commitAction(
+          reloadDocument(
+            documentId,
+            toOpenDocument(result),
+            session.text,
+            session.diskRevision,
+            true,
+          ),
+        );
+        setSaveFailure(null);
+        setStatus(t("external.reloadedStatus", { name: fileName(session.path) }));
+      } catch (error) {
+        if (!stillOwned(appStateRef.current)) return;
+        if (reportExternalSaveConflict(documentId, error)) return;
+        setSaveFailure({ documentId, error: readableError(error) });
+        setStatus(t("external.retry"));
+        void synchronizeFileSystem([]);
+      }
+    },
+    [
+      adapter,
+      commitAction,
+      enqueueDocumentSave,
+      invalidateScheduledAutoSave,
+      reportExternalSaveConflict,
+      synchronizeFileSystem,
+      t,
+    ],
+  );
+
+  useEffect(() => {
+    const timers = autoSaveTimersRef.current;
+    if (settings.autoSaveMode !== "afterDelay") {
+      const documentIds = new Set([
+        ...timers.keys(),
+        ...autoSaveGenerationsRef.current.keys(),
+      ]);
+      for (const documentId of documentIds) invalidateScheduledAutoSave(documentId);
+      return;
+    }
+
+    const referenced = referencedDocumentIds(appState);
+    const eligible = new Set<string>();
+    const delayMs = settings.autoSaveDelaySeconds * 1000;
+    for (const documentId of referenced) {
+      const session = appState.sessions[documentId];
+      if (!session?.dirty || session.externalChange || isUntitledPath(session.path))
+        continue;
+      eligible.add(documentId);
+      const existing = timers.get(documentId);
+      if (existing?.text === session.text && existing.delayMs === delayMs) continue;
+      if (existing) window.clearTimeout(existing.timer);
+      const text = session.text;
+      const generation = (autoSaveGenerationsRef.current.get(documentId) ?? 0) + 1;
+      autoSaveGenerationsRef.current.set(documentId, generation);
+      const timer = window.setTimeout(() => {
+        void autoSaveDocument(documentId, text, generation).finally(() => {
+          if (timers.get(documentId)?.generation === generation) {
+            timers.delete(documentId);
+          }
+        });
+      }, delayMs);
+      timers.set(documentId, { delayMs, generation, text, timer });
+    }
+
+    for (const [documentId] of timers) {
+      if (eligible.has(documentId)) continue;
+      invalidateScheduledAutoSave(documentId);
+    }
+  }, [
+    appState,
+    autoSaveDocument,
+    invalidateScheduledAutoSave,
+    settings.autoSaveDelaySeconds,
+    settings.autoSaveMode,
+  ]);
+
+  useEffect(
+    () => () => {
+      const documentIds = new Set([
+        ...autoSaveTimersRef.current.keys(),
+        ...autoSaveGenerationsRef.current.keys(),
+      ]);
+      for (const documentId of documentIds) {
+        invalidateScheduledAutoSave(documentId);
+      }
+      autoSaveTimersRef.current.clear();
+    },
+    [invalidateScheduledAutoSave],
+  );
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (confirmationPendingRef.current || hasImageReferenceDialog()) {
+        if (
+          (event.metaKey || event.ctrlKey) &&
+          ["s", "n", "o", "k", "f", ",", "/", "w", "q"].includes(event.key.toLowerCase())
+        ) {
+          event.preventDefault();
+          event.stopPropagation();
+        }
+        return;
+      }
+      if (event.key === "Escape") {
+        setQuickOpenVisible(false);
+        setMoreMenuVisible(false);
+        setWorkspaceMenuVisible(false);
+        closeLocalPreview();
+      }
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "f") {
+        event.preventDefault();
+        event.stopPropagation();
+        if (!settingsVisible && !quickOpenVisible && !visual) findInActivePage();
+        return;
+      }
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "s") {
+        event.preventDefault();
+        void saveActiveDocument(event.shiftKey);
+      }
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "n") {
+        event.preventDefault();
+        newDocument("markdown");
+      }
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "o") {
+        event.preventDefault();
+        if (event.shiftKey) void openWorkspace();
+        else void openSingleFile();
+      }
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        if (workspaces.length > 0) setQuickOpenVisible(true);
+        else void openWorkspace();
+      }
+      if ((event.metaKey || event.ctrlKey) && event.key === ",") {
+        event.preventDefault();
+        setSettingsVisible(true);
+      }
+      if ((event.metaKey || event.ctrlKey) && event.key === "/" && activeTab) {
+        event.preventDefault();
+        event.stopPropagation();
+        const currentState = appStateRef.current;
+        const tab = selectActiveTab(currentState);
+        const session = tab ? selectCurrentSession(currentState, tab.id) : undefined;
+        if (!tab || session?.mode === "sourceOnly" || session?.kind === "text") return;
+        const nextMode = tab.current.view.editorMode === "visual" ? "source" : "visual";
+        dispatch(
+          updateView(
+            tab.id,
+            createViewState({ ...tab.current.view, editorMode: nextMode }),
+          ),
+        );
+        setStatus(
+          nextMode === "visual" ? t("status.switchedVisual") : t("status.switchedSource"),
+        );
+      }
+    };
+    window.addEventListener("keydown", onKeyDown, { capture: true });
+    return () => window.removeEventListener("keydown", onKeyDown, { capture: true });
+  }, [
+    activeTab,
+    closeLocalPreview,
+    findInActivePage,
+    settingsVisible,
+    quickOpenVisible,
+    visual,
+    newDocument,
+    openSingleFile,
+    openWorkspace,
+    saveActiveDocument,
+    t,
+    workspaces.length,
+  ]);
+
+  const switchEditorMode = useCallback(
+    (nextMode: "visual" | "source") => {
+      const currentState = appStateRef.current;
+      const tab = selectActiveTab(currentState);
+      const session = tab ? selectCurrentSession(currentState, tab.id) : undefined;
+      if (
+        !tab ||
+        !session ||
+        session.kind === "text" ||
+        (session.mode === "sourceOnly" && nextMode === "visual")
+      ) {
+        return;
+      }
+      dispatch(
+        updateView(tab.id, createViewState({ ...tab.current.view, editorMode: nextMode })),
+      );
+      setStatus(
+        nextMode === "visual" ? t("status.switchedVisual") : t("status.switchedSource"),
+      );
+    },
+    [t],
+  );
+
+  useEffect(() => {
+    if (!adapter.listenNativeMenuAction) return undefined;
+    let disposed = false;
+    let dispose: (() => void) | undefined;
+    void adapter
+      .listenNativeMenuAction((actionId) => {
+        if (confirmationPendingRef.current || hasImageReferenceDialog()) return;
+        switch (actionId) {
+          case "file.new":
+            newDocument("markdown");
+            break;
+          case "file.open":
+            void openSingleFile();
+            break;
+          case "workspace.open":
+            void openWorkspace();
+            break;
+          case "file.save":
+            void saveActiveDocument();
+            break;
+          case "file.saveAs":
+            void saveActiveDocument(true);
+            break;
+          case "file.reveal": {
+            const state = appStateRef.current;
+            const tab = selectActiveTab(state);
+            const session = tab ? selectCurrentSession(state, tab.id) : undefined;
+            if (session && !isUntitledPath(session.path)) {
+              void revealInFileManager(session.path);
+            } else {
+              setStatus(t("status.revealUnavailable"));
+            }
+            break;
+          }
+          case "app.settings":
+            setSettingsVisible(true);
+            break;
+          case "view.toggleSource": {
+            const state = appStateRef.current;
+            const tab = selectActiveTab(state);
+            if (!tab) break;
+            switchEditorMode(
+              tab.current.view.editorMode === "visual" ? "source" : "visual",
+            );
+            break;
+          }
+          case "view.toggleSidebar":
+            setSidebarCollapsed((collapsed) => !collapsed);
+            break;
+          case "window.close":
+          case "app.quit":
+            requestNativeWindowClose();
+            break;
+          case "help.open":
+            setStatus(t("status.ready"));
+            break;
+          case "edit.find":
+            findInActivePage();
+            break;
+        }
+      })
+      .then((unlisten) => {
+        if (disposed) unlisten();
+        else dispose = unlisten;
+      })
+      .catch(() => undefined);
+    return () => {
+      disposed = true;
+      dispose?.();
+    };
+  }, [
+    adapter,
+    findInActivePage,
+    newDocument,
+    openSingleFile,
+    openWorkspace,
+    requestNativeWindowClose,
+    revealInFileManager,
+    saveActiveDocument,
+    switchEditorMode,
+    t,
+  ]);
+
+  const commitTabClose = useCallback(
+    (tabId: string) => {
+      const state = appStateRef.current;
+      setEditorRevealForTab(tabId, null);
+      closeLocalPreview();
+      if (state.tabOrder.length === 1) {
+        setStatus(t("status.ready"));
+      }
+      commitAction(closeTabAction(tabId));
+    },
+    [closeLocalPreview, commitAction, setEditorRevealForTab, t],
+  );
+
+  const closeTab = useCallback(
+    (tab: Tab) => {
+      const state = appStateRef.current;
+      const currentTab = state.tabs[tab.id] ?? tab;
+      const dirtyDocumentIds = tabDirtyDocumentIds(state, currentTab).filter(
+        (documentId) =>
+          !state.tabOrder.some((tabId) => {
+            const otherTab = state.tabs[tabId];
+            if (tabId === currentTab.id || !otherTab) return false;
+            return tabReferencesDocument(otherTab, documentId);
+          }),
+      );
+      if (dirtyDocumentIds.length > 0) {
+        setPendingCloseRequest({
+          kind: "tab",
+          tabId: currentTab.id,
+          dirtyPaths: dirtyDocumentIds.flatMap((documentId) => {
+            const session = state.sessions[documentId];
+            return session ? [session.path] : [];
+          }),
+        });
+        return;
+      }
+      commitTabClose(currentTab.id);
+    },
+    [commitTabClose],
+  );
+
+  const cancelPendingClose = useCallback(() => {
+    setPendingCloseRequest(null);
+  }, []);
+
+  const confirmPendingClose = useCallback(() => {
+    const request = pendingCloseRequest;
+    if (!request) return;
+    setPendingCloseRequest(null);
+    if (request.kind === "window") {
+      destroyNativeWindow();
+      return;
+    }
+    commitTabClose(request.tabId);
+  }, [commitTabClose, destroyNativeWindow, pendingCloseRequest]);
+
+  const loadLocalPreview = async (
+    reference: string,
+    left: number,
+    top: number,
+    documentPath = activeSession?.path,
+    sourceGroupId = appStateRef.current.activeEditorGroupId,
+  ) => {
+    if (!documentPath) return;
+    const requestId = ++localPreviewRequestRef.current;
+    setLocalPreview({ reference, sourceGroupId, left, top, loading: true });
+    try {
+      const preview = await adapter.previewLocalFile(reference, documentPath);
+      if (localPreviewRequestRef.current !== requestId) return;
+      setLocalPreview({ reference, sourceGroupId, left, top, loading: false, preview });
+    } catch (error) {
+      if (localPreviewRequestRef.current !== requestId) return;
+      setLocalPreview({
+        reference,
+        sourceGroupId,
+        left,
+        top,
+        loading: false,
+        error: readableError(error),
+      });
+    }
+  };
+
+  const rightOpenGuard = (sourceGroupId: string) => {
+    const initial = appStateRef.current;
+    const sourceIndex = initial.editorGroups.findIndex(
+      (group) => group.id === sourceGroupId,
+    );
+    const sourceTabId = initial.editorGroups[sourceIndex]?.activeTabId;
+    const sourcePath = sourceTabId ? initial.tabs[sourceTabId]?.current.path : undefined;
+    const destination =
+      initial.editorGroups[sourceIndex + 1] ??
+      (initial.editorGroups.length > 1 ? initial.editorGroups.at(-1) : undefined);
+    const groupOrder = initial.editorGroups.map((group) => group.id).join("|");
+    const openVersion = destination
+      ? documentOpenRequestsRef.current.get(destination.id)
+      : undefined;
+    return () => {
+      const current = appStateRef.current;
+      return (
+        !nativeCloseCommittedRef.current &&
+        current.editorGroups.map((group) => group.id).join("|") === groupOrder &&
+        current.editorGroups[sourceIndex]?.activeTabId === sourceTabId &&
+        (!sourceTabId || current.tabs[sourceTabId]?.current.path === sourcePath) &&
+        (!destination ||
+          (current.editorGroups.find((group) => group.id === destination.id)
+            ?.activeTabId === destination.activeTabId &&
+            documentOpenRequestsRef.current.get(destination.id) === openVersion))
+      );
+    };
+  };
+
+  const showCodeInRightGroup = async (
+    preview: LocalFilePreview,
+    requestId: number,
+    sourceGroupId: string,
+    requestIsCurrent: () => boolean,
+  ) => {
+    if (!requestIsCurrent()) return;
+    const result = await adapter.openDocument(preview.path);
+    if (sidePreviewRequestRef.current !== requestId || !requestIsCurrent()) return;
+    if (result.status !== "editable") {
+      setStatus(t("status.openFailed", { error: t("preview.unavailable") }));
+      return;
+    }
+    const next = commitAction({
+      type: "editor-group/open-right",
+      sourceGroupId,
+      newGroupId: `editor-group-${groupCounter.current++}`,
+      tabId: nextTabId(),
+      document: toOpenDocument(result),
+      focus: appStateRef.current.activeEditorGroupId === sourceGroupId,
+    });
+    const rightIndex = Math.min(
+      next.editorGroups.findIndex((group) => group.id === sourceGroupId) + 1,
+      next.editorGroups.length - 1,
+    );
+    const tabId = next.editorGroups[rightIndex]?.activeTabId;
+    if (tabId)
+      setCodeTargetLines((current) => {
+        const updated = { ...current };
+        if (preview.targetLine) updated[tabId] = preview.targetLine;
+        else delete updated[tabId];
+        return updated;
+      });
+    setWorkspaceHistory((current) =>
+      rememberFile(current, { path: result.path, name: fileName(result.path) }, Date.now()),
+    );
+    closeLocalPreview();
+    setStatus(t("status.previewOpenedRight", { name: fileName(preview.path) }));
+  };
+
+  const openLocalPreviewOnRight = async (preview: LocalFilePreview) => {
+    const sourceGroupId =
+      localPreview?.sourceGroupId ?? appStateRef.current.activeEditorGroupId;
+    const requestId = ++sidePreviewRequestRef.current;
+    const requestIsCurrent = rightOpenGuard(sourceGroupId);
+    setBusy(true);
+    try {
+      await showCodeInRightGroup(preview, requestId, sourceGroupId, requestIsCurrent);
+    } catch (error) {
+      if (sidePreviewRequestRef.current === requestId && requestIsCurrent())
+        setStatus(t("status.openFailed", { error: readableError(error) }));
+    } finally {
+      if (sidePreviewRequestRef.current === requestId) setBusy(false);
+    }
+  };
+
+  const openLocalReferenceOnRight = async (
+    reference: string,
+    documentPath = activeSession?.path,
+    sourceGroupId = appStateRef.current.activeEditorGroupId,
+  ) => {
+    if (!documentPath) return;
+    const requestId = ++sidePreviewRequestRef.current;
+    const requestIsCurrent = rightOpenGuard(sourceGroupId);
+    setBusy(true);
+    closeLocalPreview();
+    try {
+      const preview = await adapter.previewLocalFile(reference, documentPath);
+      if (sidePreviewRequestRef.current !== requestId) return;
+      await showCodeInRightGroup(preview, requestId, sourceGroupId, requestIsCurrent);
+    } catch (error) {
+      if (sidePreviewRequestRef.current === requestId && requestIsCurrent())
+        setStatus(t("status.openFailed", { error: readableError(error) }));
+    } finally {
+      if (sidePreviewRequestRef.current === requestId) setBusy(false);
+    }
+  };
+
+  useEffect(
+    () => () => {
+      clearLocalPreviewTimer();
+      localPreviewRequestRef.current += 1;
+    },
+    [clearLocalPreviewTimer],
+  );
+
+  const localReferenceAtEvent = (target: EventTarget | null) => {
+    const element = target instanceof Element ? target : null;
+    const code = element?.closest<HTMLElement>(".ProseMirror code");
+    if (!code || code.closest(".milkdown-code-block")) return null;
+    const tabId = code.closest<HTMLElement>("[data-tab-id]")?.dataset.tabId;
+    const documentPath = tabId ? appStateRef.current.tabs[tabId]?.current.path : undefined;
+    if (!documentPath) return null;
+    const sourceGroupId = tabId ? selectTabGroupId(appStateRef.current, tabId) : undefined;
+    const image = imageReferenceFromLink(documentPath, code.textContent ?? "");
+    if (image) return { code, image, reference: null, documentPath, sourceGroupId };
+    const reference = localFileReferenceFromText(code.textContent ?? "");
+    return reference ? { code, image: null, reference, documentPath, sourceGroupId } : null;
+  };
+
+  const handleEditorPointerOver = (event: ReactPointerEvent<HTMLElement>) => {
+    const match = localReferenceAtEvent(event.target);
+    if (!match?.reference) return;
+    clearLocalPreviewTimer();
+    const bounds = match.code.getBoundingClientRect();
+    localPreviewTimerRef.current = window.setTimeout(() => {
+      void loadLocalPreview(
+        match.reference.reference,
+        bounds.left,
+        bounds.bottom + 8,
+        match.documentPath,
+        match.sourceGroupId,
+      );
+    }, 320);
+  };
+
+  const handleEditorPointerOut = (event: ReactPointerEvent<HTMLElement>) => {
+    const match = localReferenceAtEvent(event.target);
+    if (!match) return;
+    const related = event.relatedTarget instanceof Element ? event.relatedTarget : null;
+    if (related?.closest(".local-file-preview-popover")) return;
+    clearLocalPreviewTimer();
+    localPreviewTimerRef.current = window.setTimeout(closeLocalPreview, 180);
+  };
+
+  const handleEditorClick = (event: ReactMouseEvent<HTMLElement>) => {
+    const match = localReferenceAtEvent(event.target);
+    if (!match) return;
+    event.preventDefault();
+    const bounds = match.code.getBoundingClientRect();
+    clearLocalPreviewTimer();
+    if (match.image) {
+      closeLocalPreview();
+      setVisual(match.image);
+      return;
+    }
+    if (appStateRef.current.editorGroups.length > 1) {
+      void openLocalReferenceOnRight(
+        match.reference.reference,
+        match.documentPath,
+        match.sourceGroupId,
+      );
+      return;
+    }
+    void loadLocalPreview(
+      match.reference.reference,
+      bounds.left,
+      bounds.bottom + 8,
+      match.documentPath,
+      match.sourceGroupId,
+    );
+  };
+
+  const handleInternalLink = (
+    target: string,
+    disposition: LinkDisposition,
+    sourceTabId?: string,
+  ) => {
+    const sourceTab = sourceTabId
+      ? appStateRef.current.tabs[sourceTabId]
+      : selectActiveTab(appStateRef.current);
+    const session = sourceTab
+      ? selectCurrentSession(appStateRef.current, sourceTab.id)
+      : undefined;
+    if (!session) return;
+    const image = imageReferenceFromLink(session.path, target);
+    if (image) {
+      closeLocalPreview();
+      setVisual(image);
+      return;
+    }
+    const owningWorkspace = workspaces
+      .filter(
+        (item) =>
+          session.path === item.selection.path ||
+          session.path.startsWith(`${item.selection.path.replace(/\/$/u, "")}/`),
+      )
+      .sort((left, right) => right.selection.path.length - left.selection.path.length)[0];
+    const resolved = resolveWorkspaceLink(session.path, target, [
+      ...(owningWorkspace?.nodes ?? []),
+      ...workspaces
+        .filter((item) => item !== owningWorkspace)
+        .flatMap((item) => item.nodes),
+    ]);
+    if (resolved.kind === "internal") {
+      void openDocument(resolved.path, disposition, resolved.anchor, undefined, {
+        sourceTabId: sourceTab?.id,
+        markdownLink: true,
+      });
+    } else if (resolved.kind === "external") {
+      void (async () => {
+        try {
+          if (/^https?:/iu.test(resolved.href) && adapter.openExternalUrl) {
+            await adapter.openExternalUrl(resolved.href);
+          } else {
+            window.open(resolved.href, "_blank", "noopener,noreferrer");
+          }
+          setStatus(t("status.externalOpened"));
+        } catch (error) {
+          setStatus(t("status.externalOpenFailed", { error: readableError(error) }));
+        }
+      })();
+    } else {
+      const localReference = localFileReferenceFromText(target);
+      if (localReference) {
+        if (appStateRef.current.editorGroups.length > 1) {
+          void openLocalReferenceOnRight(
+            localReference.reference,
+            session.path,
+            sourceTab ? selectTabGroupId(appStateRef.current, sourceTab.id) : undefined,
+          );
+        } else {
+          void loadLocalPreview(
+            localReference.reference,
+            Math.max(24, window.innerWidth / 2 - 320),
+            Math.max(90, window.innerHeight / 3),
+            session.path,
+            sourceTab ? selectTabGroupId(appStateRef.current, sourceTab.id) : undefined,
+          );
+        }
+      } else {
+        setStatus(t("status.linkNotFound", { target }));
+      }
+    }
+  };
+
+  const pasteClipboardImage = useCallback(
+    async (tabId: string): Promise<string> => {
+      const state = appStateRef.current;
+      const tab = state.tabs[tabId];
+      const session = tab ? selectCurrentSession(state, tab.id) : undefined;
+      if (!session || isUntitledPath(session.path)) {
+        throw new Error(t("status.saveBeforeScreenshot"));
+      }
+      const saved = await adapter.saveClipboardImage(session.path);
+      setStatus(t("status.screenshotSaved", { path: saved.markdownUri }));
+      return `![](${saved.markdownUri})`;
+    },
+    [adapter, t],
+  );
+
+  const activeSaveFailure =
+    activeSession && saveFailure?.documentId === activeSession.id
+      ? t("status.saveFailed", { error: saveFailure.error })
+      : null;
 
   const navigateHistory = (direction: "back" | "forward") => {
-    if (!activeTab) return;
-    const destination =
-      direction === "back" ? activeTab.back.at(-1) : activeTab.forward.at(-1);
-    dispatch(
+    const state = appStateRef.current;
+    const destination = selectNavigationDestination(state, direction);
+    if (!destination) return;
+    // Back/forward is a window-level action. No older read in any split may
+    // overwrite the restored visit after this point.
+    for (const { id: groupId } of state.editorGroups) {
+      documentOpenRequestsRef.current.set(
+        groupId,
+        (documentOpenRequestsRef.current.get(groupId) ?? 0) + 1,
+      );
+    }
+    setCodeTargetLines((current) => {
+      if (!current[destination.tabId]) return current;
+      const next = { ...current };
+      delete next[destination.tabId];
+      return next;
+    });
+    setEditorRevealForTab(destination.tabId, {
+      documentId: destination.entry.documentId,
+      position:
+        destination.entry.view.editorMode === "visual"
+          ? destination.entry.view.visualSelectionFrom
+          : destination.entry.view.selectionFrom,
+      requestId: revealCounter.current++,
+      scrollTop:
+        destination.entry.view.editorMode === "visual"
+          ? destination.entry.view.visualScrollTop
+          : destination.entry.view.sourceScrollTop,
+    });
+    commitAction(
       direction === "back"
-        ? goBack(activeTab.id, activeTab.current.view)
-        : goForward(activeTab.id, activeTab.current.view),
+        ? goNavigationBack(selectActiveTab(state)?.current.view)
+        : goNavigationForward(selectActiveTab(state)?.current.view),
     );
-    if (destination) setStatus(`${fileName(destination.path)} 已恢复`);
+    setStatus(t("status.restored", { name: fileName(destination.entry.path) }));
+  };
+
+  const recordEditorView = (
+    tabId: string,
+    documentId: string,
+    mode: "visual" | "source",
+    view: { scrollTop: number; selectionFrom: number; selectionTo: number },
+  ) => {
+    const tab = appStateRef.current.tabs[tabId];
+    if (!tab || tab.current.documentId !== documentId) return;
+    const previous = tab.current.view;
+    const next = createViewState({
+      ...previous,
+      ...(mode === "visual"
+        ? {
+            visualScrollTop: view.scrollTop,
+            visualSelectionFrom: view.selectionFrom,
+            visualSelectionTo: view.selectionTo,
+          }
+        : {
+            sourceScrollTop: view.scrollTop,
+            selectionFrom: view.selectionFrom,
+            selectionTo: view.selectionTo,
+          }),
+    });
+    if (
+      previous.sourceScrollTop !== next.sourceScrollTop ||
+      previous.visualScrollTop !== next.visualScrollTop ||
+      previous.selectionFrom !== next.selectionFrom ||
+      previous.selectionTo !== next.selectionTo ||
+      previous.visualSelectionFrom !== next.visualSelectionFrom ||
+      previous.visualSelectionTo !== next.visualSelectionTo
+    )
+      commitAction(updateView(tabId, next));
+  };
+
+  const renderTabEditor = (tab: Tab, focused: boolean) => {
+    const session = appState.sessions[tab.current.documentId];
+    if (!session) return null;
+    const withExternalNotice = (editor: React.ReactNode) => (
+      <div className="external-document-view">
+        {session.externalChange && (
+          <ExternalChangeBanner
+            key={`${session.id}:${session.externalChange.status}:${session.externalChange.revision}`}
+            session={session}
+            onReload={() => resolveExternalChange(session.id, false)}
+            onOverwrite={() => resolveExternalChange(session.id, true)}
+            onSaveAs={() => void saveActiveDocument(true, session.id)}
+          />
+        )}
+        {editor}
+      </div>
+    );
+    const mode = session.mode === "sourceOnly" ? "source" : tab.current.view.editorMode;
+    const initialView = {
+      scrollTop:
+        mode === "visual"
+          ? tab.current.view.visualScrollTop
+          : tab.current.view.sourceScrollTop,
+      selectionFrom:
+        mode === "visual"
+          ? tab.current.view.visualSelectionFrom
+          : tab.current.view.selectionFrom,
+      selectionTo:
+        mode === "visual"
+          ? tab.current.view.visualSelectionTo
+          : tab.current.view.selectionTo,
+    };
+    if (session.kind === "text") {
+      return withExternalNotice(
+        <div className="code-document-view">
+          <CodeFilePreview
+            findRequest={findRequests[tab.id]}
+            onFindRequestConsumed={(request) => consumeFindRequest(tab.id, request)}
+            codeWrap={settings.codeWrap}
+            content={session.text}
+            editable
+            initialView={{
+              scrollTop: tab.current.view.sourceScrollTop,
+              selectionFrom: tab.current.view.selectionFrom,
+              selectionTo: tab.current.view.selectionTo,
+            }}
+            instanceId={tab.id}
+            language={session.language}
+            locale={locale}
+            onChange={(text) => editSessionDocument(session.id, text)}
+            onViewChange={(view) => recordEditorView(tab.id, session.id, "source", view)}
+            path={session.path}
+            showLineNumbers={settings.showCodeLineNumbers}
+            targetLine={codeTargetLines[tab.id]}
+            variant="tab"
+          />
+        </div>,
+      );
+    }
+    return withExternalNotice(
+      <Suspense fallback={<div className="editor-loading">{t("editor.loading")}</div>}>
+        <MarkdownEditor
+          findRequest={findRequests[tab.id]}
+          onFindRequestConsumed={(request) => consumeFindRequest(tab.id, request)}
+          autofocus={focused}
+          codeWrap={settings.codeWrap}
+          documentId={session.id}
+          initialView={initialView}
+          instanceId={tab.id}
+          mode={session.mode}
+          locale={settings.locale}
+          presentationMode={mode}
+          showCodeLineNumbers={settings.showCodeLineNumbers}
+          showTypingHints={settings.showTypingHints}
+          onChange={(text) => editSessionDocument(session.id, text)}
+          onImagePaste={() => pasteClipboardImage(tab.id)}
+          onInternalLink={(target, disposition) =>
+            handleInternalLink(target, disposition, tab.id)
+          }
+          onPasteError={(message) =>
+            setStatus(t("status.imageSaveFailed", { error: message }))
+          }
+          onPasteRejected={setStatus}
+          onOpenVisual={setVisual}
+          onViewChange={(view) => recordEditorView(tab.id, session.id, mode, view)}
+          onRevealConsumed={(requestId) =>
+            setEditorReveals((current) => {
+              const pending = current[tab.id];
+              if (!pending || pending.requestId !== requestId) return current;
+              const next = { ...current };
+              delete next[tab.id];
+              return next;
+            })
+          }
+          reveal={
+            editorReveals[tab.id]?.documentId === session.id
+              ? editorReveals[tab.id]
+              : undefined
+          }
+          value={session.text}
+        />
+      </Suspense>,
+    );
   };
 
   return (
     <div
       className={sidebarCollapsed ? "app-shell app-shell--sidebar-collapsed" : "app-shell"}
+      onContextMenu={onContextMenu}
+      onPointerDownCapture={onPointerDownCapture}
     >
-      <header className="shell-toolbar">
-        <div className="shell-toolbar__cluster" aria-label="浏览导航">
+      <header className="shell-toolbar" data-native-context-menu="true">
+        <div className="shell-toolbar__cluster" aria-label={t("toolbar.navigation")}>
           <button
-            aria-label="后退"
+            aria-label={t("toolbar.back")}
             className="icon-button"
             disabled={!activeTab || !canGoBack}
             onClick={() => navigateHistory("back")}
@@ -412,7 +2933,7 @@ export function AppShell({
             <ArrowLeftIcon />
           </button>
           <button
-            aria-label="前进"
+            aria-label={t("toolbar.forward")}
             className="icon-button"
             disabled={!activeTab || !canGoForward}
             onClick={() => navigateHistory("forward")}
@@ -423,7 +2944,9 @@ export function AppShell({
         </div>
 
         <button
-          aria-label={sidebarCollapsed ? "展开侧栏" : "收起侧栏"}
+          aria-label={
+            sidebarCollapsed ? t("toolbar.expandSidebar") : t("toolbar.collapseSidebar")
+          }
           aria-pressed={sidebarCollapsed}
           className="icon-button shell-toolbar__sidebar-toggle"
           onClick={() => setSidebarCollapsed((value) => !value)}
@@ -432,37 +2955,310 @@ export function AppShell({
           <PanelLeftIcon />
         </button>
 
-        <div className="workspace-identity" aria-label="当前工作区">
-          <WorkspaceMark className="workspace-identity__mark" />
-          <span className="workspace-identity__app">Markdown Workspace</span>
-          <span className="workspace-identity__separator" aria-hidden="true">
-            /
-          </span>
-          <span className="workspace-identity__current">
-            {workspace?.name ?? "未打开工作区"}
-            {activeSession ? ` / ${fileName(activeSession.path)}` : ""}
-          </span>
+        <div className="workspace-identity-host">
+          <button
+            aria-expanded={workspaceMenuVisible}
+            aria-haspopup="menu"
+            aria-label={t("toolbar.switchWorkspace")}
+            className="workspace-identity"
+            onClick={() => setWorkspaceMenuVisible((visible) => !visible)}
+            type="button"
+          >
+            <WorkspaceMark className="workspace-identity__mark" />
+            <span className="workspace-identity__app">{t("app.name")}</span>
+            <span className="workspace-identity__separator" aria-hidden="true">
+              /
+            </span>
+            <span className="workspace-identity__current">
+              {workspace?.name ?? t("toolbar.noWorkspace")}
+              {activeSession ? ` / ${fileName(activeSession.path)}` : ""}
+            </span>
+            <span className="workspace-identity__chevron" aria-hidden="true">
+              ⌄
+            </span>
+          </button>
+          {workspaceMenuVisible && (
+            <div className="workspace-switcher" role="menu">
+              {workspaces.length > 0 && (
+                <p className="workspace-switcher__heading">{t("menu.openWorkspaces")}</p>
+              )}
+              {workspaces.map((item) => (
+                <div className="workspace-switcher__row" key={item.selection.path}>
+                  <button
+                    aria-current={
+                      item.selection.path === workspace?.path ? "page" : undefined
+                    }
+                    onClick={() => {
+                      activateWorkspace(item.selection.path);
+                      setWorkspaceMenuVisible(false);
+                    }}
+                    role="menuitem"
+                    title={item.selection.path}
+                    type="button"
+                  >
+                    <span>{item.selection.name}</span>
+                    <small>{item.selection.path}</small>
+                  </button>
+                  <button
+                    aria-label={`${t("menu.removeWorkspace")} ${item.selection.name}`}
+                    className="workspace-switcher__remove"
+                    onClick={() => removeWorkspace(item.selection)}
+                    title={t("menu.removeWorkspace")}
+                    type="button"
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+              {workspaceHistory.recentWorkspaces.some(
+                (recent) => !workspaces.some((item) => item.selection.path === recent.path),
+              ) && (
+                <p className="workspace-switcher__heading workspace-switcher__heading--recent">
+                  {t("menu.recentWorkspaces")}
+                </p>
+              )}
+              {workspaceHistory.recentWorkspaces
+                .filter(
+                  (recent) =>
+                    !workspaces.some((item) => item.selection.path === recent.path),
+                )
+                .slice(0, 6)
+                .map((recent) => (
+                  <button
+                    className="workspace-switcher__recent"
+                    key={recent.path}
+                    onClick={() => {
+                      setWorkspaceMenuVisible(false);
+                      void reopenWorkspace(recent);
+                    }}
+                    role="menuitem"
+                    title={recent.path}
+                    type="button"
+                  >
+                    <span>{recent.name}</span>
+                    <small>{recent.path}</small>
+                  </button>
+                ))}
+              {workspaceHistory.recentFiles.length > 0 && (
+                <p className="workspace-switcher__heading workspace-switcher__heading--recent">
+                  {t("menu.recentFiles")}
+                </p>
+              )}
+              {workspaceHistory.recentFiles.slice(0, 6).map((recent) => (
+                <button
+                  className="workspace-switcher__recent"
+                  key={recent.path}
+                  onClick={() => {
+                    setWorkspaceMenuVisible(false);
+                    void openDocument(recent.path, "newForeground");
+                  }}
+                  role="menuitem"
+                  title={recent.path}
+                  type="button"
+                >
+                  <span>{recent.name}</span>
+                  <small>{recent.path}</small>
+                </button>
+              ))}
+              <button
+                className="workspace-switcher__open"
+                onClick={() => {
+                  setWorkspaceMenuVisible(false);
+                  void openWorkspace();
+                }}
+                role="menuitem"
+                type="button"
+              >
+                {workspaces.length > 0 ? t("menu.addWorkspace") : t("menu.openWorkspace")}
+              </button>
+            </div>
+          )}
         </div>
 
         <div className="shell-toolbar__actions">
+          {activeSession?.kind === "markdown" && (
+            <div
+              className="editor-mode-switch"
+              role="group"
+              aria-label={t("toolbar.editorMode")}
+            >
+              <button
+                aria-pressed={editorMode === "visual"}
+                disabled={activeSession.mode === "sourceOnly"}
+                onClick={() => switchEditorMode("visual")}
+                title={
+                  activeSession.mode === "sourceOnly"
+                    ? t("toolbar.sourceOnlyReason")
+                    : t("toolbar.visualEditing")
+                }
+                type="button"
+              >
+                {t("toolbar.visual")}
+              </button>
+              <button
+                aria-pressed={editorMode === "source"}
+                onClick={() => switchEditorMode("source")}
+                title={t("toolbar.sourceEditingShortcut")}
+                type="button"
+              >
+                {t("toolbar.source")}
+              </button>
+            </div>
+          )}
           <button
             className="command-button"
-            onClick={() => (workspace ? setQuickOpenVisible(true) : void openWorkspace())}
+            onClick={() =>
+              workspaces.length > 0 ? setQuickOpenVisible(true) : void openWorkspace()
+            }
             type="button"
           >
             <SearchIcon />
-            <span>快速打开</span>
+            <span>{t("toolbar.quickOpen")}</span>
             <kbd>⌘K</kbd>
           </button>
-          <button className="icon-button" aria-label="更多操作" type="button">
-            <MoreIcon />
-          </button>
+          <div className="more-menu-host">
+            <button
+              aria-expanded={moreMenuVisible}
+              aria-haspopup="menu"
+              aria-label={t("toolbar.moreActions")}
+              className="icon-button"
+              onClick={() => setMoreMenuVisible((visible) => !visible)}
+              type="button"
+            >
+              <MoreIcon />
+            </button>
+            {moreMenuVisible && (
+              <div
+                aria-label={t("toolbar.moreActions")}
+                className="more-actions-menu"
+                role="menu"
+              >
+                <button
+                  onClick={() => {
+                    setMoreMenuVisible(false);
+                    newDocument("markdown");
+                  }}
+                  role="menuitem"
+                  type="button"
+                >
+                  <span>{t("menu.newMarkdown")}</span>
+                  <kbd>⌘N</kbd>
+                </button>
+                <button onClick={() => newDocument("text")} role="menuitem" type="button">
+                  <span>{t("menu.newText")}</span>
+                </button>
+                <button
+                  className="more-actions-menu__separated"
+                  onClick={() => {
+                    setMoreMenuVisible(false);
+                    void openSingleFile();
+                  }}
+                  role="menuitem"
+                  type="button"
+                >
+                  <span>{t("menu.openFile")}</span>
+                  <kbd>⌘O</kbd>
+                </button>
+                <button
+                  onClick={() => {
+                    setMoreMenuVisible(false);
+                    void openWorkspace();
+                  }}
+                  role="menuitem"
+                  type="button"
+                >
+                  <span>
+                    {workspaces.length > 0
+                      ? t("menu.addWorkspace")
+                      : t("menu.openWorkspace")}
+                  </span>
+                </button>
+                <button
+                  disabled={workspaces.length === 0}
+                  onClick={() => {
+                    setMoreMenuVisible(false);
+                    setQuickOpenVisible(true);
+                  }}
+                  role="menuitem"
+                  type="button"
+                >
+                  <span>{t("toolbar.quickOpen")}</span>
+                  <kbd>⌘K</kbd>
+                </button>
+                <button
+                  disabled={!activeSession}
+                  onClick={() => {
+                    setMoreMenuVisible(false);
+                    findInActivePage();
+                  }}
+                  role="menuitem"
+                  type="button"
+                >
+                  <span>{t("find.currentPage")}</span>
+                  <kbd>⌘F</kbd>
+                </button>
+                <button
+                  disabled={!activeSession}
+                  onClick={() => {
+                    setMoreMenuVisible(false);
+                    void saveActiveDocument();
+                  }}
+                  role="menuitem"
+                  type="button"
+                >
+                  <span>{t("menu.save")}</span>
+                  <kbd>⌘S</kbd>
+                </button>
+                <button
+                  className="more-actions-menu__separated"
+                  disabled={!activeSession}
+                  onClick={() => {
+                    setMoreMenuVisible(false);
+                    void saveActiveDocument(true);
+                  }}
+                  role="menuitem"
+                  type="button"
+                >
+                  <span>{t("menu.saveAs")}</span>
+                  <kbd>⇧⌘S</kbd>
+                </button>
+                <button
+                  disabled={!activeSession || isUntitledPath(activeSession.path)}
+                  onClick={() => {
+                    setMoreMenuVisible(false);
+                    if (activeSession && !isUntitledPath(activeSession.path)) {
+                      void revealInFileManager(activeSession.path);
+                    }
+                  }}
+                  role="menuitem"
+                  type="button"
+                >
+                  <span>{t("menu.revealActiveFile")}</span>
+                </button>
+                <button
+                  onClick={() => {
+                    setMoreMenuVisible(false);
+                    setSettingsVisible(true);
+                  }}
+                  role="menuitem"
+                  type="button"
+                >
+                  <span>{t("menu.preferences")}</span>
+                  <kbd>⌘,</kbd>
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </header>
 
       {!sidebarCollapsed && (
-        <aside className="sidebar" aria-label="工作区侧栏">
-          <div className="sidebar__mode-tabs" role="tablist" aria-label="侧栏内容">
+        <aside className="sidebar" aria-label={t("sidebar.label")}>
+          <div
+            className="sidebar__mode-tabs"
+            role="tablist"
+            aria-label={t("sidebar.content")}
+          >
             <button
               aria-controls="sidebar-panel"
               aria-selected={sidebarMode === "files"}
@@ -471,7 +3267,7 @@ export function AppShell({
               role="tab"
               type="button"
             >
-              文件
+              {t("sidebar.files")}
             </button>
             <button
               aria-controls="sidebar-panel"
@@ -481,136 +3277,296 @@ export function AppShell({
               role="tab"
               type="button"
             >
-              大纲
+              {t("sidebar.outline")}
             </button>
           </div>
 
-          <div className="sidebar__body" id="sidebar-panel" role="tabpanel">
+          <div
+            className="sidebar__body"
+            id="sidebar-panel"
+            onContextMenu={(event) => {
+              if (sidebarMode !== "files" || workspaces.length === 0) return;
+              const rootPath = workspace?.path ?? workspaces[0]?.selection.path;
+              if (!rootPath) return;
+              event.preventDefault();
+              event.stopPropagation();
+              setWorkspaceContextRequest({
+                rootPath,
+                x: event.clientX,
+                y: event.clientY,
+                id: ++workspaceContextRequestId.current,
+              });
+            }}
+            role="tabpanel"
+          >
             {sidebarMode === "files" ? (
-              workspace ? (
-                <WorkspaceTree
-                  activePath={activeSession?.path}
-                  nodes={workspaceNodes}
-                  onOpen={(path) => void openDocument(path)}
-                />
+              workspaces.length > 0 ? (
+                <div className="workspace-roots">
+                  {workspaces.map((item) => {
+                    const isActive = item.selection.path === workspace?.path;
+                    return (
+                      <section
+                        className={
+                          isActive
+                            ? "workspace-root workspace-root--active"
+                            : "workspace-root"
+                        }
+                        key={item.selection.path}
+                      >
+                        <WorkspaceTree
+                          showHidden={getWorkspaceShowHidden(
+                            workspaceHistory,
+                            item.selection.path,
+                          )}
+                          onShowHiddenChange={(path, visible) =>
+                            void changeWorkspaceHiddenFiles(path, visible)
+                          }
+                          actionLabels={{
+                            collapseWorkspace: t("workspace.collapse"),
+                            expandWorkspace: t("workspace.expand"),
+                            closeWorkspace: t("workspace.close"),
+                            copyPath: t("workspace.copyPath"),
+                            deleteItem: t("workspace.delete"),
+                          }}
+                          activePath={
+                            activeDocumentWorkspacePath === item.selection.path
+                              ? activeSession?.path
+                              : undefined
+                          }
+                          ariaLabel={`${t("workspace.tree")} · ${item.selection.name}`}
+                          contextMenuRequest={
+                            workspaceContextRequest?.rootPath === item.selection.path
+                              ? workspaceContextRequest
+                              : undefined
+                          }
+                          nodes={item.nodes}
+                          onContextMenuRequestHandled={(id) =>
+                            setWorkspaceContextRequest((current) =>
+                              current?.id === id ? null : current,
+                            )
+                          }
+                          onActivateWorkspace={activateWorkspace}
+                          onCloseWorkspace={() => removeWorkspace(item.selection)}
+                          onCopyPath={copyPath}
+                          onCreateFile={(directoryPath, requestedFileName) =>
+                            createWorkspaceFile(
+                              item.selection,
+                              directoryPath,
+                              requestedFileName,
+                            )
+                          }
+                          onCreateFolder={
+                            adapter.createWorkspaceFolder
+                              ? (directoryPath, folderName) =>
+                                  createWorkspaceFolder(
+                                    item.selection,
+                                    directoryPath,
+                                    folderName,
+                                  )
+                              : undefined
+                          }
+                          onDeleteRequested={(node) =>
+                            requestWorkspaceDelete(item.selection, node)
+                          }
+                          onOpen={(path) => {
+                            activateWorkspace(item.selection.path);
+                            void openDocument(path, "current", undefined, undefined, {
+                              treePreview: true,
+                            });
+                          }}
+                          onOpenPermanent={(path) => {
+                            activateWorkspace(item.selection.path);
+                            void openDocument(path, "current", undefined, undefined, {
+                              treePreview: true,
+                              keepOpen: true,
+                            });
+                          }}
+                          onOpenInNewTab={(path) => {
+                            activateWorkspace(item.selection.path);
+                            void openDocument(path, "newForeground");
+                          }}
+                          onQuickOpen={() => {
+                            activateWorkspace(item.selection.path);
+                            setQuickOpenQuery("");
+                            setQuickOpenVisible(true);
+                          }}
+                          onReveal={revealInFileManager}
+                          rootActive={isActive}
+                          rootName={item.selection.name}
+                          rootPath={item.selection.path}
+                        />
+                      </section>
+                    );
+                  })}
+                </div>
               ) : (
                 <div className="sidebar-empty">
                   <FolderIcon className="sidebar-empty__icon" />
-                  <p className="sidebar-empty__title">尚未打开工作区</p>
+                  <p className="sidebar-empty__title">{t("sidebar.noWorkspace")}</p>
                   <button
                     className="sidebar-empty__action"
                     onClick={openWorkspace}
                     type="button"
                   >
-                    选择文件夹
+                    {t("welcome.openWorkspace")}
                   </button>
                 </div>
               )
-            ) : activeSession ? (
+            ) : activeSession?.kind === "markdown" && activeTab ? (
               <Outline
+                emptyLabel={t("outline.noHeadings")}
+                label={t("outline.document")}
+                lineLabel={(line) => t("outline.line", { line })}
                 markdown={activeSession.text}
-                onNavigate={(item) =>
-                  setEditorReveal({
+                onNavigate={(item) => {
+                  const tab = appStateRef.current.tabs[activeTab.id];
+                  if (!tab) return;
+                  const groupId = selectTabGroupId(appStateRef.current, tab.id);
+                  if (groupId) {
+                    documentOpenRequestsRef.current.set(
+                      groupId,
+                      (documentOpenRequestsRef.current.get(groupId) ?? 0) + 1,
+                    );
+                  }
+                  commitAction(
+                    navigateToView(
+                      tab.id,
+                      createViewState({
+                        ...tab.current.view,
+                        selectionFrom: item.from,
+                        selectionTo: item.from,
+                        visualSelectionFrom: item.from,
+                        visualSelectionTo: item.from,
+                      }),
+                    ),
+                  );
+                  setEditorRevealForTab(activeTab.id, {
                     documentId: activeSession.id,
+                    headingText: item.title,
                     position: item.from,
                     requestId: revealCounter.current++,
-                  })
-                }
+                  });
+                }}
               />
             ) : (
               <div className="sidebar-empty">
                 <OutlineIcon className="sidebar-empty__icon" />
-                <p className="sidebar-empty__title">当前没有可用大纲</p>
-                <p>打开 Markdown 后按标题生成。</p>
+                <p className="sidebar-empty__title">{t("sidebar.noOutline")}</p>
+                <p>{t("sidebar.noOutlineDetail")}</p>
               </div>
             )}
           </div>
 
           <div className="sidebar__footer">
-            <span>{workspace ? `${markdownFiles.length} 篇文档` : "本地工作区"}</span>
-            <span className="sidebar__privacy">
-              {adapter.kind === "demo" ? "演示" : "离线"}
+            <span>
+              {workspaces.length > 0
+                ? t("sidebar.documents", { count: allWorkspaceFiles.length })
+                : t("sidebar.localWorkspace")}
+            </span>
+            <span
+              className="sidebar__privacy"
+              title={adapter.kind === "demo" ? undefined : t("status.localFilesHint")}
+            >
+              {adapter.kind === "demo" ? t("sidebar.demo") : t("status.localFiles")}
             </span>
           </div>
         </aside>
       )}
 
-      <nav className="tab-rail" aria-label="文档标签页">
-        {orderedTabs.length === 0 && <span className="tab-rail__placeholder">开始</span>}
-        {orderedTabs.map((tab) => {
-          const session = appState.sessions[tab.current.documentId];
-          return (
-            <div
-              className={
-                tab.id === appState.activeTabId
-                  ? "tab-rail__item tab-rail__item--active"
-                  : "tab-rail__item"
-              }
-              key={tab.id}
-            >
-              <button
-                aria-current={tab.id === appState.activeTabId ? "page" : undefined}
-                className="tab-rail__tab"
-                onClick={() => dispatch(activateTab(tab.id))}
-                title={tab.current.path}
-                type="button"
-              >
-                <span className="tab-rail__label">{fileName(tab.current.path)}</span>
-                {session?.dirty && <span className="tab-rail__dirty" aria-label="未保存" />}
-              </button>
-              <button
-                aria-label={`关闭 ${fileName(tab.current.path)}`}
-                className="tab-rail__close"
-                onClick={() => closeTab(tab)}
-                type="button"
-              >
-                ×
-              </button>
-            </div>
-          );
-        })}
-        <button
-          aria-label="新建标签页"
-          className="tab-rail__new"
-          disabled={markdownFiles.length === 0}
-          onClick={() => setQuickOpenVisible(true)}
-          type="button"
-        >
-          <PlusIcon />
-        </button>
-      </nav>
-
-      <main className="main-viewport">
-        {activeSession && activeTab ? (
-          <Suspense fallback={<div className="editor-loading">正在准备编辑器…</div>}>
-            <MarkdownEditor
-              documentId={activeSession.id}
-              initialView={activeTab.current.view}
-              instanceId={activeTab.id}
-              mode={activeSession.mode}
-              onChange={(text) => dispatch(editDocument(activeSession.id, text))}
-              onImagePaste={pasteClipboardImage}
-              onInternalLink={handleInternalLink}
-              onPasteError={(message) => setStatus(`图片没有保存：${message}`)}
-              onPasteRejected={setStatus}
-              onOpenVisual={setVisual}
-              onViewChange={(view) =>
-                dispatch(
-                  updateView(
-                    activeTab.id,
-                    createViewState({ ...activeTab.current.view, ...view }),
-                  ),
-                )
-              }
-              reveal={
-                editorReveal?.documentId === activeSession.id ? editorReveal : undefined
-              }
-              value={activeSession.text}
+      <main
+        className="main-viewport"
+        onClick={handleEditorClick}
+        onPointerOut={handleEditorPointerOut}
+        onPointerOver={handleEditorPointerOver}
+      >
+        <div className="workspace-panes">
+          <section className="workspace-pane workspace-pane--primary">
+            <EditorGroupLayout
+              groups={editorGroups}
+              focusedGroupId={appState.activeEditorGroupId}
+              draggedTabId={draggedTabId}
+              groupLabel={(index) => t("groups.editor", { index })}
+              resizeLabel={(index) => t("groups.resize", { index })}
+              dropLabel={t("groups.dropTab")}
+              onActivateGroup={(groupId) => commitAction(activateEditorGroup(groupId))}
+              onMoveTab={(tabId, groupId) => commitAction(moveTabToGroup(tabId, groupId))}
+              onDragTabChange={setDraggedTabId}
+              renderTabs={(group, index) => (
+                <EditorGroupTabs
+                  groupId={group.id}
+                  tabs={group.tabs.map((tab) => ({
+                    id: tab.id,
+                    path: tab.current.path,
+                    dirty: tabDirtyDocumentIds(appState, tab).length > 0,
+                    preview: tab.preview,
+                  }))}
+                  activeTabId={group.activeTab?.id ?? null}
+                  focused={appState.activeEditorGroupId === group.id}
+                  destinations={editorGroups.map((item, destinationIndex) => ({
+                    id: item.id,
+                    label: t("groups.name", { index: destinationIndex + 1 }),
+                  }))}
+                  draggedTabId={draggedTabId}
+                  onDragTabChange={setDraggedTabId}
+                  onActivate={(tabId) => {
+                    const state = appStateRef.current;
+                    const group = state.editorGroups.find((item) =>
+                      item.tabIds.includes(tabId),
+                    );
+                    if (group && group.activeTabId !== tabId) {
+                      // Selecting another page is newer navigation, even within
+                      // the same split. Do not let its previous disk read win.
+                      documentOpenRequestsRef.current.set(
+                        group.id,
+                        (documentOpenRequestsRef.current.get(group.id) ?? 0) + 1,
+                      );
+                    }
+                    commitAction(activateTab(tabId));
+                  }}
+                  onClose={(tabId) => {
+                    const tab = appStateRef.current.tabs[tabId];
+                    if (tab) closeTab(tab);
+                  }}
+                  onNew={() => newDocument("markdown", group.id)}
+                  onKeepOpen={(tabId) => commitAction(keepTabOpen(tabId))}
+                  onSplitRight={(tabId) =>
+                    commitAction(
+                      moveTabRight(tabId, `editor-group-${groupCounter.current++}`),
+                    )
+                  }
+                  onMove={(tabId, targetGroupId, beforeTabId) =>
+                    commitAction(moveTabToGroup(tabId, targetGroupId, beforeTabId))
+                  }
+                  labels={{
+                    rail:
+                      editorGroups.length === 1
+                        ? t("tabs.label")
+                        : t("groups.tabs", { index: index + 1 }),
+                    start: t("tabs.start"),
+                    newTab: t("tabs.new"),
+                    unsaved: t("tabs.unsaved"),
+                    closeTab: (name) => t("tabs.close", { name }),
+                    tabActions: t("tabs.actions"),
+                    splitRight: t("tabs.splitRight"),
+                    keepOpen: t("tabs.keepOpen"),
+                    moveTo: (label) => t("tabs.moveToGroup", { group: label }),
+                    close: t("common.close"),
+                  }}
+                />
+              )}
+              renderTab={renderTabEditor}
+              renderEmpty={(groupId) => (
+                <Welcome
+                  adapterKind={adapter.kind}
+                  busy={busy}
+                  onNewDocument={() => newDocument("markdown", groupId)}
+                  onOpenFile={() => void openSingleFile()}
+                  onOpenWorkspace={openWorkspace}
+                />
+              )}
             />
-          </Suspense>
-        ) : (
-          <Welcome adapterKind={adapter.kind} busy={busy} onOpenWorkspace={openWorkspace} />
-        )}
+          </section>
+        </div>
 
         {quickOpenVisible && (
           <div
@@ -618,7 +3574,7 @@ export function AppShell({
             onMouseDown={() => setQuickOpenVisible(false)}
           >
             <section
-              aria-label="快速打开"
+              aria-label={t("quickOpen.title")}
               className="quick-open"
               onMouseDown={(event) => event.stopPropagation()}
             >
@@ -627,26 +3583,87 @@ export function AppShell({
                 <input
                   autoFocus
                   onChange={(event) => setQuickOpenQuery(event.target.value)}
-                  placeholder="搜索 Markdown 文件…"
+                  placeholder={t("quickOpen.placeholder")}
                   value={quickOpenQuery}
                 />
                 <kbd>Esc</kbd>
               </label>
               <div className="quick-open__results">
-                {quickOpenFiles.slice(0, 40).map((node) => (
+                {quickOpenFiles.slice(0, 40).map(({ node, workspace: owner }) => (
                   <button
                     key={node.path}
-                    onClick={() => void openDocument(node.path)}
+                    onClick={() => {
+                      activateWorkspace(owner.path);
+                      void openDocument(node.path);
+                    }}
                     type="button"
                   >
                     <span>{node.name}</span>
-                    <small>{node.relativePath}</small>
+                    <small>
+                      {workspaces.length > 1
+                        ? `${owner.name} / ${node.relativePath}`
+                        : node.relativePath}
+                    </small>
                   </button>
                 ))}
-                {quickOpenFiles.length === 0 && <p>没有匹配的 Markdown 文件</p>}
+                {quickOpenFiles.length === 0 && <p>{t("quickOpen.noResults")}</p>}
               </div>
             </section>
           </div>
+        )}
+
+        {localPreview && (
+          <aside
+            aria-label={locale === "zh-CN" ? "本地文件预览" : "Local file preview"}
+            className="local-file-preview-popover"
+            onPointerEnter={clearLocalPreviewTimer}
+            onPointerLeave={() => {
+              clearLocalPreviewTimer();
+              localPreviewTimerRef.current = window.setTimeout(closeLocalPreview, 180);
+            }}
+            style={{
+              left: Math.max(12, Math.min(localPreview.left, window.innerWidth - 692)),
+              top: Math.max(64, Math.min(localPreview.top, window.innerHeight - 700)),
+            }}
+          >
+            {localPreview.loading ? (
+              <div className="local-file-preview-popover__message">
+                {locale === "zh-CN" ? "正在读取本地文件…" : "Reading local file…"}
+              </div>
+            ) : localPreview.preview ? (
+              <CodeFilePreview
+                codeWrap={settings.codeWrap}
+                content={localPreview.preview.content}
+                language={localPreview.preview.language}
+                locale={locale}
+                onOpenFile={() => {
+                  const preview = localPreview.preview;
+                  if (!preview) return;
+                  closeLocalPreview();
+                  void openDocument(
+                    preview.path,
+                    "newForeground",
+                    undefined,
+                    preview.targetLine,
+                  );
+                }}
+                onOpenSide={() => {
+                  const preview = localPreview.preview;
+                  if (preview) void openLocalPreviewOnRight(preview);
+                }}
+                path={localPreview.preview.path}
+                showLineNumbers={settings.showCodeLineNumbers}
+                startLine={localPreview.preview.startLine}
+                targetLine={localPreview.preview.targetLine}
+                variant="popover"
+              />
+            ) : (
+              <div className="local-file-preview-popover__message local-file-preview-popover__message--error">
+                {localPreview.error ??
+                  (locale === "zh-CN" ? "无法预览这个文件" : "Unable to preview this file")}
+              </div>
+            )}
+          </aside>
         )}
 
         {visual && (
@@ -658,17 +3675,64 @@ export function AppShell({
         )}
       </main>
 
+      <SettingsDialog open={settingsVisible} onClose={() => setSettingsVisible(false)} />
+      {pendingCloseRequest && (
+        <UnsavedCloseDialog
+          dirtyPaths={pendingCloseRequest.dirtyPaths}
+          kind={pendingCloseRequest.kind}
+          onCancel={cancelPendingClose}
+          onConfirm={confirmPendingClose}
+        />
+      )}
+      {pendingWorkspaceDelete && (
+        <WorkspaceDeleteDialog
+          busy={busy}
+          onCancel={cancelWorkspaceDelete}
+          onConfirm={() => void confirmWorkspaceDelete()}
+          pending={pendingWorkspaceDelete}
+        />
+      )}
+      <EditorContextMenu
+        actions={{
+          revealImage: async ({ image }) => {
+            if (image?.localPath) await revealInFileManager(image.localPath);
+          },
+        }}
+        onClose={closeContextMenu}
+        open={contextMenu.open}
+        position={contextMenu.position}
+        target={contextMenu.target}
+      />
+
       <footer className="status-bar" role="status" aria-live="polite">
-        <span className="status-bar__state">
+        <span
+          className={
+            activeSaveFailure
+              ? "status-bar__state status-bar__state--error"
+              : "status-bar__state"
+          }
+          title={activeSaveFailure ?? (activeSession?.dirty ? t("tabs.unsaved") : status)}
+        >
           <span className="status-bar__dot" aria-hidden="true" />
-          {activeSession?.dirty ? "未保存" : status}
+          {activeSaveFailure ?? (activeSession?.dirty ? t("tabs.unsaved") : status)}
         </span>
-        <span>
-          {activeSession
-            ? `${activeSession.mode === "sourceOnly" ? "纯源码" : "单画布"} · ${wordCount} 词`
-            : "本地优先 · 无服务端"}
-        </span>
-        <span>Markdown Workspace 0.1.0</span>
+        {activeSession ? (
+          <DocumentStatisticsStatus
+            session={activeSession}
+            modeLabel={
+              activeSession.kind === "text"
+                ? activeSession.language
+                : activeSession.mode === "sourceOnly"
+                  ? t("status.sourceOnly")
+                  : editorMode === "visual"
+                    ? t("status.visualEditing")
+                    : t("status.sourceEditing")
+            }
+          />
+        ) : (
+          <span>{t("status.localFirst")}</span>
+        )}
+        <span className="status-bar__app">{t("app.name")} 0.1.0</span>
       </footer>
     </div>
   );

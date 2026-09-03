@@ -26,3 +26,44 @@ export function installCodeMirrorDomMeasurementStubs(): void {
     HTMLElement.prototype.getBoundingClientRect = zeroRect;
   }
 }
+
+export function installImmediateIntersectionObserverStub(): void {
+  class ImmediateIntersectionObserver {
+    readonly root = null;
+    readonly rootMargin = "0px";
+    readonly thresholds = [0];
+
+    constructor(private readonly callback: IntersectionObserverCallback) {}
+
+    disconnect() {}
+
+    observe(target: Element) {
+      this.callback(
+        [
+          {
+            boundingClientRect: target.getBoundingClientRect(),
+            intersectionRatio: 1,
+            intersectionRect: target.getBoundingClientRect(),
+            isIntersecting: true,
+            rootBounds: null,
+            target,
+            time: performance.now(),
+          },
+        ],
+        this as unknown as IntersectionObserver,
+      );
+    }
+
+    takeRecords(): IntersectionObserverEntry[] {
+      return [];
+    }
+
+    unobserve() {}
+  }
+
+  Object.defineProperty(globalThis, "IntersectionObserver", {
+    configurable: true,
+    value: ImmediateIntersectionObserver,
+    writable: true,
+  });
+}

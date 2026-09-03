@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "main-window",
-  "description": "Minimum capability for the Markdown Workspace application shell",
+  "description": "Minimum capability for the NoteSpace application shell",
   "windows": ["main"],
-  "permissions": ["core:default"]
+  "permissions": ["core:default", "core:window:allow-close", "core:window:allow-destroy"]
 }

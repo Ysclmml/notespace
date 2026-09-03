@@ -1,0 +1,84 @@
+.image-reference-dialog-layer {
+  position: fixed;
+  z-index: 1200;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgb(27 33 45 / 24%);
+}
+.image-reference-dialog {
+  box-sizing: border-box;
+  width: min(540px, 100%);
+  min-width: 0;
+  max-height: calc(100dvh - 48px);
+  overflow: auto;
+  padding: 24px;
+  border: 1px solid #d4d9e2;
+  border-radius: 14px;
+  color: #293342;
+  background: #fff;
+  box-shadow: 0 18px 60px rgb(25 32 45 / 24%);
+  font:
+    14px/1.5 -apple-system,
+    BlinkMacSystemFont,
+    "PingFang SC",
+    sans-serif;
+}
+.image-reference-dialog h2 {
+  margin: 0;
+  font-size: 18px;
+}
+.image-reference-dialog p {
+  margin: 10px 0 18px;
+  color: #677284;
+}
+.image-reference-dialog label {
+  display: grid;
+  gap: 5px;
+  margin-top: 14px;
+}
+.image-reference-dialog textarea,
+.image-reference-dialog input {
+  box-sizing: border-box;
+  min-width: 0;
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid #cbd3df;
+  border-radius: 6px;
+  color: inherit;
+  background: #fff;
+  font: inherit;
+}
+.image-reference-dialog textarea {
+  resize: vertical;
+  overflow-wrap: anywhere;
+}
+.image-reference-dialog :is(input, textarea, button):focus-visible {
+  outline: 2px solid #4772ce;
+  outline-offset: 2px;
+}
+.image-reference-dialog footer {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 24px;
+}
+.image-reference-dialog button {
+  padding: 7px 16px;
+  border: 1px solid #cbd3df;
+  border-radius: 7px;
+  background: #fff;
+  color: inherit;
+  font: inherit;
+}
+.image-reference-dialog .image-reference-dialog__apply {
+  background: #4264d8;
+  color: #fff;
+  border-color: #4264d8;
+}
+.image-reference-dialog .image-reference-dialog__error {
+  color: #b03838;
+  overflow-wrap: anywhere;
+}

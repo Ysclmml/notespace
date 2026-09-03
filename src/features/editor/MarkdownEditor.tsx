@@ -4,20 +4,29 @@ import {
   HighlightStyle,
   syntaxHighlighting,
 } from "@codemirror/language";
+import { markdown } from "@codemirror/lang-markdown";
 import { EditorSelection, EditorState, Transaction } from "@codemirror/state";
 import { drawSelection, EditorView, highlightActiveLine, keymap } from "@codemirror/view";
 import { tags } from "@lezer/highlight";
-import { useEffect, useLayoutEffect, useRef } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import {
   linkDispositionFromPointer,
   markdownLinkTargetAt,
   type LinkDisposition,
 } from "./linkTarget";
-import { resolveMarkdownImageSource } from "./imageSource";
-import { livePreviewExtensions, type PreviewVisual } from "./livePreview";
-import { renderMermaidSvg } from "./mermaidRenderer";
 import { isOversizedInlineImagePaste } from "./pasteGuard";
+import { mergeCompositionChange, sharedTextChange } from "./sharedTextChange";
+import {
+  markdownPositionFromSemantic,
+  semanticPositionFromMarkdown,
+  type EditorSemanticPosition,
+} from "./semanticPosition";
+import { VisualMarkdownEditor, type MarkdownEditorLocale } from "./VisualMarkdownEditor";
+import type { PreviewVisual } from "../viewer/model";
+import { FindBar } from "../find/FindBar";
+import { codeFindDecorations, codeMirrorFindTarget } from "../find/codeMirrorFind";
+import { usePageFind } from "../find/usePageFind";
 import "./MarkdownEditor.css";
 
 export interface SelectionRange {
@@ -26,14 +35,18 @@ export interface SelectionRange {
 }
 
 export interface EditorRevealRequest {
-  readonly position: number;
+  readonly anchor?: string;
+  readonly headingText?: string;
+  readonly position?: number;
   readonly requestId: number;
+  readonly scrollTop?: number;
 }
 
 export interface EditorViewSnapshot {
   readonly scrollTop: number;
   readonly selectionFrom: number;
   readonly selectionTo: number;
+  readonly semanticPosition?: EditorSemanticPosition;
 }
 
 export interface MarkdownEditorProps {
@@ -41,15 +54,24 @@ export interface MarkdownEditorProps {
   readonly instanceId?: string;
   readonly value: string;
   readonly mode: "normal" | "sourceOnly";
+  readonly presentationMode?: "visual" | "source";
   readonly autofocus?: boolean;
+  /** Controls wrapping inside fenced code blocks on the visual surface. */
+  readonly codeWrap?: boolean;
   readonly initialView?: EditorViewSnapshot;
+  readonly locale?: MarkdownEditorLocale;
+  readonly findRequest?: number;
+  readonly onFindRequestConsumed?: (request: number) => void;
   readonly reveal?: EditorRevealRequest;
+  readonly showCodeLineNumbers?: boolean;
+  readonly showTypingHints?: boolean;
   readonly onChange: (value: string) => void;
   readonly onImagePaste?: (selection: SelectionRange) => Promise<string>;
   readonly onInternalLink?: (target: string, disposition: LinkDisposition) => void;
   readonly onPasteRejected?: (message: string) => void;
   readonly onPasteError?: (message: string) => void;
   readonly onOpenVisual?: (visual: PreviewVisual) => void;
+  readonly onRevealConsumed?: (requestId: number) => void;
   readonly onViewChange?: (view: EditorViewSnapshot) => void;
 }
 
@@ -61,6 +83,25 @@ function firstClipboardImage(data: DataTransfer | null): File | null {
     if (file) return file;
   }
   return null;
+}
+
+/**
+ * Small integration contract for an explicit visual/source switch. The target
+ * surface resolves `semanticPosition` against its own document model instead
+ * of treating ProseMirror positions as Markdown offsets.
+ */
+function viewForSemanticModeSwitch(current: EditorViewSnapshot): EditorViewSnapshot {
+  return {
+    scrollTop: 0,
+    selectionFrom: 0,
+    selectionTo: 0,
+    semanticPosition: current.semanticPosition,
+  };
+}
+
+function sourceViewportPosition(view: EditorView): number {
+  const midpoint = Math.round((view.viewport.from + view.viewport.to) / 2);
+  return view.state.doc.lineAt(Math.max(0, Math.min(midpoint, view.state.doc.length))).from;
 }
 
 const paperHighlightStyle = HighlightStyle.define([
@@ -84,20 +125,20 @@ const paperEditorTheme = EditorView.theme({
     height: "100%",
     color: "#343a45",
     backgroundColor: "#ffffff",
-    fontSize: "17px",
+    fontSize: "var(--app-editor-font-size, 14px)",
   },
   ".cm-scroller": {
     overflow: "auto",
-    fontFamily:
-      '-apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif',
+    fontFamily: '"SFMono-Regular", Menlo, Consolas, monospace',
   },
   ".cm-content": {
-    width: "min(100%, 980px)",
+    boxSizing: "border-box",
+    width: "min(100%, var(--prose-max, 1080px))",
     minHeight: "100%",
     margin: "0 auto",
     padding: "52px clamp(32px, 7vw, 88px) 140px",
     caretColor: "#315fcf",
-    lineHeight: "1.8",
+    lineHeight: "1.72",
   },
   ".cm-line": {
     padding: "1px 0",
@@ -109,11 +150,15 @@ const paperEditorTheme = EditorView.theme({
     borderLeftColor: "#315fcf",
     borderLeftWidth: "2px",
   },
-  "&.cm-focused .cm-selectionBackground, ::selection": {
-    backgroundColor: "rgba(53, 104, 232, 0.18)",
+  "&.cm-focused .cm-selectionBackground, .cm-selectionBackground": {
+    backgroundColor: "#b8cff8",
+  },
+  ".cm-content ::selection": {
+    color: "#17233a",
+    backgroundColor: "#b8cff8",
   },
   ".cm-activeLine": {
-    backgroundColor: "rgba(246, 247, 248, 0.52)",
+    backgroundColor: "rgba(65, 105, 180, 0.12)",
   },
   ".cm-gutters": {
     display: "none",
@@ -121,25 +166,13 @@ const paperEditorTheme = EditorView.theme({
 });
 
 function editorExtensions(
-  mode: MarkdownEditorProps["mode"],
   onChange: MarkdownEditorProps["onChange"],
   onImagePaste: MarkdownEditorProps["onImagePaste"],
   onInternalLink: MarkdownEditorProps["onInternalLink"],
   onPasteRejected: MarkdownEditorProps["onPasteRejected"],
   onPasteError: MarkdownEditorProps["onPasteError"],
-  onOpenVisual: MarkdownEditorProps["onOpenVisual"],
-  reportView: (view: EditorView) => void,
-  documentId: string,
+  reportView: (view: EditorView, preferViewport?: boolean) => void,
 ) {
-  const sourceFirst =
-    mode === "normal"
-      ? livePreviewExtensions({
-          onOpenVisual,
-          renderMermaid: renderMermaidSvg,
-          resolveImageSource: (target) => resolveMarkdownImageSource(documentId, target),
-        })
-      : [history()];
-
   const openMarkdownLink = (event: MouseEvent, view: EditorView): boolean => {
     if (!onInternalLink || (event.button !== 0 && event.button !== 1)) return false;
     const position = view.posAtCoords({ x: event.clientX, y: event.clientY });
@@ -160,7 +193,8 @@ function editorExtensions(
   };
 
   return [
-    sourceFirst,
+    markdown(),
+    history(),
     drawSelection(),
     highlightActiveLine(),
     EditorView.lineWrapping,
@@ -168,9 +202,11 @@ function editorExtensions(
     syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
     syntaxHighlighting(paperHighlightStyle),
     paperEditorTheme,
+    codeFindDecorations,
     EditorView.updateListener.of((update) => {
       if (update.docChanged) onChange(update.state.doc.toString());
-      if (update.selectionSet || update.viewportChanged) reportView(update.view);
+      if (update.selectionSet || update.docChanged) reportView(update.view);
+      else if (update.viewportChanged) reportView(update.view, true);
     }),
     EditorView.domEventHandlers({
       click(event, view) {
@@ -209,32 +245,38 @@ function editorExtensions(
   ];
 }
 
-function MarkdownEditorInstance({
+function SourceMarkdownEditorInstance({
   documentId,
   value,
   mode,
   autofocus = true,
+  locale = "zh-CN",
+  findRequest,
+  onFindRequestConsumed,
   onChange,
   onImagePaste,
   onInternalLink,
   onPasteRejected,
   onPasteError,
-  onOpenVisual,
+  onRevealConsumed,
   onViewChange,
   initialView,
   reveal,
 }: MarkdownEditorProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
-  const valueRef = useRef(value);
+  const syncValueRef = useRef<(nextValue: string) => void>(() => {});
   const onChangeRef = useRef(onChange);
   const onImagePasteRef = useRef(onImagePaste);
   const onInternalLinkRef = useRef(onInternalLink);
   const onPasteRejectedRef = useRef(onPasteRejected);
   const onPasteErrorRef = useRef(onPasteError);
-  const onOpenVisualRef = useRef(onOpenVisual);
+  const onRevealConsumedRef = useRef(onRevealConsumed);
   const onViewChangeRef = useRef(onViewChange);
+  const consumedRevealRef = useRef<number | null>(null);
   const initialConfigRef = useRef({ autofocus, documentId, initialView, mode, value });
+  const find = usePageFind(findRequest, onFindRequestConsumed);
+  const { targetRef: findTargetRef, refresh: refreshFind } = find;
 
   useEffect(() => {
     onChangeRef.current = onChange;
@@ -242,15 +284,15 @@ function MarkdownEditorInstance({
     onInternalLinkRef.current = onInternalLink;
     onPasteRejectedRef.current = onPasteRejected;
     onPasteErrorRef.current = onPasteError;
-    onOpenVisualRef.current = onOpenVisual;
+    onRevealConsumedRef.current = onRevealConsumed;
     onViewChangeRef.current = onViewChange;
   }, [
     onChange,
     onImagePaste,
     onInternalLink,
-    onOpenVisual,
     onPasteError,
     onPasteRejected,
+    onRevealConsumed,
     onViewChange,
   ]);
 
@@ -258,33 +300,53 @@ function MarkdownEditorInstance({
     const host = hostRef.current;
     if (!host) return;
     const initial = initialConfigRef.current;
+    let applyingExternalValue = false;
+    let composing = false;
+    let compositionFrame = 0;
+    let pendingExternalValue: { base: string; value: string } | null = null;
+    const semanticSelection = initial.initialView?.semanticPosition
+      ? markdownPositionFromSemantic(initial.value, initial.initialView.semanticPosition)
+      : undefined;
     const selectionFrom = Math.max(
       0,
-      Math.min(initial.initialView?.selectionFrom ?? 0, initial.value.length),
+      Math.min(
+        semanticSelection ?? initial.initialView?.selectionFrom ?? 0,
+        initial.value.length,
+      ),
     );
     const selectionTo = Math.max(
       selectionFrom,
-      Math.min(initial.initialView?.selectionTo ?? selectionFrom, initial.value.length),
+      Math.min(
+        semanticSelection ?? initial.initialView?.selectionTo ?? selectionFrom,
+        initial.value.length,
+      ),
     );
 
-    const reportView = (view: EditorView) => {
+    const reportView = (view: EditorView, preferViewport = false) => {
       const selection = view.state.selection.main;
+      const semanticPosition = preferViewport
+        ? sourceViewportPosition(view)
+        : selection.from;
       onViewChangeRef.current?.({
         scrollTop: view.scrollDOM.scrollTop,
         selectionFrom: selection.from,
         selectionTo: selection.to,
+        semanticPosition: semanticPositionFromMarkdown(
+          view.state.doc.toString(),
+          semanticPosition,
+        ),
       });
     };
 
-    valueRef.current = initial.value;
     const state = EditorState.create({
       doc: initial.value,
       selection: EditorSelection.range(selectionFrom, selectionTo),
       extensions: editorExtensions(
-        initial.mode,
         (nextValue) => {
-          valueRef.current = nextValue;
-          onChangeRef.current(nextValue);
+          refreshFind();
+          if (!applyingExternalValue && !pendingExternalValue) {
+            onChangeRef.current(nextValue);
+          }
         },
         async (selection) => {
           if (!onImagePasteRef.current) throw new Error("图片粘贴尚未启用");
@@ -293,23 +355,73 @@ function MarkdownEditorInstance({
         (target, disposition) => onInternalLinkRef.current?.(target, disposition),
         (message) => onPasteRejectedRef.current?.(message),
         (message) => onPasteErrorRef.current?.(message),
-        (visual) => onOpenVisualRef.current?.(visual),
         reportView,
-        initial.documentId,
       ),
     });
     const view = new EditorView({ state, parent: host });
     viewRef.current = view;
-    let scrollFrame = 0;
-    const onScroll = () => {
-      window.cancelAnimationFrame(scrollFrame);
-      scrollFrame = window.requestAnimationFrame(() => reportView(view));
+    findTargetRef.current = codeMirrorFindTarget(view);
+    const applyExternalValue = (nextValue: string) => {
+      const change = sharedTextChange(view.state.doc.toString(), nextValue);
+      if (!change) return;
+      const { scrollTop, scrollLeft } = view.scrollDOM;
+      applyingExternalValue = true;
+      try {
+        view.dispatch({
+          changes: change,
+          annotations: Transaction.addToHistory.of(false),
+        });
+      } finally {
+        applyingExternalValue = false;
+        view.scrollDOM.scrollTop = scrollTop;
+        view.scrollDOM.scrollLeft = scrollLeft;
+      }
     };
+    syncValueRef.current = (nextValue) => {
+      const current = view.state.doc.toString();
+      if (pendingExternalValue) {
+        pendingExternalValue.value = nextValue;
+        return;
+      }
+      if (nextValue === current) return;
+      if (composing || view.composing) {
+        pendingExternalValue = {
+          base: current,
+          value: nextValue,
+        };
+        return;
+      }
+      applyExternalValue(nextValue);
+    };
+    const onCompositionStart = () => {
+      composing = true;
+      window.cancelAnimationFrame(compositionFrame);
+    };
+    const onCompositionEnd = () => {
+      composing = false;
+      // Let the editor finish the compositionend/input transaction first.
+      compositionFrame = window.requestAnimationFrame(() => {
+        const pending = pendingExternalValue;
+        if (!pending || composing) return;
+        pendingExternalValue = null;
+        const merged = mergeCompositionChange(
+          pending.base,
+          view.state.doc.toString(),
+          pending.value,
+        );
+        applyExternalValue(merged);
+        if (merged !== pending.value) onChangeRef.current(merged);
+      });
+    };
+    host.addEventListener("compositionstart", onCompositionStart, true);
+    host.addEventListener("compositionend", onCompositionEnd);
+    const onScroll = () => reportView(view, true);
     view.scrollDOM.addEventListener("scroll", onScroll, { passive: true });
     const restoreFrame = window.requestAnimationFrame(() => {
-      const savedScrollTop = initial.initialView?.scrollTop ?? 0;
-      view.scrollDOM.scrollTop = savedScrollTop;
-      if (savedScrollTop === 0 && selectionFrom > 0) {
+      const semanticPosition = initial.initialView?.semanticPosition;
+      const savedScrollTop = semanticPosition ? 0 : (initial.initialView?.scrollTop ?? 0);
+      if (!semanticPosition) view.scrollDOM.scrollTop = savedScrollTop;
+      if ((semanticPosition || savedScrollTop === 0) && selectionFrom > 0) {
         view.dispatch({
           effects: EditorView.scrollIntoView(selectionFrom, {
             y: "start",
@@ -317,55 +429,108 @@ function MarkdownEditorInstance({
           }),
         });
       }
+      reportView(view);
     });
     if (initial.autofocus) view.focus();
 
     return () => {
-      window.cancelAnimationFrame(scrollFrame);
       window.cancelAnimationFrame(restoreFrame);
+      window.cancelAnimationFrame(compositionFrame);
+      host.removeEventListener("compositionstart", onCompositionStart, true);
+      host.removeEventListener("compositionend", onCompositionEnd);
       view.scrollDOM.removeEventListener("scroll", onScroll);
+      syncValueRef.current = () => {};
       viewRef.current = null;
+      findTargetRef.current = null;
       view.destroy();
     };
-  }, []);
+  }, [findTargetRef, refreshFind]);
 
   useEffect(() => {
-    const view = viewRef.current;
-    if (!view || value === valueRef.current) return;
-
-    valueRef.current = value;
-    view.dispatch({
-      changes: { from: 0, to: view.state.doc.length, insert: value },
-      annotations: Transaction.addToHistory.of(false),
-    });
+    syncValueRef.current(value);
   }, [value]);
 
   useEffect(() => {
     const view = viewRef.current;
-    if (!view || !reveal) return;
+    if (
+      !view ||
+      reveal?.position === undefined ||
+      consumedRevealRef.current === reveal.requestId
+    ) {
+      return;
+    }
     const position = Math.max(0, Math.min(reveal.position, view.state.doc.length));
     view.dispatch({
       selection: EditorSelection.cursor(position),
-      effects: EditorView.scrollIntoView(position, { y: "start", yMargin: 40 }),
+      effects:
+        reveal.scrollTop === undefined
+          ? EditorView.scrollIntoView(position, { y: "start", yMargin: 40 })
+          : undefined,
     });
+    if (reveal.scrollTop !== undefined) view.scrollDOM.scrollTop = reveal.scrollTop;
     view.focus();
+    consumedRevealRef.current = reveal.requestId;
+    onRevealConsumedRef.current?.(reveal.requestId);
   }, [reveal]);
 
   return (
     <div
       aria-label="Markdown 编辑器"
-      className={`markdown-editor markdown-editor--${mode}`}
+      className={`markdown-editor markdown-editor--source markdown-editor--${mode}`}
       data-document-id={documentId}
-      ref={hostRef}
+    >
+      <FindBar find={find} locale={locale} />
+      <div className="markdown-editor__source-host" ref={hostRef} />
+    </div>
+  );
+}
+
+interface SurfaceCoordinatorState {
+  readonly activeMode: "visual" | "source";
+  readonly snapshots: Partial<Record<"visual" | "source", EditorViewSnapshot>>;
+}
+
+function CoordinatedMarkdownEditor(props: MarkdownEditorProps) {
+  const presentationMode =
+    props.mode === "sourceOnly" ? "source" : (props.presentationMode ?? "visual");
+  const notifyViewChange = props.onViewChange;
+  const [coordinator, setCoordinator] = useState<SurfaceCoordinatorState>(() => ({
+    activeMode: presentationMode,
+    snapshots: {},
+  }));
+  const switchedSurface = coordinator.activeMode !== presentationMode;
+  const previousSnapshot = coordinator.snapshots[coordinator.activeMode];
+  let initialView = props.initialView;
+  if (switchedSurface && previousSnapshot?.semanticPosition && !props.reveal) {
+    initialView = viewForSemanticModeSwitch(previousSnapshot);
+  }
+
+  const onViewChange = useCallback(
+    (view: EditorViewSnapshot) => {
+      setCoordinator((current) => ({
+        activeMode: presentationMode,
+        snapshots: { ...current.snapshots, [presentationMode]: view },
+      }));
+      notifyViewChange?.(view);
+    },
+    [notifyViewChange, presentationMode],
+  );
+
+  const surfaceProps = { ...props, initialView, onViewChange };
+
+  if (presentationMode === "visual") {
+    return <VisualMarkdownEditor {...surfaceProps} />;
+  }
+
+  return (
+    <SourceMarkdownEditorInstance
+      {...surfaceProps}
+      key={`${props.instanceId ?? props.documentId}:${props.documentId}:source`}
     />
   );
 }
 
 export function MarkdownEditor(props: MarkdownEditorProps) {
-  return (
-    <MarkdownEditorInstance
-      {...props}
-      key={`${props.instanceId ?? props.documentId}:${props.documentId}:${props.mode}`}
-    />
-  );
+  const scope = `${props.instanceId ?? props.documentId}:${props.documentId}`;
+  return <CoordinatedMarkdownEditor {...props} key={scope} />;
 }

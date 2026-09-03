@@ -1,5 +1,5 @@
 {
-  "name": "markdown-workspace",
+  "name": "notespace",
   "private": true,
   "version": "0.1.0",
   "type": "module",
@@ -31,6 +31,9 @@
     "desktop:build:debug": "tauri build --debug --no-bundle"
   },
   "dependencies": {
+    "@milkdown/crepe": "7.22.1",
+    "@milkdown/kit": "7.22.1",
+    "@codemirror/language-data": "6.5.2",
     "@tauri-apps/api": "2.11.1",
     "mermaid": "^11.17.2",
     "react": "19.1.0",

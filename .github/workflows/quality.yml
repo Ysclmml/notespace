@@ -61,13 +61,13 @@ jobs:
         run: |
           mkdir -p artifacts/ci
           ditto -c -k --sequesterRsrc --keepParent \
-            "src-tauri/target/debug/bundle/macos/Markdown Workspace.app" \
-            artifacts/ci/markdown-workspace-debug-macos.zip
+            "src-tauri/target/debug/bundle/macos/NoteSpace.app" \
+            artifacts/ci/notespace-debug-macos.zip
 
       - name: Upload the debug app
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: markdown-workspace-debug-macos-${{ github.sha }}
-          path: artifacts/ci/markdown-workspace-debug-macos.zip
+          name: notespace-debug-macos-${{ github.sha }}
+          path: artifacts/ci/notespace-debug-macos.zip
           if-no-files-found: error
           retention-days: 7

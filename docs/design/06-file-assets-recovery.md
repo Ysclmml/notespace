@@ -1,15 +1,15 @@
 # 06. 文件、资产与恢复
 
-> **历史参考（baseline 0.1）**：当前只保留轻量预检、截图落盘和原子保存；staging journal、repair、quarantine、资产 GC 与完整 crash recovery 均已延期。见 [ADR-0005](../decisions/0005-lean-local-editor-boundary.md)。
+> **历史参考（baseline 0.1）**：当前只保留轻量预检、截图落盘和原子保存；staging journal、repair、quarantine、资产 GC 与完整 crash recovery 均已延期。见 [ADR-0005](../decisions/0005-lean-local-editor-boundary.md)。编辑 transaction、`sourceOnly` 与未编辑/首次可视编辑的序列化语义以 [ADR-0006](../decisions/0006-visual-editor-explicit-source-mode.md) 为准。
 
-> 状态：Approved design baseline 0.1  
+> 状态：Historical design baseline 0.1；当前文件/编辑交界基线为 0.3
 > 所有者：Native Core  
 > 主要需求：FILE-PREFLIGHT-001、FILE-SAVE-001、FILE-WATCH-001、ASSET-PASTE-001、ASSET-BASE64-001、ASSET-STAGING-001、ASSET-UNDO-001、RECOVERY-DIRTY-001、RECOVERY-LOOP-001  
 > 依赖：[03-domain-model-and-contracts.md](03-domain-model-and-contracts.md)、[0004-pathological-input-guard.md](../decisions/0004-pathological-input-guard.md)
 
 ## 1. 目的与边界
 
-本章规定 Markdown 文件从选择、预检、读取、编辑、保存到恢复的完整生命周期，以及剪贴板图片从系统剪贴板进入资产目录的事务语义。它是 Rust 文件能力和前端 DocumentSession 之间的执行契约。
+本章记录 baseline 0.1 的完整生命周期探索。当前 Rust 文件能力和前端 DocumentSession 的执行契约只保留 `DESIGN.md`/`REQUIREMENTS.md`/ADR-0005 明确采用的轻量部分；编辑表面与序列化遵循 ADR-0006。
 
 本章不规定编辑器视觉行为、Tab 历史或第三方插件 API；这些分别见第 04、05、08 章。
 
@@ -17,19 +17,19 @@
 
 后续实现和重构必须保持以下不变量。编号是稳定引用，不得悄悄改变含义。
 
-| ID | 不变量 |
-|---|---|
-| FILE-INV-001 | 文件正文进入主 EditorView 前必须完成 Rust 流式预检 |
-| FILE-INV-002 | 正常打开返回的正文必须对应一个不可伪造的 DocumentId 和 DiskRevision |
-| FILE-INV-003 | 保存必须使用 expected DiskRevision 做并发检查，禁止静默覆盖外部变化 |
-| FILE-INV-004 | 成功保存只能确认请求中 snapshotSessionRevision 对应的快照；期间新增编辑仍为 dirty |
-| FILE-INV-005 | 未编辑文档打开后直接保存必须保持原始字节一致 |
-| ASSET-INV-001 | 图片字节成功持久化前，正文和编辑 Undo 栈不得改变 |
-| ASSET-INV-002 | 图片粘贴不得把 data URI 或 Base64 内容写入 Markdown |
-| ASSET-INV-003 | 正文 Undo 只撤销 Markdown 链接；资产删除由引用检查和延迟回收处理 |
-| REC-INV-001 | 恢复数据不得自动覆盖用户磁盘文件 |
-| REC-INV-002 | 上次导致打开失败的资源不得在下一次启动时自动进入主编辑器 |
-| PATH-INV-001 | WebView 传入的路径或链接只作为 locator 提示，最终规范化与授权判断由 Rust 完成 |
+| ID            | 不变量                                                                            |
+| ------------- | --------------------------------------------------------------------------------- |
+| FILE-INV-001  | 文件正文进入 WebView/任一编辑表面前必须完成 Rust 流式预检                         |
+| FILE-INV-002  | 正常打开返回的正文必须对应一个不可伪造的 DocumentId 和 DiskRevision               |
+| FILE-INV-003  | 保存必须使用 expected DiskRevision 做并发检查，禁止静默覆盖外部变化               |
+| FILE-INV-004  | 成功保存只能确认请求中 snapshotSessionRevision 对应的快照；期间新增编辑仍为 dirty |
+| FILE-INV-005  | 未编辑文档打开后直接保存必须保持原始字节一致                                      |
+| ASSET-INV-001 | 图片字节成功持久化前，正文和编辑 Undo 栈不得改变                                  |
+| ASSET-INV-002 | 图片粘贴不得把 data URI 或 Base64 内容写入 Markdown                               |
+| ASSET-INV-003 | 正文 Undo 只撤销 Markdown 链接；资产删除由引用检查和延迟回收处理                  |
+| REC-INV-001   | 恢复数据不得自动覆盖用户磁盘文件                                                  |
+| REC-INV-002   | 上次导致打开失败的资源不得在下一次启动时自动进入主编辑器                          |
+| PATH-INV-001  | WebView 传入的路径或链接只作为 locator 提示，最终规范化与授权判断由 Rust 完成     |
 
 ## 3. 文件标识与修订
 
@@ -53,21 +53,21 @@ SessionRevision 是前端 DocumentSession 的单调递增整数。每次正文 t
 
 保存请求必须携带：
 
-~~~text
+```text
 documentId
 expectedDiskRevision
 snapshotSessionRevision
 content 或受控内容句柄
 encoding/newline/BOM 策略
-~~~
+```
 
 保存结果必须携带：
 
-~~~text
+```text
 newDiskRevision
 savedSessionRevision = snapshotSessionRevision
 bytesWritten
-~~~
+```
 
 前端仅在当前 SessionRevision 等于 savedSessionRevision 时标记 clean，否则更新磁盘基线但保持 dirty。
 
@@ -75,17 +75,17 @@ bytesWritten
 
 ### 4.1 打开流水线
 
-~~~text
+```text
 ResourceRef
   -> resource_resolve_v1：授权、规范化、分类
   -> document_open_v1：流式预检
   -> 判定 DocumentOpenOutcome
        editable(mode=normal)    -> 创建或复用完整 DocumentSession
-       editable(mode=largeText) -> 创建或复用降级 DocumentSession
+       editable(mode=sourceOnly) -> 创建或复用 CodeMirror 降级 DocumentSession
        safetyBlocked            -> 打开安全处理页面，不创建 EditorView
        unsupported              -> 提示并建议交给外部程序
        AppError                 -> 错误页
-~~~
+```
 
 系统文件关联、Finder “打开方式”和文件/目录拖入不把 OS path 交给 WebView。Rust 原生层先规范化并建立 grant-backed target，再通过 `app.openResourcesRequested` 有序投递：目录续接 workspace open，Markdown 文件进入同一 ResourceRouter/open 流水线；同一 native request 去重，批次内单项失败不阻断其他项。
 
@@ -103,12 +103,12 @@ ResourceRef
 
 阈值属于版本化 `PerformancePolicy`，不可散落硬编码在 UI。首版默认值：
 
-| 结果 | 默认条件 | 行为 |
-|---|---|---|
-| editable / normal | 文件不超过 8 MiB，最大行不超过 256 KiB，未发现超限 data URI | 完整编辑、语法树、装饰、图片和 Mermaid |
-| editable / largeText | 文件不超过 32 MiB，且不满足 normal，但未命中 safetyBlocked/unsupported | 保留纯文本编辑、搜索和保存；关闭 live preview、Outline、Mermaid、全量链接索引 |
-| safetyBlocked | 单行超过 1 MiB，或图片 data URI 估算解码量超过 512 KiB | 不向 WebView 返回正文；展示摘要与修复动作 |
-| unsupported | 超过 32 MiB、二进制、无法无损支持的编码或策略明确拒绝 | 不承诺内置编辑，可在系统编辑器打开 |
+| 结果                  | 默认条件                                                    | 行为                                                                                  |
+| --------------------- | ----------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| editable / normal     | 文件不超过 8 MiB，最大行不超过 256 KiB，未发现超限 data URI | 默认 Milkdown/ProseMirror 可视编辑，可显式切换 CodeMirror 源码                        |
+| editable / sourceOnly | 超过 8 MiB 的普通 UTF-8 多行文本，或较长但未阻止的物理行    | 保留 CodeMirror 纯文本编辑、搜索和保存；关闭可视编辑、Outline、Mermaid 和全量链接索引 |
+| safetyBlocked         | 单行超过 1 MiB，或图片 data URI 估算解码量超过 512 KiB      | 不向 WebView 返回正文；展示简短说明                                                   |
+| unsupported           | 二进制、无法无损支持的编码或策略明确拒绝                    | 不承诺内置编辑，可在系统编辑器打开                                                    |
 
 阈值是保守初始值，只有基准测试和 ADR 可以调整。用户单次选择“仍以大文本打开”只能越过性能提示，不能越过安全页对病态内容的阻断。
 
@@ -118,8 +118,8 @@ P0 支持 UTF-8、UTF-8 BOM 和常见 LF/CRLF。为满足零差异：
 
 - DocumentSession 保存原始编码标记、BOM 和主换行风格。
 - 未发生正文 transaction 时，“保存”不得重新序列化文件。
-- 发生编辑后，未触碰的文本不得经过 Markdown pretty printer。
-- 混合换行应保留未编辑区的原字节；若编辑引擎无法逐段保持，必须先在 ADR 中明确降级，并在首次保存前提示。
+- 仅打开、导航、选择、滚动或切换可视/源码模式不得序列化或标 dirty。
+- 首次可视正文编辑后 Milkdown/ProseMirror serializer 可以规范化整篇等价 Markdown，包括表格空格和换行表达；源码模式仍按文本 transaction 精确修改。
 - 无法无损解码的文件进入 Unsupported 或显式转码流程，不得替换非法字节后静默保存。
 
 ### 4.4 安全页
@@ -202,13 +202,13 @@ Rust watcher 事件只表示“可能发生变化”，不是权威事务日志�
 
 事件类别：
 
-| 事件 | clean 会话 | dirty 会话 |
-|---|---|---|
-| 内容修改 | 可自动重载，并保留可映射视图状态 | 标记 Conflict，禁止静默覆盖 |
-| 删除 | 标记 Missing，允许另存或重新创建 | 进入 Conflict(reason=deleted)，保留内存正文且不得自动重建 |
-| 重命名/移动 | 能可靠配对时更新 locator | 更新 locator，同时保持 dirty |
-| 权限丢失 | 保留 session/buffer，设置 `descriptor.readOnly=true` 并显示 typed banner；连读取也失败时仍不丢 buffer | 保留 dirty，标记 readOnly，并提供重新授权或另存 |
-| watcher overflow | 工作区权威重扫 | 工作区权威重扫，会话逐个核对 |
+| 事件             | clean 会话                                                                                            | dirty 会话                                                |
+| ---------------- | ----------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| 内容修改         | 可自动重载，并保留可映射视图状态                                                                      | 标记 Conflict，禁止静默覆盖                               |
+| 删除             | 标记 Missing，允许另存或重新创建                                                                      | 进入 Conflict(reason=deleted)，保留内存正文且不得自动重建 |
+| 重命名/移动      | 能可靠配对时更新 locator                                                                              | 更新 locator，同时保持 dirty                              |
+| 权限丢失         | 保留 session/buffer，设置 `descriptor.readOnly=true` 并显示 typed banner；连读取也失败时仍不丢 buffer | 保留 dirty，标记 readOnly，并提供重新授权或另存           |
+| watcher overflow | 工作区权威重扫                                                                                        | 工作区权威重扫，会话逐个核对                              |
 
 应用自身保存产生的 watcher 事件通过 canonical `writeId + observedDiskRevision` 归并为 `source="ownWrite"`，不能触发“外部修改”提示。`operationId` 只用于任务关联/取消，不代替磁盘写入身份。
 
@@ -216,7 +216,7 @@ Rust watcher 事件只表示“可能发生变化”，不是权威事务日志�
 
 ### 6.2 冲突状态机
 
-~~~text
+```text
 Clean
   -- local edit --> Dirty
 Clean
@@ -252,7 +252,7 @@ Closing
 Discarding
   -- success --> Closed
   -- failure --> previous state
-~~~
+```
 
 Conflict 状态允许继续编辑和生成恢复 checkpoint，但普通 Save 必须持续被拒绝，直到用户选择解决策略。reload/recreate 的完整 outcome、SafetyBlocked 回退和竞态规则以第 03 章为准；任何失败出边都保留当前 buffer。
 
@@ -275,7 +275,7 @@ Conflict 状态允许继续编辑和生成恢复 checkpoint，但普通 Save 必
 
 ### 7.2 两阶段流程
 
-~~~text
+```text
 PasteIntent(pasteIntentId, sessionId, anchorRevision, selection)
   -> asset_import_clipboard_v1
        -> 读取图片、校验维度和解码上限
@@ -287,9 +287,9 @@ PasteIntent(pasteIntentId, sessionId, anchorRevision, selection)
        -> 原子提交
   <- imported(AssetRef(assetId, state, markdownUri, mime, dimensions))
   -> 前端验证 session 仍存在且锚点可映射
-  -> 单个 CodeMirror transaction 插入 Markdown 链接
+  -> 当前编辑表面的单个正文 transaction 插入 Markdown 链接
   -> 插入失败或被取消时调用 asset_release_v1
-~~~
+```
 
 任意步骤失败：
 
@@ -299,18 +299,18 @@ PasteIntent(pasteIntentId, sessionId, anchorRevision, selection)
 
 资产目录只读、权限撤销、磁盘/配额耗尽、名称冲突与路径冲突由 `AppErrorDetails.kind="assetWrite"` 的稳定 `cause` 区分；UI 禁止匹配错误 message。授权缺失使用 `needsGrant` 正常 outcome，不冒充通用写入失败。
 
-若用户在图片处理期间继续输入，锚点通过 CodeMirror change mapping 前移；无法可靠映射时，在当前光标处确认插入或取消，禁止默默插到错误段落。
+若用户在图片处理期间继续输入，锚点通过 session revision/change mapping 前移；可视与源码表面都必须映射到最新正文位置。无法可靠映射时，在当前光标处确认插入或取消，禁止默默插到错误段落。
 
 ### 7.3 资产路径策略
 
 默认工作区配置：
 
-~~~text
+```text
 assetDirectory: "./assets"
 pathStyle: "relative-to-document"
 namePattern: "{documentStem}-{yyyyMMdd-HHmmss}-{hash8}.{ext}"
 deduplicateByContent: true
-~~~
+```
 
 工作区外单文件使用同一相对规则，默认目标为该文档同级的 assets 目录。已保存的工作区/standalone 文档使用 `owner={kind:document, documentId}`；未保存草稿使用 `owner={kind:draft, draftId}`。Rust 由 locator 映射 canonical `ResourceScope`：workspace locator 使用 workspace scope，grantedFile 使用 document scope，draft staging 使用仅限 app recovery ledger 的 draft scope；Save As 晋升后才转成 document/workspace scope。若平台授权只覆盖单文件而不覆盖相邻目录，asset import 返回绑定 owner/`pasteIntentId` 的 `needsGrant(assetDirectory)`，通过 `resource_grant_v1` 原生授权后幂等重试；禁止改用绝对链接或 Base64 规避权限。
 
@@ -327,9 +327,9 @@ deduplicateByContent: true
 
 未保存文档没有稳定相对路径，图片必须先写到应用恢复目录中的 draft staging：
 
-~~~text
+```text
 appData/recovery/drafts/{draftId}/assets/{assetName}
-~~~
+```
 
 首次 Save As 的 AssetMigration 必须复用第 5.2 节 durable-intent 协议：prepare 返回所有 URI replacement，前端一次应用，Rust 在 document_save_as_v1 中先提交资产再提交 Markdown。任一步失败都回滚 replacement 并保留 staging，允许以同 intent 查询/重试；已提交但未 ack 也保留 recovery alias，禁止提前删除导致崩溃恢复断链。
 
@@ -346,7 +346,7 @@ appData/recovery/drafts/{draftId}/assets/{assetName}
 
 ## 8. 大 data URI 的粘贴防护
 
-文本粘贴在创建 CodeMirror transaction 前检查：
+文本粘贴在创建 ProseMirror 或 CodeMirror transaction 前检查：
 
 - 剪贴板文本总长度；
 - 是否匹配 data:image/...;base64,；
@@ -369,18 +369,18 @@ appData/recovery/drafts/{draftId}/assets/{assetName}
 
 每个 dirty DocumentSession 保存独立 checkpoint：
 
-| 字段 | 说明 |
-|---|---|
-| recoverySchemaVersion | 恢复格式版本 |
-| documentId / locator hint | 仅用于匹配，重新打开仍需授权与解析 |
-| baseDiskRevision | 编辑开始时磁盘基线 |
-| sessionRevision | checkpoint 对应修订 |
-| persistedSessionRevision | checkpoint 时最后成功持久化的 session 修订，用于恢复 dirty 推导 |
-| content | 压缩正文或受控增量 journal |
-| timestamp | 生成时间 |
-| stagingAssetRefs | 草稿资产引用 |
-| pendingSaveAsIntentId | 可选；把 checkpoint 与未 ack Save As journal 关联 |
-| integrityHash | 检测损坏 |
+| 字段                      | 说明                                                            |
+| ------------------------- | --------------------------------------------------------------- |
+| recoverySchemaVersion     | 恢复格式版本                                                    |
+| documentId / locator hint | 仅用于匹配，重新打开仍需授权与解析                              |
+| baseDiskRevision          | 编辑开始时磁盘基线                                              |
+| sessionRevision           | checkpoint 对应修订                                             |
+| persistedSessionRevision  | checkpoint 时最后成功持久化的 session 修订，用于恢复 dirty 推导 |
+| content                   | 压缩正文或受控增量 journal                                      |
+| timestamp                 | 生成时间                                                        |
+| stagingAssetRefs          | 草稿资产引用                                                    |
+| pendingSaveAsIntentId     | 可选；把 checkpoint 与未 ack Save As journal 关联               |
+| integrityHash             | 检测损坏                                                        |
 
 P0 推荐周期性完整压缩快照配合防抖，而不是先实现复杂操作日志。触发条件：
 
@@ -429,21 +429,21 @@ Safe Mode 必须同时禁用第三方扩展和恢复未提交布局，确保用�
 
 Rust 错误消息可本地化变化，但错误码和结构在同一 API 主版本内稳定：
 
-| 错误码 | 含义 | 默认 UI |
-|---|---|---|
-| ERR_NOT_FOUND | 目标不存在 | 保留会话，定位或另存 |
-| ERR_PERMISSION_DENIED | 无权限 | 重新授权或另存 |
-| ERR_REVISION_CONFLICT | 磁盘版本变化 | 冲突解决页 |
-| ERR_INVALID_UTF8 | 无法无损解码 | 转码说明/系统打开 |
-| ERR_UNSAFE_CONTENT | 病态内容被阻断 | 安全页 |
-| ERR_FILE_TOO_LARGE | 超出内置上限 | 外部工具建议 |
-| ERR_STALE_TOKEN | repair/save-as token 已失效 | 重新预检或准备 |
-| ERR_CLIPBOARD_NO_IMAGE | 无可导入图片 | 退回普通粘贴 |
-| ERR_UNSUPPORTED_IMAGE | 格式、维度或内容不安全 | 取消并说明 |
-| ERR_ASSET_WRITE_FAILED | 资产无法落盘 | 正文不变，允许重试 |
-| ERR_ASSET_MIGRATION_FAILED | 草稿资产迁移失败 | 保留 staging，允许重试 |
-| ERR_RECOVERY_CORRUPT | checkpoint 校验失败 | 隔离文件，不自动删除 |
-| ERR_CANCELLED | 用户或新任务取消 | 静默或轻提示 |
+| 错误码                     | 含义                        | 默认 UI                |
+| -------------------------- | --------------------------- | ---------------------- |
+| ERR_NOT_FOUND              | 目标不存在                  | 保留会话，定位或另存   |
+| ERR_PERMISSION_DENIED      | 无权限                      | 重新授权或另存         |
+| ERR_REVISION_CONFLICT      | 磁盘版本变化                | 冲突解决页             |
+| ERR_INVALID_UTF8           | 无法无损解码                | 转码说明/系统打开      |
+| ERR_UNSAFE_CONTENT         | 病态内容被阻断              | 安全页                 |
+| ERR_FILE_TOO_LARGE         | 超出内置上限                | 外部工具建议           |
+| ERR_STALE_TOKEN            | repair/save-as token 已失效 | 重新预检或准备         |
+| ERR_CLIPBOARD_NO_IMAGE     | 无可导入图片                | 退回普通粘贴           |
+| ERR_UNSUPPORTED_IMAGE      | 格式、维度或内容不安全      | 取消并说明             |
+| ERR_ASSET_WRITE_FAILED     | 资产无法落盘                | 正文不变，允许重试     |
+| ERR_ASSET_MIGRATION_FAILED | 草稿资产迁移失败            | 保留 staging，允许重试 |
+| ERR_RECOVERY_CORRUPT       | checkpoint 校验失败         | 隔离文件，不自动删除   |
+| ERR_CANCELLED              | 用户或新任务取消            | 静默或轻提示           |
 
 ## 12. 测试与验收
 
@@ -455,7 +455,7 @@ Rust 错误消息可本地化变化，但错误码和结构在同一 API 主版�
 - ASSET-001：并发连续粘贴 20 张图片，每个 pasteId 恰好生成一个链接和至多一个有效资产。
 - ASSET-002：未保存文档崩溃重启后，staging 图片仍可预览并可在 Save As 后迁移。
 - ASSET-003：Undo、Redo、关闭文档和 GC 不删除仍有引用或用户原有资产。
-- SAFE-001：正文只在 DocumentOpenOutcome.kind=editable 且 mode=normal/largeText 时返回 WebView。
+- SAFE-001：正文只在 DocumentOpenOutcome.kind=editable 且 mode=normal/sourceOnly 时返回 WebView。
 - SAFE-002：所有图片剪贴板路径均不产生 Base64 Markdown。
 - SAFE-003：粘贴或打开 10 MiB 单行 data URI 均不创建主 EditorView。
 - REC-001：kill -9 后可恢复 dirty 内容，且磁盘原文件不被修改。

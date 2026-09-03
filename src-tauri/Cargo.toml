@@ -1,22 +1,24 @@
 [package]
-name = "markdown-workspace"
+name = "notespace"
 version = "0.1.0"
-description = "A local-first Markdown editing and browsing workspace"
+description = "NoteSpace, a local-first Markdown and text editor"
 edition = "2021"
 license = "UNLICENSED"
 publish = false
-default-run = "markdown-workspace"
+default-run = "notespace"
 
 [lib]
-name = "markdown_workspace_lib"
+name = "notespace_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
 tauri-build = { version = "=2.6.3", features = [] }
 
 [dependencies]
+notify = "=8.2.0"
 arboard = { version = "=3.6.1", default-features = false, features = ["image-data"] }
 png = { version = "=0.18.1", default-features = false }
 rfd = { version = "=0.17.2", default-features = true }
 serde = { version = "=1.0.229", features = ["derive"] }
 tauri = { version = "=2.11.5", features = ["protocol-asset"] }
+trash = "=5.2.6"

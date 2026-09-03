@@ -3,6 +3,10 @@
   --paper-1: #fbfbfa;
   --paper-2: #f6f7f8;
   --paper-3: #eff1f4;
+  --surface-hover: #e5e9f0;
+  --surface-selected: #d9e4ff;
+  --surface-selected-hover: #ccdafa;
+  --surface-selected-ink: #244786;
   --ink-950: #20242b;
   --ink-800: #343a45;
   --ink-700: #414854;

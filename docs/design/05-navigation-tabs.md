@@ -1,8 +1,8 @@
 # 导航、Tab 与链接设计
 
-> **历史参考（baseline 0.1）**：Session/Tab/history 分离仍有效；复杂异步协议和旧门禁不再规范。当前范围以 [DESIGN.md](../DESIGN.md) 与 [REQUIREMENTS.md](../REQUIREMENTS.md) 为准。
+> **历史参考（baseline 0.1）**：Session/Tab/history 分离仍有效；复杂异步协议和旧门禁不再规范。当前范围以 [DESIGN.md](../DESIGN.md)、[REQUIREMENTS.md](../REQUIREMENTS.md) 与 [ADR-0006](../decisions/0006-visual-editor-explicit-source-mode.md) 为准。旧“编辑态链接只能定位”和 `livePreview` ViewState 语义已失效。
 
-> 状态：Approved design baseline 0.1  
+> 状态：Historical design baseline 0.1；当前编辑/导航基线为 0.3
 > 所有者：Workspace / Navigation  
 > 主要需求：NAV-MODEL-001、NAV-HISTORY-001、NAV-RESTORE-001、NAV-DISPOSITION-001、NAV-ANCHOR-001、NAV-ASYNC-001  
 > 契约依赖：[03-domain-model-and-contracts.md](03-domain-model-and-contracts.md)
@@ -11,35 +11,31 @@
 
 Tab 不是固定文件，而是一条独立浏览会话。
 
-~~~text
+```text
 DocumentSession 1 ─────┬─ DocumentView A in Tab A
                       └─ DocumentView B in Tab B / Pane B
 
 Tab A history: 导航页 → 架构文档 → MQ 文档
 Tab B history: 搜索结果 → 同一架构文档#某标题
-~~~
+```
 
-内容状态属于 DocumentSession；历史属于 Tab；光标和滚动属于 DocumentView 或 `NavEntry.viewState`。
+内容状态属于 DocumentSession；历史属于 Tab；`visual/source` 编辑表面、光标和滚动属于 DocumentView 或 `NavEntry.viewState`。
 
 ## 2. ResourceRouter
 
 所有打开行为统一进入：
 
-~~~ts
-type OpenDisposition =
-  | "current"
-  | "newForegroundTab"
-  | "newBackgroundTab"
-  | "splitRight"
+```ts
+type OpenDisposition = "current" | "newForegroundTab" | "newBackgroundTab" | "splitRight";
 
 interface NavigateIntent {
-  target: ResourceRef | UnresolvedLink
-  disposition: OpenDisposition
-  source: NavigationSource
-  originTabId?: TabId
-  originViewId?: DocumentViewId
+  target: ResourceRef | UnresolvedLink;
+  disposition: OpenDisposition;
+  source: NavigationSource;
+  originTabId?: TabId;
+  originViewId?: DocumentViewId;
 }
-~~~
+```
 
 上述名称与字段以第 03 章为 canonical contract；本章不得建立第二套 `NavigateRequest`。Peek 使用第 03 章的独立 `PreviewIntent`，不是新的 disposition。
 
@@ -52,17 +48,18 @@ interface NavigateIntent {
 
 ## 3. 默认点击矩阵
 
-| 操作 | 行为 |
-|---|---|
-| 单击本地 Markdown 链接 | 当前 Tab 跳转并压入历史 |
-| Cmd/Ctrl + 单击 | 后台新 Tab |
-| Cmd/Ctrl + Shift + 单击 | 前台新 Tab |
-| 中键 | 后台新 Tab |
-| 单击 heading anchor | 当前 Tab 跳转并压入历史 |
-| 右键 | 当前、新 Tab、Peek、右分栏、定位、复制链接 |
-| 单击外部 http/https | 交给系统浏览器 |
-| 编辑态单击链接源码 | 仅移动光标 |
-| 编辑态 Cmd/Ctrl+Enter | 打开链接 |
+| 操作                        | 行为                                       |
+| --------------------------- | ------------------------------------------ |
+| 单击本地 Markdown 链接      | 当前 Tab 跳转并压入历史                    |
+| Cmd/Ctrl + 单击             | 后台新 Tab                                 |
+| Cmd/Ctrl + Shift + 单击     | 前台新 Tab                                 |
+| 中键                        | 后台新 Tab                                 |
+| 单击 heading anchor         | 当前 Tab 跳转并压入历史                    |
+| 右键                        | 当前、新 Tab、Peek、右分栏、定位、复制链接 |
+| 单击外部 http/https         | 交给系统浏览器                             |
+| 可视编辑中单击链接          | 当前 Tab 跳转；链接以明显蓝色下划线呈现    |
+| 显式源码模式单击链接语法    | 仅移动光标                                 |
+| 显式源码模式 Cmd/Ctrl+Enter | 打开链接                                   |
 
 文件树、正文链接、Outline、搜索结果和反向链接必须复用同一矩阵。
 
@@ -85,12 +82,13 @@ P1 关闭时间只属于 `WindowStateSnapshotV1.recentlyClosedTabs[].closedAt`�
 5. goBack 和 goForward 只移动 index，不创建新 entry。
 6. 当前目标与新目标完全相同且没有新 anchor 时不重复压栈。
 7. 滚动、光标移动、查找下一个仅更新当前 `NavEntry.viewState`。
+8. 显式切换 `visual/source` 只更新当前 `NavEntry.viewState`；不创建历史、不标 dirty、不进入正文 Undo。
 
 ## 5. 位置恢复
 
 不能只存绝对 scrollTop。图片、表格和 Mermaid 异步布局会改变高度。
 
-持久化结构必须直接使用第 03 章的 ViewState、ScrollAnchor 和 BlockLocator；本章不得定义第二套 resume 类型。selection 使用源码 anchor/head，scroll.topBlock 保存 BlockLocator，yWithinBlock 保存块内像素偏移，foldedRanges 保存带可选 fingerprint 的源码范围。
+持久化结构必须直接使用第 03 章的 ViewState、ScrollAnchor 和 BlockLocator；本章不得定义第二套 resume 类型。`editorMode` 保存 `visual/source`；selection 表示当前表面的 anchor/head，源码模式才按 Markdown offset 解释；scroll.topBlock 保存 BlockLocator，yWithinBlock 保存块内像素偏移，foldedRanges 仅用于源码表面。
 
 BlockLocator 使用多级回退：
 
@@ -102,7 +100,7 @@ BlockLocator 使用多级回退：
 恢复分两阶段：
 
 1. 文本加载后恢复选择和大致顶部块。
-2. 可见 Widget 布局稳定后按 `ScrollAnchor.yWithinBlock` 校正一次。
+2. 可见图片/Mermaid 等异步可视节点布局稳定后按 `ScrollAnchor.yWithinBlock` 校正一次。
 
 ## 6. 链接解析
 
@@ -172,14 +170,14 @@ P1 Peek 是短暂只读资源视图：
 
 P1 PaneLayout 只建模左右两个 TabGroup：
 
-~~~ts
+```ts
 interface PaneLayoutV1 {
-  left: { paneId: PaneId; tabGroupId: string; activeTabId?: TabId }
-  right?: { paneId: PaneId; tabGroupId: string; activeTabId?: TabId }
-  ratio?: number
-  focusedPaneId: PaneId
+  left: { paneId: PaneId; tabGroupId: string; activeTabId?: TabId };
+  right?: { paneId: PaneId; tabGroupId: string; activeTabId?: TabId };
+  ratio?: number;
+  focusedPaneId: PaneId;
 }
-~~~
+```
 
 每个 Pane 有独立 TabGroup 和 activeTabId。splitRight 在没有右栏时创建右栏，已有右栏时复用其 TabGroup；只创建新 View，不改变来源 Tab 历史。P1 禁止嵌套 split 和 splitDown；P2 若要开放任意树必须先更新产品规格、持久化 schema 和契约。
 
@@ -224,6 +222,8 @@ interface PaneLayoutV1 {
 6. 慢加载迟到结果不能覆盖更新目标。
 7. 中文路径、空格、相对路径、重复标题和坏链接均有测试。
 8. 外部链接不能获得本地应用能力。
+9. 同一文档两个 Tab 可分别停留在可视和源码模式，并独立恢复选择/滚动；正文仍共享。
+10. 可视编辑链接明显可辨，普通/修饰键/中键 disposition 与阅读时一致。
 
 ### 14.2 P1
 

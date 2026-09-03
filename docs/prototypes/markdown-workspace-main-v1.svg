@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1440" height="900" viewBox="0 0 1440 900" role="img" aria-labelledby="title desc">
-  <title id="title">Markdown Workspace Paper and Ink prototype</title>
+  <title id="title">NoteSpace Paper and Ink prototype</title>
   <desc id="desc">A desktop Markdown editor with a workspace tree, browser-like tabs, navigation controls, a single-canvas document, and a status bar.</desc>
   <defs>
     <filter id="shadow" x="-10%" y="-10%" width="120%" height="130%">
@@ -22,7 +22,7 @@
   <circle cx="66" cy="58" r="7" fill="#ff5f57"/>
   <circle cx="88" cy="58" r="7" fill="#febc2e"/>
   <circle cx="110" cy="58" r="7" fill="#28c840"/>
-  <text class="ui ink" x="136" y="64" font-size="14" font-weight="650">Markdown Workspace</text>
+  <text class="ui ink" x="136" y="64" font-size="14" font-weight="650">NoteSpace</text>
 
   <rect x="40" y="82" width="1360" height="58" fill="#fbfbfa"/>
   <line class="line" x1="40" y1="140" x2="1400" y2="140"/>
@@ -88,7 +88,7 @@
 
   <rect x="322" y="184" width="1078" height="592" fill="#fff"/>
   <g class="ui" transform="translate(500 234)">
-    <text class="ink" x="0" y="34" font-size="38" font-weight="760">Markdown Workspace：阅读导航</text>
+    <text class="ink" x="0" y="34" font-size="38" font-weight="760">NoteSpace：阅读导航</text>
     <line class="line" x1="0" y1="52" x2="720" y2="52"/>
     <rect x="0" y="72" width="4" height="44" rx="2" fill="#d4d8e0"/>
     <text class="muted" x="20" y="94" font-size="15">像 Typora 一样写作，像浏览器一样穿行于本地文档。</text>
@@ -129,5 +129,5 @@
   <circle cx="62" cy="838" r="4" fill="#237a50"/>
   <text class="ui" x="76" y="842" font-size="11" fill="#237a50" font-weight="600">已保存</text>
   <text class="ui muted" x="680" y="842" font-size="11">单画布 · 126 词</text>
-  <text class="ui muted" x="1238" y="842" font-size="11">Markdown Workspace 0.1</text>
+  <text class="ui muted" x="1238" y="842" font-size="11">NoteSpace 0.1</text>
 </svg>

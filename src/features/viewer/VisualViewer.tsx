@@ -8,8 +8,10 @@ import {
   type WheelEvent as ReactWheelEvent,
 } from "react";
 
-import type { PreviewVisual } from "../editor/livePreview";
+import { useI18n } from "../../app/i18n";
 import { renderMermaidSvg } from "../editor/mermaidRenderer";
+import type { PreviewVisual } from "./model";
+import { isAssetImageSource } from "../image-actions/imageActions";
 import "./VisualViewer.css";
 
 interface Point {
@@ -48,15 +50,18 @@ function contentSize(element: HTMLElement): { width: number; height: number } | 
   return null;
 }
 
-export function VisualViewer({ visual, onClose }: VisualViewerProps) {
+function VisualViewerInstance({ visual, onClose }: VisualViewerProps) {
+  const { t } = useI18n();
   const stageRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const dragRef = useRef<{ pointerId: number; start: Point; origin: Point } | null>(null);
   const [svg, setSvg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [imageFailed, setImageFailed] = useState(false);
   const [scale, setScale] = useState(1);
   const [offset, setOffset] = useState<Point>({ x: 0, y: 0 });
+  const hasError = imageFailed || Boolean(error);
 
   useLayoutEffect(() => {
     const previousFocus =
@@ -102,7 +107,13 @@ export function VisualViewer({ visual, onClose }: VisualViewerProps) {
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
+      if (document.querySelector(".editor-context-menu")) return;
+      if (event.key === "Escape") {
+        event.preventDefault();
+        onClose();
+        return;
+      }
+      if (hasError) return;
       if (event.key === "0") fit();
       if (event.key === "1") actualSize();
       if (event.key === "+" || event.key === "=") {
@@ -112,7 +123,7 @@ export function VisualViewer({ visual, onClose }: VisualViewerProps) {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [actualSize, fit, onClose]);
+  }, [actualSize, fit, hasError, onClose]);
 
   useEffect(() => {
     if (visual.kind === "image") return;
@@ -123,13 +134,13 @@ export function VisualViewer({ visual, onClose }: VisualViewerProps) {
       })
       .catch((caught: unknown) => {
         if (!cancelled) {
-          setError(caught instanceof Error ? caught.message : "图表渲染失败");
+          setError(caught instanceof Error ? caught.message : t("viewer.renderFailed"));
         }
       });
     return () => {
       cancelled = true;
     };
-  }, [visual]);
+  }, [t, visual]);
 
   useLayoutEffect(() => {
     if (visual.kind === "mermaid" && !svg) return;
@@ -152,6 +163,7 @@ export function VisualViewer({ visual, onClose }: VisualViewerProps) {
 
   const onWheel = (event: ReactWheelEvent<HTMLDivElement>) => {
     event.preventDefault();
+    if (hasError) return;
     const stage = stageRef.current;
     if (!stage) return;
     const bounds = stage.getBoundingClientRect();
@@ -166,7 +178,7 @@ export function VisualViewer({ visual, onClose }: VisualViewerProps) {
   };
 
   const onPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (event.button !== 0) return;
+    if (event.button !== 0 || event.ctrlKey || hasError) return;
     event.currentTarget.setPointerCapture(event.pointerId);
     dragRef.current = {
       pointerId: event.pointerId,
@@ -200,21 +212,31 @@ export function VisualViewer({ visual, onClose }: VisualViewerProps) {
           <strong>{visual.title}</strong>
           <span>{Math.round(scale * 100)}%</span>
         </div>
-        <nav aria-label="查看器操作">
-          <button aria-label="缩小" onClick={() => zoomBy(1 / 1.18)} type="button">
+        <nav aria-label={t("viewer.actions")}>
+          <button
+            aria-label={t("viewer.zoomOut")}
+            disabled={hasError}
+            onClick={() => zoomBy(1 / 1.18)}
+            type="button"
+          >
             −
           </button>
-          <button onClick={fit} type="button">
-            适合窗口
+          <button disabled={hasError} onClick={fit} type="button">
+            {t("viewer.fit")}
           </button>
-          <button onClick={actualSize} type="button">
-            100%
+          <button disabled={hasError} onClick={actualSize} type="button">
+            {t("viewer.actualSize")}
           </button>
-          <button aria-label="放大" onClick={() => zoomBy(1.18)} type="button">
+          <button
+            aria-label={t("viewer.zoomIn")}
+            disabled={hasError}
+            onClick={() => zoomBy(1.18)}
+            type="button"
+          >
             +
           </button>
           <button
-            aria-label="关闭查看器"
+            aria-label={t("viewer.close")}
             onClick={onClose}
             ref={closeButtonRef}
             type="button"
@@ -232,9 +254,25 @@ export function VisualViewer({ visual, onClose }: VisualViewerProps) {
         onWheel={onWheel}
         ref={stageRef}
       >
-        {error ? (
+        {imageFailed ? (
+          <div className="visual-viewer__error visual-viewer__error--image" role="status">
+            <svg
+              aria-hidden="true"
+              className="visual-viewer__missing-image"
+              viewBox="0 0 48 48"
+              fill="none"
+            >
+              <rect x="6" y="8" width="36" height="32" rx="5" />
+              <circle cx="17" cy="18" r="3" />
+              <path d="m8 34 11-11 8 8 6-6 8 8M34 4l10 10M44 4 34 14" />
+            </svg>
+            <strong>{t("viewer.imageLoadFailed")}</strong>
+            <span>{t("viewer.imageLoadFailedHint")}</span>
+            <code>{visual.source}</code>
+          </div>
+        ) : error ? (
           <div className="visual-viewer__error">
-            <strong>无法渲染图表</strong>
+            <strong>{t("viewer.renderFailed")}</strong>
             <span>{error}</span>
             <pre>{visual.source}</pre>
           </div>
@@ -245,19 +283,39 @@ export function VisualViewer({ visual, onClose }: VisualViewerProps) {
             style={{ transform: `translate(${offset.x}px, ${offset.y}px) scale(${scale})` }}
           >
             {visual.kind === "image" ? (
-              <img alt={visual.title} src={visual.source} onLoad={fit} />
+              // SVG files deliberately stay in the browser's inert image mode;
+              // never fetch them into innerHTML or mount them as an object/frame.
+              <img
+                alt={visual.imageAlt ?? visual.title}
+                title={visual.imageTitle}
+                crossOrigin={isAssetImageSource(visual.source) ? "anonymous" : undefined}
+                data-visual-image-source={visual.source}
+                data-visual-image-reference={visual.reference ?? visual.source}
+                data-visual-image-document={visual.documentPath}
+                draggable={false}
+                referrerPolicy="no-referrer"
+                src={visual.source}
+                onError={() => setImageFailed(true)}
+                onLoad={fit}
+              />
             ) : svg ? (
               <div
                 className="visual-viewer__diagram"
                 dangerouslySetInnerHTML={{ __html: svg }}
               />
             ) : (
-              <div className="visual-viewer__loading">正在渲染图表…</div>
+              <div className="visual-viewer__loading">{t("viewer.rendering")}</div>
             )}
           </div>
         )}
       </div>
-      <footer>滚轮缩放 · 拖拽平移 · 双击或 0 适合窗口 · 1 显示 100% · Esc 关闭</footer>
+      <footer>{t("viewer.instructions")}</footer>
     </div>
+  );
+}
+
+export function VisualViewer(props: VisualViewerProps) {
+  return (
+    <VisualViewerInstance {...props} key={`${props.visual.kind}:${props.visual.source}`} />
   );
 }

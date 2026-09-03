@@ -1,218 +1,131 @@
 # 编辑器与渲染设计
 
-> **历史参考（baseline 0.1）**：source-first、IME 和 round-trip 部分仍可参考；当前范围与验收以 [DESIGN.md](../DESIGN.md) 和 [REQUIREMENTS.md](../REQUIREMENTS.md) 为准。
+> 状态：Approved design baseline 0.3
+>
+> 所有者：Editor / Rich Render
+>
+> 决策来源：[ADR-0006](../decisions/0006-visual-editor-explicit-source-mode.md)
+>
+> 主要需求：EDIT-LIVE-001、EDIT-UNDO-001、EDIT-IME-001、EDIT-LINK-001、EDIT-TABLE-001、EDIT-MERMAID-001
 
-> 状态：Approved design baseline 0.1  
-> 所有者：Editor / Rich Render  
-> 主要需求：EDIT-LIVE-001、EDIT-UNDO-001、EDIT-IME-001、EDIT-LINK-001、EDIT-TABLE-001、EDIT-MERMAID-001、EDIT-MERMAID-002  
-> 契约依赖：[03-domain-model-and-contracts.md](03-domain-model-and-contracts.md)
+本文件是编辑器实现的当前规范。旧的 CodeMirror decoration/source-first 方案已经退役，不再作为实现参考。
 
-## 1. 目标
+## 1. 产品行为
 
-编辑器必须同时满足：
+- `normal` 文档默认进入 Milkdown/ProseMirror 可视编辑器。
+- 标题、列表、链接、图片、代码块、Mermaid 和 GFM 表格在可视模式始终保持结构化视觉形态；移动光标或选择内容不会展开 Markdown 源码。
+- 用户只有通过工具栏“源码”或 `⌘/` 才进入 CodeMirror；`sourceOnly` 文档始终使用 CodeMirror。
+- 可视与源码是同一 Markdown 正文的两个显式表面，不是同时挂载的两份编辑器，也不是分屏预览。
+- 打开、导航、滚动、选择和切换模式不属于正文编辑，不得标记 dirty。
 
-- Markdown 原文是唯一真相。
-- 非活动内容具有 Typora 风格的渲染外观。
-- 光标进入元素后可以可靠编辑原始语法。
-- 中文输入、选区、撤销、复制粘贴行为可预测。
-- 表格、链接密集文档和较大文档保持流畅。
-- 未识别语法以普通文本保留，不得因打开和保存而丢失。
+## 2. 当前结构
 
-## 2. 核心结构
+```text
+DocumentSession.text (authoritative Markdown)
+        │
+        ├─ visual surface: Milkdown / ProseMirror / Crepe
+        │     ├─ structured GFM table editing
+        │     ├─ standard CommonMark image node
+        │     └─ Mermaid fenced-block preview
+        │
+        └─ source surface: CodeMirror 6
 
-~~~text
-EditorState.doc
-    │
-    ├─ Lezer incremental syntax tree
-    ├─ active edit ranges
-    ├─ visibleRanges
-    └─ DecorationSet
-          ├─ style marks
-          ├─ hidden syntax markers
-          ├─ inline widgets
-          └─ block widgets: image / table / math / Mermaid
-~~~
+Tab.ViewState
+        ├─ editorMode
+        ├─ visualScrollTop + visualSelection
+        └─ sourceScrollTop + sourceSelection
+```
 
-### 2.1 唯一真相
+每个 Tab 独立保存两个表面的滚动和选择。模式切换只卸载当前表面、挂载目标表面并恢复目标表面自己的位置，禁止用一份 `scrollTop` 互相覆盖。
 
-- 所有用户输入、Undo、Redo、保存均以 CodeMirror transaction 为准。
-- 渲染结果不得反向修改文档。
-- 格式化命令必须产生明确 ChangeSet。
-- 只有用户主动修改的语法范围可以被规范化。
-- 目录、链接、预览缓存可以随时丢弃重建。
+## 3. Markdown 往返与保存
 
-### 2.2 派生状态
+1. 打开文件时，`DocumentSession.text` 保留 Rust 返回的原始字符串。
+2. 编辑器初始化、组件挂载和异步预览不得调用 `onChange`。
+3. 每次真正的 ProseMirror 正文 transaction 必须同步序列化并调用 `onChange`；不能依赖 Milkdown 的防抖 listener，否则紧接着的 `⌘S` 可能漏字。
+4. CodeMirror 正文 transaction 同样同步调用 `onChange`。
+5. 外部 `value` 更新替换编辑器内容时不得进入 Undo history，也不得制造 dirty 回环。
+6. 未发生正文 transaction 时，保存必须与打开字节级一致；首次正文编辑后允许 serializer 做语义等价的常规格式化，但不得改变图片 alt、链接目标、代码、表格数据或 Mermaid 源码。
 
-| 状态 | 作用 | 生命周期 |
-|---|---|---|
-| SyntaxTree | Markdown 结构 | CodeMirror 增量维护 |
-| ActiveRanges | 当前应显示源码的安全范围 | 随选择和 composition 更新 |
-| DecorationSet | 样式、隐藏标记和 Widget | 仅覆盖必要范围 |
-| RenderCache | Mermaid、数学、图片元数据 | 以源码 hash、主题和版本为键 |
-| Outline | 标题和位置 | 后台增量更新 |
-| LinkIndexDelta | 当前文档出链变化 | 防抖后提交索引 |
+当前同步序列化由 ProseMirror plugin 的 `appendTransaction` 完成。未来替换编辑器内核时也必须保留“正文 transaction 与待保存 Markdown 同步提交”的不变量。
 
-## 3. 标记显隐状态机
+## 4. 表格
 
-每个可渲染语法节点有三种视觉状态：
+- GFM pipe table 在可视模式解析为真实 table，单元格直接 contenteditable。
+- 点击单元格、移动光标或滚动都不得切回 pipe 源码。
+- 行列操作使用 Crepe table feature；超宽表格在块内横向滚动，不扩大整篇文档。
+- 插入尺寸网格不是常驻 chrome，只在用户点击“插入表格”后临时出现。已有表格通过就地工具调整行列目标数量和当前列 alignment，并保留直接单元格编辑。
+- 源码模式仍可直接编辑 pipe table。
+- 表格编辑完成后 serializer 可以规范化分隔线与对齐空格，但必须保持行列、单元格文本和 alignment 语义。
 
-1. **Rendered**：隐藏不必要标记，显示样式或 Widget。
-2. **Editing**：显示完整、可安全编辑的 Markdown 源码范围。
-3. **Invalid**：语法不完整或解析失败，按普通源码显示并提供轻量错误提示。
+## 5. 图片与截图粘贴
 
-进入 Editing 的条件：
+Crepe `ImageBlock` 7.22.1 会把独占段落图片的 Markdown alt 当作缩放比例并序列化成数值，存在语义数据损失，因此当前实现明确禁用它。
 
-- 主选择或任一选区与节点源码范围相交。
-- 节点处于输入法 composition 范围。
-- 用户通过“编辑源码”命令激活 Widget。
-- 节点包含尚未提交的异步操作占位。
+可视模式使用标准 CommonMark `imageSchema`，并只通过自定义 NodeView 改写 DOM 展示：
 
-退出 Editing 的条件：
+- ProseMirror node 的 `src`、`alt`、`title` 保持原始 Markdown 语义；
+- DOM `src` 可解析为 Tauri 本地 asset URL，但序列化仍写原始相对路径；
+- Markdown alt 同时作为图片替代文本；
+- 单击图片或在图片上按 Enter/Space 打开统一 viewer，不修改正文；
+- round-trip 测试必须覆盖 `![说明](relative.png)` 在编辑其他正文后仍保留 `说明`。
 
-- 所有选择离开该安全范围。
-- composition 已结束。
-- 节点语法重新解析成功。
+截图粘贴顺序固定为：
 
-安全范围必须覆盖完整结构。例如进入链接时展开整个 `[label](target)`；进入图片时展开完整图片语法；进入 fenced block 时展开 fence、语言标识和内容。不能只隐藏或展开光标旁单个标记，以免产生不可解释的光标位置。
+```text
+paste 包含 image/*
+  -> preventDefault
+  -> Rust 从系统剪贴板读取并写入相邻 assets/
+  -> Rust 成功返回相对 URI
+  -> CommonMark insertImageCommand 插入一个正文 transaction
+```
 
-## 4. 元素行为
+写入失败、取消或组件已经卸载时不插链接。产品路径不生成 Base64 Markdown。
 
-| 元素 | 非活动状态 | 活动状态 | P0 说明 |
-|---|---|---|---|
-| 标题 | 隐藏井号并应用标题样式 | 显示完整井号和文本 | 保持源码行不变 |
-| 强调/删除线 | 隐藏标记并应用样式 | 展开完整标记 | 嵌套时展开最小完整祖先 |
-| 链接 | 显示 label 和链接样式 | 显示完整链接源码 | 渲染态单击导航；编辑态单击移动光标 |
-| 图片 | 显示受限图片 Widget | 显示图片 Markdown | 错误图片显示占位和路径 |
-| 列表/任务 | 样式化 marker 和 checkbox | 当前项显示原始 marker | Enter、Tab、Backspace 需单独测试 |
-| 引用 | 样式化边线 | 当前块显示 marker | 多级引用保留层级 |
-| 代码 | 行内样式或 fenced block | 编辑源码并高亮 | 未知语言仍可编辑 |
-| 表格 | HTML table 预览 | P0 回到 pipe table 源码 | 见第 5 节 |
-| 数学 | 数学 Widget | 显示公式源码 | P1，可配置渲染器 |
-| Mermaid | SVG 预览 Widget | 显示 fenced source | P0 支持全屏查看 |
-| raw HTML | P0 显示源码 | 始终可编辑源码 | P1 净化预览需另行决定 |
+## 6. Mermaid
 
-## 5. 表格设计
+- fenced `mermaid` 块在可视模式默认显示 SVG 预览；编辑图表源码只通过该块的明确按钮或全局源码模式进入。
+- 每次预览调用先同步返回唯一 mount marker，异步 SVG 只能更新仍在 DOM 中的同一 marker。旧源码任务即使迟到，也不能覆盖新图或污染 viewer 的源码映射。
+- viewer 源码只和当前可见预览按钮用 `WeakMap` 关联；不得永久缓存每次输入的整段 Mermaid 源码。
+- 等待 marker 挂载必须可取消且有上限；编辑器卸载时释放 observer、timer 和异步落点。
+- 单块失败只在该块显示错误，不切换整篇文档或阻止正文编辑。
+- production Tauri CSP 允许 Mermaid SVG 所需的内联样式；远程脚本仍不开放。
+- 当前版本会为 Crepe 已挂载的 Mermaid block 启动渲染。大量图表的视口虚拟化是后续性能项，文档不得声称已经实现。
 
-真实语料约 96% 文件包含 GFM 表格，因此表格不是边缘功能。
+## 7. 链接与导航
 
-### 5.1 P0
+- 可视链接始终使用明显的蓝色下划线和 hover/focus 状态。
+- 当前 Tab、后台新 Tab、前台新 Tab 的 disposition 由应用 Router 处理，编辑器不直接替换页面。
+- 同页 heading、跨文件 heading 和 Outline 点击都生成一次性 reveal request；目标表面确认消费后必须删除，模式切换不得重放旧 reveal。
+- 重复标题按 Markdown slug 顺序匹配 `title`、`title-1`、`title-2`。
+- 同页锚点也是可后退导航，必须进入 Tab history。
 
-- 非活动表格以 HTML table 显示。
-- 点击单元格或“编辑源码”后，整个表格块回到原始 pipe table。
-- 未修改表格不得重新格式化。
-- Tab、Shift+Tab 在 P0 源码表格中遵循普通编辑器键位；逻辑单元格导航只属于 P1 structuredEditing。
-- 支持复制渲染表格为 TSV 和复制源码两种命令。
-- 超宽表格在块内横向滚动，不扩大整篇文档宽度。
-- 超大表格只渲染可见行或退回源码卡片。
+## 8. IME、Undo 与输入纪律
 
-### 5.2 P1 网格编辑
+- 中文 composition 由 ProseMirror/CodeMirror 原生 transaction 管线处理；业务层不得在 composition 中替换整个 DOM。
+- 候选确认使用的 Enter、Space、数字键不得被全局命令抢占。
+- 可视表面和源码表面各自维护编辑器 Undo；导航、滚动、reveal 和模式切换不进入正文 Undo。
+- 全局 `⌘/` 在 window capture phase 拦截并停止传播，避免 CodeMirror 先执行 `Mod-/` 注释命令。
+- 异步截图完成后按捕获的选区插入；未来支持长时间并发编辑时，应使用 transaction mapping 将该位置映射到最新文档。
 
-采用独立浮层或块级 grid，而不是在 CodeMirror Widget 内嵌复杂 contenteditable。
+## 9. 病态输入与大文档
 
-提交规则：
+- paste handler 在创建 transaction 前阻止超大 `data:image/...;base64` 文本。
+- Rust 打开预检在正文进入 WebView 前识别病态长行/大 data URI；普通较大多行文本进入 `sourceOnly`，不创建 ProseMirror、图片或 Mermaid 组件。
+- 这些是为避免真实卡死保留的少量实用护栏，不扩展成通用安全平台。
 
-1. 打开时解析当前表格块并记录原始文本、范围和 revision。
-2. 用户在 grid 中修改局部数据。
-3. 提交前确认表格块 revision 未冲突。
-4. 仅替换该表格块，允许该块被规范化。
-5. 取消时正文零变化。
+## 10. 测试与验收
 
-rowspan、colspan 和单元格多块内容不属于 GFM，默认不得悄悄降级。
+自动化至少覆盖：
 
-## 6. 中文 IME 与输入纪律
+1. 初始化 Mermaid、图片和 table 不标 dirty。
+2. 表格单元格输入后仍是 table，不出现 pipe 源码。
+3. 图片 alt 往返不变，本地 URL 可展示，图片 viewer 有可达入口。
+4. 截图先落盘后插入；失败不改变正文。
+5. Mermaid A→B 快速变化时，迟到的 A 不得覆盖 B；observer 可取消且不泄漏源码缓存。
+6. 可视/源码各自恢复滚动与选区；旧 reveal 不因模式切换重放。
+7. 后台 Tab anchor 激活后定位正确；重复 slug 与同页 back/forward 正确。
+8. `⌘/` 往返不修改正文、不标 dirty。
+9. production `.app` 中 Mermaid 文字/节点清晰，图片与 Mermaid viewer 的 Fit、缩放、平移、Esc 正常。
 
-- composition 期间冻结当前语法节点的替换装饰。
-- composition 期间不得执行 Markdown 自动转换、Widget 切换或格式化。
-- 候选确认使用的 Enter、Space、数字键不得被快捷键抢占。
-- compositionend 后在下一帧重新解析和生成装饰。
-- macOS 拼音、Windows 微软拼音至少覆盖标题、列表、链接、表格、代码和标记边界。
-- ViewPlugin 销毁或 Tab 切换不得中断未提交 composition；切换前显式完成或取消由平台测试决定。
-
-## 7. 事务与命令
-
-所有编辑命令统一返回可测试的 transaction spec：
-
-~~~ts
-interface EditorCommandContext {
-  sessionId: string
-  viewId: DocumentViewId
-  revision: number
-  selections: readonly SourceSelection[]
-}
-
-type EditorCommandResult =
-  | { kind: "changes"; changes: readonly TextChange[]; selection?: SourceSelection }
-  | { kind: "effect"; effect: EditorEffect }
-  | { kind: "noop"; reason: string }
-~~~
-
-规则：
-
-- 命令不得直接操作 DOM 内容。
-- 文档变更必须标记 origin，例如 typing、paste-image、format、repair-sync。
-- 多 View 同步变更不得重复进入发起 View 的 undo 历史。
-- 导航命令不得进入编辑 undo 栈。
-- 异步命令必须携带 sessionId、revision 和 cancellation token。
-
-## 8. 粘贴管线
-
-~~~text
-capture paste
-  ├─ image MIME → preventDefault → AssetService → insert link transaction
-  ├─ large data URI → preventDefault → warning / externalize
-  ├─ large plain text → confirmation / bounded insert
-  └─ ordinary text or HTML → sanitize/normalize policy → transaction
-~~~
-
-编辑器 transaction filter 设置第二道长度和 data URI 闸门，防止插件、拖放或其他入口绕过 DOM paste handler。
-
-## 9. 渲染器接口
-
-内部块渲染器采用受控注册表，并直接使用 [08-extension-model.md](08-extension-model.md) 第 9 节的 canonical `BlockRenderer<Input, Output>`、`ReadonlySourceSlice`、`RendererLimits` 和结果包装。本章不重新定义第二套 parse/render 签名；Editor 只负责从当前视口生成只读 source slice、挂载宿主容器并在离开视口时 dispose。
-
-P0 内置渲染器：
-
-- image
-- gfm-table
-- mermaid
-- code-block
-
-Renderer 不可直接读取文件系统、发起任意网络请求或调用 Tauri IPC。资源读取通过受限 ResourceService。
-
-## 10. Mermaid 与图片
-
-- 仅进入可视区时渲染。
-- 源码变化后防抖，旧任务取消。
-- 缓存键包含源码 hash、主题、渲染器版本和安全配置。
-- Mermaid 输出净化 SVG，并使用 strict 安全级别。
-- 文内视图适宽；全屏视图保留 viewBox，P0 支持缩放、平移、Fit 和 100%，SVG/PNG 导出是 P1。
-- 图片只允许 workspace asset、受控 app asset 和显式允许的远程协议。
-- 大图片按解码像素预算加载缩略图；原图查看进入独立 viewer resource。
-
-## 11. 性能规则
-
-- Decoration 计算只遍历 visibleRanges 及必要边界。
-- 不在每次输入后调用全文 toString、Markdown 全量解析或全文序列化。
-- 目录、链接、lint 和导出放后台任务并可取消。
-- Widget 以源码范围和 hash 复用，离开视口可释放 DOM。
-- 大文本模式关闭软换行、拼写、图片、Mermaid 和高度变化装饰。
-- 编辑器主线程出现超过 100 ms 任务视为性能缺陷。
-
-## 12. 无障碍
-
-- 渲染 Widget 必须提供可聚焦入口、aria-label 和“编辑源码”操作。
-- 图片使用 Markdown alt 作为替代文本。
-- Mermaid 提供标题、源码入口和可选文本描述。
-- 链接在编辑态和渲染态的焦点行为必须可被键盘区分。
-- 隐藏语法不得让屏幕阅读器得到与可编辑文本矛盾的内容；无障碍模式可选择总是显示源码。
-
-## 13. P0 验收
-
-1. 回归语料打开后直接保存零差异。
-2. 中文输入法在六类关键节点中无丢字、重复或光标跳跃。
-3. 标题、强调、链接、列表、代码块、图片的显隐状态可预测。
-4. 真实最大表格文档冷开可交互小于性能预算。
-5. 表格预览和源码切换不改变未编辑文本。
-6. 100 个 Mermaid 块不会在文档打开时同时渲染。
-7. 异常 Widget 只影响自身，不阻塞编辑器。
-8. 大 data URI 无法通过 paste、drop 或扩展命令进入正文。
+真实工作文档只能做只读验收；截图写入 smoke 必须使用隔离临时工作区。

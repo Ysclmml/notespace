@@ -25,6 +25,21 @@
   gap: 8px;
 }
 
+.visual-viewer__toolbar > div {
+  min-width: 0;
+}
+
+.visual-viewer__toolbar strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.visual-viewer__toolbar nav,
+.visual-viewer__toolbar span {
+  flex-shrink: 0;
+}
+
 .visual-viewer__toolbar span {
   color: var(--ink-400);
   font-size: 12px;
@@ -44,6 +59,12 @@
 .visual-viewer__toolbar button:hover {
   border-color: var(--accent-300);
   color: var(--accent-700);
+}
+
+.visual-viewer__toolbar button:disabled {
+  color: var(--ink-400);
+  cursor: default;
+  opacity: 0.55;
 }
 
 .visual-viewer__stage {
@@ -68,6 +89,12 @@
   height: max-content;
   transform-origin: 0 0;
   will-change: transform;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.visual-viewer__content ::selection {
+  background: transparent;
 }
 
 .visual-viewer__content img {
@@ -103,10 +130,44 @@
   inset: 40px;
   overflow: auto;
   place-content: start;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .visual-viewer__error pre {
   white-space: pre-wrap;
+}
+
+.visual-viewer__error--image {
+  inset: 50% auto auto 50%;
+  width: min(520px, calc(100% - 48px));
+  max-height: calc(100% - 48px);
+  box-sizing: border-box;
+  transform: translate(-50%, -50%);
+  justify-items: center;
+  text-align: center;
+  gap: 12px;
+}
+
+.visual-viewer__missing-image {
+  width: 48px;
+  height: 48px;
+  stroke: var(--ink-400);
+  stroke-width: 1.6;
+}
+
+.visual-viewer__error--image > span,
+.visual-viewer__error--image > code {
+  min-width: 0;
+  color: var(--ink-500);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.visual-viewer__error--image > code {
+  max-width: 100%;
+  font-size: 12px;
+  user-select: text;
 }
 
 .visual-viewer > footer {

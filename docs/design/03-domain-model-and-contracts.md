@@ -1,15 +1,15 @@
 # 03. 领域模型与接口契约
 
-> **历史参考（baseline 0.1）**：当前只为已经实现的命令定义小型 serde/TypeScript 类型，详见 [DESIGN.md](../DESIGN.md) 和 [ADR-0005](../decisions/0005-lean-local-editor-boundary.md)。本文件中的未来命令全集、事件 reconcile、巨型 transport 和持久化 Save-As 协议不是当前契约。
+> **历史参考（baseline 0.1）**：当前只为已经实现的命令定义小型 serde/TypeScript 类型，详见 [DESIGN.md](../DESIGN.md)、[ADR-0005](../decisions/0005-lean-local-editor-boundary.md) 和 [ADR-0006](../decisions/0006-visual-editor-explicit-source-mode.md)。本文件中的未来命令全集、事件 reconcile、巨型 transport 和持久化 Save-As 协议不是当前契约；任何 CodeMirror-only buffer、`editorMode="livePreview"` 或光标驱动源码显隐描述也已由 ADR-0006 取代。
 
-> 状态：`Approved design baseline 0.1`；字段级 schema 待 Phase 0 / F0 冻结  
+> 状态：`Historical design baseline 0.1`；当前编辑模型为 baseline 0.3
 > 契约版本：`1.0-draft`  
 > 配套架构：[02-system-architecture.md](./02-system-architecture.md)  
 > 读者：实现前端、Rust、编辑器、工作区、资源、图表和测试的所有代理
 
 ## 0. 规范性约定与变更纪律
 
-本文件是领域模型和跨模块契约的**事实来源**。聊天记录、任务描述、代理记忆、临时代码和旧生成文件都不能覆盖本文件。发生上下文压缩、换代理或中断恢复后，实现者 **MUST** 重新阅读本文件中与任务相关的章节，不得依赖聊天历史猜测契约。
+本文件是 baseline 0.1 领域模型的历史细节来源。当前实际契约先看根 `AGENTS.md`、`PROJECT_STATE.md`、`DESIGN.md`、`REQUIREMENTS.md` 和 accepted ADR；本文件只约束其中未被 ADR-0005/0006 退役或修订的部分，不能反向恢复未来命令全集或旧编辑模型。
 
 规范词含义：
 
@@ -21,55 +21,55 @@
 
 ## 1. 核心不变量
 
-| ID | 规范 |
-|---|---|
-| `DOM-INV-001` | 在同一应用实例中，同一规范化文件 locator **MUST** 只映射到一个 `DocumentId`。 |
-| `DOM-INV-002` | 同一 `DocumentId` **MUST** 最多存在一个活动 `DocumentSession`；多个 Tab/Pane 共享它。 |
-| `DOM-INV-003` | `SessionRevision` 与 `DiskRevision` **MUST** 分离；任何一方不得推导或冒充另一方。 |
-| `DOM-INV-004` | `Tab`、`NavEntry`、`ViewState` **MUST NOT** 保存 Markdown 正文副本。 |
-| `DOM-INV-005` | dirty **MUST** 由当前 session revision 与已持久化 session revision 比较得到，不能由 UI 布尔值任意设置。 |
-| `DOM-INV-006` | 用户的 Markdown/资源文件是正文事实来源；恢复数据和索引 **MUST** 是可丢弃或可重建的派生数据。 |
-| `DOM-INV-007` | WebView 传入的路径字符串 **MUST NOT** 被直接用于文件访问；必须先经 `ResourceResolver` 和 capability 校验。 |
-| `DOM-INV-008` | 本地 dirty 与外部修改并存时，系统 **MUST NOT** 静默覆盖任何一方。 |
-| `DOM-INV-009` | 保存成功只持久化请求携带的 `snapshotSessionRevision`；如果之后已有新编辑，会话 **MUST** 保持 dirty。 |
-| `DOM-INV-010` | 每次内容改变 **MUST** 单调增加 `SessionRevision`；选择、滚动、折叠改变不得增加它。 |
-| `DOM-INV-011` | 异常超长行或大 Base64 在 `document_open` 返回 `SafetyBlocked` 时，原始正文 **MUST NOT** 跨入 WebView。 |
-| `DOM-INV-012` | 图片粘贴 **MUST** 写为资源文件并插入相对引用；产品路径不得生成 `data:image/...;base64` 正文。 |
-| `DOM-INV-013` | 后退/前进 **MUST** 恢复资源和独立 `ViewState`，不得只记文件名或裸 `scrollTop`。 |
-| `DOM-INV-014` | 后端事件是可丢失通知而非事务日志；检测到 sequence 缺口时前端 **MUST** 权威重扫/查询。 |
-| `DOM-INV-015` | 取消越过保存提交点后 **MUST NOT** 伪装成回滚；调用者必须取得唯一终态 `Saved` 或 `Cancelled`。 |
-| `DOM-INV-016` | 同一正文的不同视图可有独立选择/滚动，但 **MUST** 按同一 session transaction 顺序观察内容变化。 |
-| `DOM-INV-017` | draft 首次 Save As **MUST** 原位晋升现有 `DocumentId`；Tab、历史和 session 不得因得到持久化路径而换成第二份文档身份。 |
+| ID            | 规范                                                                                                                                                                                                          |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `DOM-INV-001` | 在同一应用实例中，同一规范化文件 locator **MUST** 只映射到一个 `DocumentId`。                                                                                                                                 |
+| `DOM-INV-002` | 同一 `DocumentId` **MUST** 最多存在一个活动 `DocumentSession`；多个 Tab/Pane 共享它。                                                                                                                         |
+| `DOM-INV-003` | `SessionRevision` 与 `DiskRevision` **MUST** 分离；任何一方不得推导或冒充另一方。                                                                                                                             |
+| `DOM-INV-004` | `Tab`、`NavEntry`、`ViewState` **MUST NOT** 保存 Markdown 正文副本。                                                                                                                                          |
+| `DOM-INV-005` | dirty **MUST** 由当前 session revision 与已持久化 session revision 比较得到，不能由 UI 布尔值任意设置。                                                                                                       |
+| `DOM-INV-006` | 用户的 Markdown/资源文件是正文事实来源；恢复数据和索引 **MUST** 是可丢弃或可重建的派生数据。                                                                                                                  |
+| `DOM-INV-007` | WebView 传入的路径字符串 **MUST NOT** 被直接用于文件访问；必须先经 `ResourceResolver` 和 capability 校验。                                                                                                    |
+| `DOM-INV-008` | 本地 dirty 与外部修改并存时，系统 **MUST NOT** 静默覆盖任何一方。                                                                                                                                             |
+| `DOM-INV-009` | 保存成功只持久化请求携带的 `snapshotSessionRevision`；如果之后已有新编辑，会话 **MUST** 保持 dirty。                                                                                                          |
+| `DOM-INV-010` | 每次内容改变 **MUST** 单调增加 `SessionRevision`；选择、滚动、折叠改变不得增加它。                                                                                                                            |
+| `DOM-INV-011` | 异常超长行或大 Base64 在 `document_open` 返回 `SafetyBlocked` 时，原始正文 **MUST NOT** 跨入 WebView。                                                                                                        |
+| `DOM-INV-012` | 图片粘贴 **MUST** 写为资源文件并插入相对引用；产品路径不得生成 `data:image/...;base64` 正文。                                                                                                                 |
+| `DOM-INV-013` | 后退/前进 **MUST** 恢复资源和独立 `ViewState`，不得只记文件名或裸 `scrollTop`。                                                                                                                               |
+| `DOM-INV-014` | 后端事件是可丢失通知而非事务日志；检测到 sequence 缺口时前端 **MUST** 权威重扫/查询。                                                                                                                         |
+| `DOM-INV-015` | 取消越过保存提交点后 **MUST NOT** 伪装成回滚；调用者必须取得唯一终态 `Saved` 或 `Cancelled`。                                                                                                                 |
+| `DOM-INV-016` | 同一正文的不同视图可有独立选择/滚动，但 **MUST** 按同一 session transaction 顺序观察内容变化。                                                                                                                |
+| `DOM-INV-017` | draft 首次 Save As **MUST** 原位晋升现有 `DocumentId`；Tab、历史和 session 不得因得到持久化路径而换成第二份文档身份。                                                                                         |
 | `DOM-INV-018` | 已保存文档 Save As 后当前 session **MUST** 原位 rebind 到新 locator；所有当前显示该 session 的 NavEntry replace 为新 resource，不 push 历史；旧的非当前历史 locator 保留，未来重开旧文件产生新的 DocumentId。 |
-| `DOM-INV-019` | Save As 的磁盘提交与前端接纳之间 **MUST** 有 durable intent/journal；未 ack 前不得销毁唯一 rollback/recovery 资产，重试或重启必须得到唯一终态。 |
-| `DOM-INV-020` | 原生 close 与 open-resource 请求 **MUST** 在 Rust 中保持为可查询 pending state，直到匹配 request id 的 response/ack；可丢事件本身不得成为唯一副本。 |
+| `DOM-INV-019` | Save As 的磁盘提交与前端接纳之间 **MUST** 有 durable intent/journal；未 ack 前不得销毁唯一 rollback/recovery 资产，重试或重启必须得到唯一终态。                                                               |
+| `DOM-INV-020` | 原生 close 与 open-resource 请求 **MUST** 在 Rust 中保持为可查询 pending state，直到匹配 request id 的 response/ack；可丢事件本身不得成为唯一副本。                                                           |
 
 ## 2. 标识、路径与通用值对象
 
 以下 TypeScript 是 wire 语义的规范说明。Rust schema 是本契约的可执行映射，并生成 `src/generated/ipc.ts`；三者 **MUST** 由 contract tests 保持一致。运行时代码导入生成类型，手写领域类型可以包装生成类型，但不得复制出不兼容字段。发现冲突时不得自行选择一方：先按第 16 节确认并修复契约漂移。
 
 ```ts
-type Brand<T, Name extends string> = T & { readonly __brand: Name }
+type Brand<T, Name extends string> = T & { readonly __brand: Name };
 
-type WorkspaceId = Brand<string, "WorkspaceId">
-type DocumentId = Brand<string, "DocumentId">
-type DocumentSessionId = Brand<string, "DocumentSessionId">
-type DocumentViewId = Brand<string, "DocumentViewId">
-type DraftId = Brand<string, "DraftId">
-type TabId = Brand<string, "TabId">
-type PaneId = Brand<string, "PaneId">
-type NavEntryId = Brand<string, "NavEntryId">
-type AssetId = Brand<string, "AssetId">
-type GrantId = Brand<string, "GrantId">
-type GrantRequestId = Brand<string, "GrantRequestId">
-type RecoveryId = Brand<string, "RecoveryId">
-type RequestId = Brand<string, "RequestId">
-type OperationId = Brand<string, "OperationId">
-type EventId = Brand<string, "EventId">
+type WorkspaceId = Brand<string, "WorkspaceId">;
+type DocumentId = Brand<string, "DocumentId">;
+type DocumentSessionId = Brand<string, "DocumentSessionId">;
+type DocumentViewId = Brand<string, "DocumentViewId">;
+type DraftId = Brand<string, "DraftId">;
+type TabId = Brand<string, "TabId">;
+type PaneId = Brand<string, "PaneId">;
+type NavEntryId = Brand<string, "NavEntryId">;
+type AssetId = Brand<string, "AssetId">;
+type GrantId = Brand<string, "GrantId">;
+type GrantRequestId = Brand<string, "GrantRequestId">;
+type RecoveryId = Brand<string, "RecoveryId">;
+type RequestId = Brand<string, "RequestId">;
+type OperationId = Brand<string, "OperationId">;
+type EventId = Brand<string, "EventId">;
 
-type RelativePath = Brand<string, "RelativePath">
-type RevisionToken = Brand<string, "RevisionToken">
-type ContentHash = Brand<string, "ContentHash">
+type RelativePath = Brand<string, "RelativePath">;
+type RevisionToken = Brand<string, "RevisionToken">;
+type ContentHash = Brand<string, "ContentHash">;
 ```
 
 ### 2.1 ID 规则
@@ -91,14 +91,14 @@ type ContentHash = Brand<string, "ContentHash">
 
 ```ts
 interface Workspace {
-  id: WorkspaceId
-  displayName: string
-  displayPath: string              // 仅展示；不是文件 capability
-  state: WorkspaceState
-  caseSensitivity: "sensitive" | "insensitive" | "unknown"
-  scanGeneration: number
-  capabilityEpoch: number
-  openedAt: string                 // ISO-8601
+  id: WorkspaceId;
+  displayName: string;
+  displayPath: string; // 仅展示；不是文件 capability
+  state: WorkspaceState;
+  caseSensitivity: "sensitive" | "insensitive" | "unknown";
+  scanGeneration: number;
+  capabilityEpoch: number;
+  openedAt: string; // ISO-8601
 }
 
 type WorkspaceState =
@@ -107,7 +107,7 @@ type WorkspaceState =
   | { kind: "rescanning"; operationId: OperationId }
   | { kind: "degraded"; reason: AppError }
   | { kind: "closing" }
-  | { kind: "closed" }
+  | { kind: "closed" };
 ```
 
 `capabilityEpoch` 在权限根被撤销、替换或重新授权时递增。携带旧 epoch 的路径解析缓存 **MUST** 失效。
@@ -135,63 +135,62 @@ Opening --error--> Closed
 ```ts
 type DocumentLocator =
   | {
-      kind: "workspacePath"
-      workspaceId: WorkspaceId
-      relativePath: RelativePath
+      kind: "workspacePath";
+      workspaceId: WorkspaceId;
+      relativePath: RelativePath;
     }
   | {
-      kind: "draft"
-      draftId: DraftId
-      suggestedName?: string
+      kind: "draft";
+      draftId: DraftId;
+      suggestedName?: string;
     }
   | {
-      kind: "grantedFile"
-      grantId: GrantId
-      displayName: string
-    }
+      kind: "grantedFile";
+      grantId: GrantId;
+      displayName: string;
+    };
 
 type DocumentAnchor =
   | { kind: "heading"; slug: string }
   | { kind: "block"; blockId: string }
-  | { kind: "sourcePosition"; line: number; column?: number }
+  | { kind: "sourcePosition"; line: number; column?: number };
 
 type ResourceScope =
   | { kind: "workspace"; workspaceId: WorkspaceId }
   | { kind: "document"; documentId: DocumentId }
-  | { kind: "draft"; draftId: DraftId }
+  | { kind: "draft"; draftId: DraftId };
 
 type AssetOwner =
-  | { kind: "document"; documentId: DocumentId }
-  | { kind: "draft"; draftId: DraftId }
+  { kind: "document"; documentId: DocumentId } | { kind: "draft"; draftId: DraftId };
 
 type ResourceRef =
   | {
-      kind: "markdown"
-      locator: DocumentLocator
-      anchor?: DocumentAnchor
+      kind: "markdown";
+      locator: DocumentLocator;
+      anchor?: DocumentAnchor;
     }
   | {
-      kind: "asset"
-      scope: ResourceScope
-      relativePath: RelativePath
-      mediaType?: string
+      kind: "asset";
+      scope: ResourceScope;
+      relativePath: RelativePath;
+      mediaType?: string;
     }
   | {
-      kind: "externalUrl"
-      url: string
+      kind: "externalUrl";
+      url: string;
     }
   | {
-      kind: "virtual"
-      providerId: string
-      resourceId: string
-      params?: Record<string, string>
-    }
+      kind: "virtual";
+      providerId: string;
+      resourceId: string;
+      params?: Record<string, string>;
+    };
 
 type RevealTarget =
   | { kind: "workspaceRoot"; workspaceId: WorkspaceId }
   | { kind: "workspaceEntry"; workspaceId: WorkspaceId; relativePath: RelativePath }
   | { kind: "grantedFile"; grantId: GrantId }
-  | { kind: "asset"; scope: ResourceScope; relativePath: RelativePath }
+  | { kind: "asset"; scope: ResourceScope; relativePath: RelativePath };
 ```
 
 Tab 只认识 `ResourceRef`，不针对“文件 Tab”“搜索 Tab”建立互斥的数据模型。新增全文搜索、Git diff、设置、AI 引用页时注册新的 virtual provider 即可。
@@ -204,41 +203,41 @@ Tab 只认识 `ResourceRef`，不针对“文件 Tab”“搜索 Tab”建立互
 
 ```ts
 interface UnresolvedLink {
-  sourceDocumentId: DocumentId
-  rawDestination: string
-  linkKindHint?: "markdown" | "asset" | "url" | "unknown"
+  sourceDocumentId: DocumentId;
+  rawDestination: string;
+  linkKindHint?: "markdown" | "asset" | "url" | "unknown";
 }
 
 type ResourceResolution =
   | { kind: "resolved"; resource: ResourceRef; documentId?: DocumentId }
   | {
-      kind: "needsGrant"
-      grantRequestId: GrantRequestId
-      displayTarget: string
-      reason: "outsideWorkspace" | "revokedGrant" | "assetDirectory"
+      kind: "needsGrant";
+      grantRequestId: GrantRequestId;
+      displayTarget: string;
+      reason: "outsideWorkspace" | "revokedGrant" | "assetDirectory";
     }
   | { kind: "missing"; candidate?: ResourceRef; displayTarget: string }
   | { kind: "unsupported"; scheme?: string; displayTarget: string }
-  | { kind: "invalid"; error: AppError }
+  | { kind: "invalid"; error: AppError };
 
 interface ResourcePreviewRequest {
-  resource: ResourceRef
-  maxUtf8Bytes: number
-  maxLines: number
+  resource: ResourceRef;
+  maxUtf8Bytes: number;
+  maxLines: number;
 }
 
 type ResourcePreviewOutcome =
   | {
-      kind: "text"
-      resource: ResourceRef
-      title: string
-      excerpt: string
-      truncated: boolean
-      resolvedAnchor?: DocumentAnchor
-      diskRevision?: ExpectedDiskRevision
+      kind: "text";
+      resource: ResourceRef;
+      title: string;
+      excerpt: string;
+      truncated: boolean;
+      resolvedAnchor?: DocumentAnchor;
+      diskRevision?: ExpectedDiskRevision;
     }
   | { kind: "safetyBlocked"; resource: ResourceRef; report: SafetyBlockedReport }
-  | { kind: "unsupported"; resource: ResourceRef; report: UnsupportedReport }
+  | { kind: "unsupported"; resource: ResourceRef; report: UnsupportedReport };
 ```
 
 规范：
@@ -256,7 +255,7 @@ type ResourcePreviewOutcome =
 ### 5.1 SessionRevision
 
 ```ts
-type SessionRevision = Brand<number, "SessionRevision">
+type SessionRevision = Brand<number, "SessionRevision">;
 ```
 
 每个改变正文的 session transaction 把 revision 增加 1。一次 transaction 无论包含多少 changes 都只增加一次。加载磁盘内容建立 session 时从 0 开始；外部重载替换正文也增加一次，并同时设置新的 persisted revision。
@@ -265,16 +264,15 @@ type SessionRevision = Brand<number, "SessionRevision">
 
 ```ts
 interface DiskRevision {
-  token: RevisionToken             // compare-and-save 使用的 opaque token
-  sizeBytes: number
-  modifiedAtUnixMs: number
-  contentHash: ContentHash         // "blake3:<hex>"
-  fileIdentityHint?: string        // 仅诊断/重命名匹配，不得用于授权
+  token: RevisionToken; // compare-and-save 使用的 opaque token
+  sizeBytes: number;
+  modifiedAtUnixMs: number;
+  contentHash: ContentHash; // "blake3:<hex>"
+  fileIdentityHint?: string; // 仅诊断/重命名匹配，不得用于授权
 }
 
 type ExpectedDiskRevision =
-  | { kind: "present"; revision: DiskRevision }
-  | { kind: "absent" }
+  { kind: "present"; revision: DiskRevision } | { kind: "absent" };
 ```
 
 - token 由 Rust 产生，至少绑定规范化文件身份、内容哈希及足够的元数据。
@@ -287,14 +285,14 @@ type ExpectedDiskRevision =
 
 ```ts
 interface DocumentFormat {
-  encoding: "utf8"
-  hasUtf8Bom: boolean
-  lineEnding: "lf" | "crlf" | "mixed" | "none"
-  preferredLineEnding: "lf" | "crlf"
+  encoding: "utf8";
+  hasUtf8Bom: boolean;
+  lineEnding: "lf" | "crlf" | "mixed" | "none";
+  preferredLineEnding: "lf" | "crlf";
 }
 ```
 
-P0 只编辑 UTF-8。无损打开/关闭不得写盘。编辑时 CodeMirror **SHOULD** 使用 `preferredLineEnding` 插入新行；已有混合换行不得在无明确格式化命令时被全局规范化。
+P0 只编辑 UTF-8。无损打开/关闭不得写盘。源码模式 CodeMirror **SHOULD** 使用 `preferredLineEnding` 插入新行。未发生正文 transaction 时已有混合换行不得被规范化；首次可视正文编辑后 Milkdown/ProseMirror serializer 可以规范化整篇等价 Markdown，且必须更新 session 的格式元数据。
 
 ## 6. DocumentSession
 
@@ -304,26 +302,26 @@ P0 只编辑 UTF-8。无损打开/关闭不得写盘。编辑时 CodeMirror **SH
 
 ```ts
 interface DocumentSession {
-  id: DocumentSessionId
-  descriptor: DocumentDescriptor
-  currentSessionRevision: SessionRevision
-  persistedSessionRevision: SessionRevision
-  diskRevision: ExpectedDiskRevision
-  format: DocumentFormat
-  mode: "normal" | "largeText"
-  persistence: PersistenceState
-  lifecycle: "active" | "closing"
-  refCount: number
-  lastAccessedAt: number
+  id: DocumentSessionId;
+  descriptor: DocumentDescriptor;
+  currentSessionRevision: SessionRevision;
+  persistedSessionRevision: SessionRevision;
+  diskRevision: ExpectedDiskRevision;
+  format: DocumentFormat;
+  mode: "normal" | "sourceOnly";
+  persistence: PersistenceState;
+  lifecycle: "active" | "closing";
+  refCount: number;
+  lastAccessedAt: number;
 }
 
 interface DocumentDescriptor {
-  documentId: DocumentId
-  locator: DocumentLocator
-  displayName: string
-  workspaceId?: WorkspaceId
-  relativePath?: RelativePath
-  readOnly: boolean
+  documentId: DocumentId;
+  locator: DocumentLocator;
+  displayName: string;
+  workspaceId?: WorkspaceId;
+  relativePath?: RelativePath;
+  readOnly: boolean;
 }
 ```
 
@@ -333,18 +331,23 @@ interface DocumentDescriptor {
 type DocumentLoadState =
   | { kind: "loading"; resource: ResourceRef; operationId: OperationId }
   | {
-      kind: "safetyBlocked"
-      resource: ResourceRef
-      descriptor: DocumentDescriptor
-      report: SafetyBlockedReport
-      repairToken: string
-      diskRevision: ExpectedDiskRevision
+      kind: "safetyBlocked";
+      resource: ResourceRef;
+      descriptor: DocumentDescriptor;
+      report: SafetyBlockedReport;
+      repairToken: string;
+      diskRevision: ExpectedDiskRevision;
     }
-  | { kind: "unsupported"; resource: ResourceRef; descriptor?: DocumentDescriptor; report: UnsupportedReport }
-  | { kind: "failed"; resource: ResourceRef; error: AppError }
+  | {
+      kind: "unsupported";
+      resource: ResourceRef;
+      descriptor?: DocumentDescriptor;
+      report: UnsupportedReport;
+    }
+  | { kind: "failed"; resource: ResourceRef; error: AppError };
 ```
 
-当前 Markdown 文本是 session 的受控 buffer（实现可用 CodeMirror `Text`），不重复出现在普通 React store devtools 或持久化 Tab JSON 中。`DocumentLoadState` 也不得携带被阻断正文。
+当前 Markdown 文本是 session 的受控、可保存 buffer，不重复出现在持久化 Tab JSON 中。可视模式使用 Milkdown/ProseMirror 作为交互模型，并在每个正文 transaction 后同步序列化到该 buffer；源码模式可使用 CodeMirror `Text`。ProseMirror JSON 和 CodeMirror `Text` 都不是持久化格式；`DocumentLoadState` 也不得携带被阻断正文。
 
 ### 6.2 阶段与持久化子状态
 
@@ -352,52 +355,52 @@ type DocumentLoadState =
 type DiscardReturnState =
   | { kind: "dirty" }
   | {
-      kind: "conflict"
-      expected: ExpectedDiskRevision
-      actual: ExpectedDiskRevision
-      reason: "modified" | "deleted" | "replaced" | "created"
+      kind: "conflict";
+      expected: ExpectedDiskRevision;
+      actual: ExpectedDiskRevision;
+      reason: "modified" | "deleted" | "replaced" | "created";
     }
   | { kind: "missing"; lastKnown: DiskRevision | null }
   | { kind: "saveError"; error: AppError }
-  | { kind: "reloadError"; error: AppError; observed?: ExpectedDiskRevision }
+  | { kind: "reloadError"; error: AppError; observed?: ExpectedDiskRevision };
 
 type PersistenceState =
   | { kind: "clean" }
   | { kind: "dirty" }
   | {
-      kind: "reloading"
-      operationId: OperationId
-      previousDiskRevision: ExpectedDiskRevision
+      kind: "reloading";
+      operationId: OperationId;
+      previousDiskRevision: ExpectedDiskRevision;
     }
   | {
-      kind: "saving"
-      operationId: OperationId
-      snapshotSessionRevision: SessionRevision
-      expectedDiskRevision: ExpectedDiskRevision
-      editOccurredAfterSnapshot: boolean
+      kind: "saving";
+      operationId: OperationId;
+      snapshotSessionRevision: SessionRevision;
+      expectedDiskRevision: ExpectedDiskRevision;
+      editOccurredAfterSnapshot: boolean;
     }
   | {
-      kind: "conflict"
-      expected: ExpectedDiskRevision
-      actual: ExpectedDiskRevision
-      reason: "modified" | "deleted" | "replaced" | "created"
+      kind: "conflict";
+      expected: ExpectedDiskRevision;
+      actual: ExpectedDiskRevision;
+      reason: "modified" | "deleted" | "replaced" | "created";
     }
   | { kind: "missing"; lastKnown: DiskRevision | null }
   | { kind: "saveError"; error: AppError }
   | { kind: "reloadError"; error: AppError; observed?: ExpectedDiskRevision }
   | {
-      kind: "discarding"
-      operationId: OperationId
-      discardIntentId: string
-      snapshotSessionRevision: SessionRevision
-      previous: DiscardReturnState
-    }
+      kind: "discarding";
+      operationId: OperationId;
+      discardIntentId: string;
+      snapshotSessionRevision: SessionRevision;
+      previous: DiscardReturnState;
+    };
 ```
 
 派生 dirty：
 
 ```ts
-const dirty = currentSessionRevision !== persistedSessionRevision
+const dirty = currentSessionRevision !== persistedSessionRevision;
 ```
 
 `PersistenceState.kind` 表达工作流，不能替代上式。比如 `saving` 可以同时 dirty；保存 snapshot 成功而期间又输入时，回到 `dirty`。
@@ -456,7 +459,7 @@ Close confirmation --cancel--> exact previous state (不调用 IPC)
 - `DOC-INV-004`：自动外部重载只允许 clean session；dirty session 必须进入 conflict。
 - `DOC-INV-005`：外部重载替换正文后，文档级 undo 历史 **MUST** 建立新边界，禁止 undo 回被替换的未知磁盘版本。
 - `DOC-INV-006`：保存失败不能改变 `persistedSessionRevision` 或丢弃当前 buffer。
-- `DOC-INV-007`：`OpenMode` **MUST** 只表示 normal/largeText 性能等级；可写性 **MUST** 只由 `DocumentDescriptor.readOnly` 和当前 capability 决定。
+- `DOC-INV-007`：`OpenMode` **MUST** 只表示 normal/sourceOnly 性能等级；可写性 **MUST** 只由 `DocumentDescriptor.readOnly` 和当前 capability 决定。
 
 ### 6.4 Session transaction coordinator
 
@@ -464,18 +467,18 @@ Close confirmation --cancel--> exact previous state (不调用 IPC)
 
 ```ts
 interface SessionEditIntent {
-  sessionId: DocumentSessionId
-  originViewId: DocumentViewId
-  baseRevision: SessionRevision
-  // 实现内部承载 CodeMirror Transaction/ChangeSet；不得跨 IPC
-  changes: unknown
-  addToHistory: boolean
+  sessionId: DocumentSessionId;
+  originViewId: DocumentViewId;
+  baseRevision: SessionRevision;
+  // 内部承载 ProseMirror 或 CodeMirror 正文 transaction 的已序列化 Markdown 变更；不得跨 IPC
+  changes: unknown;
+  addToHistory: boolean;
 }
 
 type SessionEditResult =
   | { kind: "applied"; newRevision: SessionRevision }
   | { kind: "stale"; actualRevision: SessionRevision }
-  | { kind: "rejected"; error: AppError }
+  | { kind: "rejected"; error: AppError };
 ```
 
 - `DOC-INV-008`：coordinator **MUST** 单线程排序 edit intent；`baseRevision` 过期时不得直接应用到错误位置。
@@ -485,6 +488,7 @@ type SessionEditResult =
 - `DOC-INV-012`：Reloading 期间一旦发生本地 edit，reload 结果不得替换 buffer；取消/作废旧 token，迟到结果若证明磁盘与 dirty 本地版本并存则进入 Conflict，否则丢弃并重新核对。
 - `DOC-INV-013`：session 的 document identity 与 locator 只以 `descriptor.documentId/locator` 为准；不得再维护可分叉的平行字段。
 - `DOC-INV-014`：进入 Discarding 前必须冻结 edit/save/checkpoint/migration；Rust 根据 descriptor locator 推导实际 draft/持久化 scope，并拒绝请求 scope 与 locator 不匹配，不能信任前端枚举决定删除范围。
+- `DOC-INV-015`：ProseMirror 正文 transaction **MUST** 在同一同步链路中更新 session buffer 与保存读取的 latest-text ref；权威正文 **MUST NOT** 通过 200 ms debounce 延迟，输入后立即保存必须包含最后一次输入。
 
 MVP 只有一个可见 EditorView 时仍须保留 coordinator port；后续分栏不得绕过它。活动 session **SHOULD** 保留有限 `ChangeDesc` 以映射其他 Tab 的 selection/scroll source offset；超出窗口时使用第 7 节块锚点重新定位。
 
@@ -494,59 +498,59 @@ MVP 只有一个可见 EditorView 时仍须保留 coordinator port；后续分�
 
 ```ts
 interface Tab {
-  id: TabId
-  title: string
-  history: NavigationHistory
-  pinned: boolean
-  lifecycle: "open" | "closing" | "closed"
-  navigationEpoch: number
+  id: TabId;
+  title: string;
+  history: NavigationHistory;
+  pinned: boolean;
+  lifecycle: "open" | "closing" | "closed";
+  navigationEpoch: number;
 }
 
 interface NavigationHistory {
-  entries: NavEntry[]
-  index: number                       // -1 表示尚无资源
+  entries: NavEntry[];
+  index: number; // -1 表示尚无资源
 }
 
 interface NavEntry {
-  id: NavEntryId
-  resource: ResourceRef
-  titleSnapshot?: string
-  viewState?: ViewState
-  visitedAt: number
+  id: NavEntryId;
+  resource: ResourceRef;
+  titleSnapshot?: string;
+  viewState?: ViewState;
+  visitedAt: number;
 }
 
 interface DocumentView {
-  id: DocumentViewId
-  sessionId: DocumentSessionId
-  tabId: TabId
-  paneId?: PaneId
-  viewState: ViewState
-  mountState: "mounted" | "suspended" | "disposed"
+  id: DocumentViewId;
+  sessionId: DocumentSessionId;
+  tabId: TabId;
+  paneId?: PaneId;
+  viewState: ViewState;
+  mountState: "mounted" | "suspended" | "disposed";
 }
 
 interface ViewState {
-  selection?: { anchor: number; head: number }
-  scroll: ScrollAnchor
-  foldedRanges?: Array<{ from: number; to: number; fingerprint?: string }>
-  editorMode?: "source" | "livePreview"
+  selection?: { anchor: number; head: number };
+  scroll: ScrollAnchor;
+  foldedRanges?: Array<{ from: number; to: number; fingerprint?: string }>;
+  editorMode: "visual" | "source";
 }
 
 interface ScrollAnchor {
-  topBlock?: BlockLocator
-  yWithinBlock: number
-  fallbackScrollTop: number
+  topBlock?: BlockLocator;
+  yWithinBlock: number;
+  fallbackScrollTop: number;
 }
 
 interface BlockLocator {
-  syntaxKind?: string
-  headingPath?: string[]
-  sourceOffset: number
-  sourceLine: number
-  fingerprint?: string
+  syntaxKind?: string;
+  headingPath?: string[];
+  sourceOffset: number;
+  sourceLine: number;
+  fingerprint?: string;
 }
 ```
 
-`DocumentView` 是运行期视图对象：它绑定一个已有 editable session，但不拥有正文、dirty、undo 或导航历史。活动视图持续更新自己的 `viewState`；离开资源、卸载 EditorView 或写入窗口状态前，才把快照复制到当前 `NavEntry.viewState`。同一 session 可有多个 `DocumentView`，每个 view 的 selection、scroll 与 folds 独立。
+`DocumentView` 是运行期视图对象：它绑定一个已有 editable session，但不拥有正文、dirty、undo 或导航历史。活动视图持续更新自己的 `viewState`；离开资源、卸载 EditorView 或写入窗口状态前，才把快照复制到当前 `NavEntry.viewState`。同一 session 可有多个 `DocumentView`，每个 view 的 `editorMode`、selection、scroll 与 folds 独立。新 `normal` view 默认 `visual`；`sourceOnly` view 固定 `source`，模式切换不产生正文 transaction 或导航 entry。
 
 `fingerprint` **SHOULD** 是规范化块前缀的小哈希，不得包含整块正文。恢复顺序：
 
@@ -555,16 +559,12 @@ interface BlockLocator {
 3. 使用 `sourceOffset`；
 4. 最后才用 `fallbackScrollTop`。
 
-图片/Mermaid 异步改变高度后，视图 **SHOULD** 在首轮 widget settled 时执行一次锚点校正。
+图片/Mermaid 异步改变高度后，视图 **SHOULD** 在首轮可视节点 settled 时执行一次锚点校正；光标移动不得通过可视/源码 DOM 替换改变块高。
 
 ### 7.2 导航动作
 
 ```ts
-type OpenDisposition =
-  | "current"
-  | "newForegroundTab"
-  | "newBackgroundTab"
-  | "splitRight"                    // 接口预留；MVP 可返回 Unsupported
+type OpenDisposition = "current" | "newForegroundTab" | "newBackgroundTab" | "splitRight"; // 接口预留；MVP 可返回 Unsupported
 
 type NavigationSource =
   | "link"
@@ -575,21 +575,21 @@ type NavigationSource =
   | "command"
   | "nativeOpen"
   | "dragDrop"
-  | "restore"
+  | "restore";
 
 interface NavigateIntent {
-  target: ResourceRef | UnresolvedLink
-  disposition: OpenDisposition
-  source: NavigationSource
-  originTabId?: TabId
-  originViewId?: DocumentViewId
+  target: ResourceRef | UnresolvedLink;
+  disposition: OpenDisposition;
+  source: NavigationSource;
+  originTabId?: TabId;
+  originViewId?: DocumentViewId;
 }
 
 interface PreviewIntent {
-  target: ResourceRef | UnresolvedLink
-  source: NavigationSource
-  originTabId: TabId
-  originViewId?: DocumentViewId
+  target: ResourceRef | UnresolvedLink;
+  source: NavigationSource;
+  originTabId: TabId;
+  originViewId?: DocumentViewId;
 }
 ```
 
@@ -617,16 +617,16 @@ interface PreviewIntent {
 
 ```ts
 interface AssetRef {
-  id: AssetId
-  owner: AssetOwner
-  state: AssetState
-  mediaType: string
-  sizeBytes: number
-  contentHash: ContentHash
-  width?: number
-  height?: number
-  relativePath?: RelativePath
-  markdownUri: string
+  id: AssetId;
+  owner: AssetOwner;
+  state: AssetState;
+  mediaType: string;
+  sizeBytes: number;
+  contentHash: ContentHash;
+  width?: number;
+  height?: number;
+  relativePath?: RelativePath;
+  markdownUri: string;
 }
 
 type AssetState =
@@ -635,7 +635,7 @@ type AssetState =
   | { kind: "committed" }
   | { kind: "orphaned"; retainUntilUnixMs: number }
   | { kind: "deleted" }
-  | { kind: "failed"; error: AppError }
+  | { kind: "failed"; error: AppError };
 ```
 
 状态转换：
@@ -664,44 +664,45 @@ clipboard -> Staging -> Committing -> Committed
 
 ```ts
 interface PreflightReport {
-  sizeBytes: number
-  maxLineBytes: number
-  lineCountEstimate?: number
-  hasUtf8Bom: boolean
-  detectedDataImageCount: number
-  largestDataImageEstimateBytes?: number
+  sizeBytes: number;
+  maxLineBytes: number;
+  lineCountEstimate?: number;
+  hasUtf8Bom: boolean;
+  detectedDataImageCount: number;
+  largestDataImageEstimateBytes?: number;
 }
 
 type SafetyBlockedReport = PreflightReport & {
-  kind: "safetyBlocked"
-  reasons: Array<"lineTooLong" | "largeDataImage">
-  allowedActions: Array<"extractDataImages" | "deleteDataImages" | "openExternal" | "cancel">
-}
+  kind: "safetyBlocked";
+  reasons: Array<"lineTooLong" | "largeDataImage">;
+  allowedActions: Array<
+    "extractDataImages" | "deleteDataImages" | "openExternal" | "cancel"
+  >;
+};
 
 type UnsupportedReport = PreflightReport & {
-  kind: "unsupported"
-  reasons: Array<"binary" | "fileTooLarge" | "invalidUtf8" | "unsupportedEncoding">
-  allowedActions: Array<"openExternal" | "cancel">
-}
+  kind: "unsupported";
+  reasons: Array<"binary" | "fileTooLarge" | "invalidUtf8" | "unsupportedEncoding">;
+  allowedActions: Array<"openExternal" | "cancel">;
+};
 
-type SafetyReport = SafetyBlockedReport | UnsupportedReport
+type SafetyReport = SafetyBlockedReport | UnsupportedReport;
 
-type OpenMode = "normal" | "largeText"
+type OpenMode = "normal" | "sourceOnly";
 ```
 
 `OpenMode` 只表示性能/渲染等级，是否可写由 `DocumentDescriptor.readOnly` 单独表示。两者禁止混成第三种模式：例如无写权限的 100 KiB 文件仍是 `editable/normal + readOnly=true`，表示正文可安全进入 EditorView 供阅读/选择，但所有修改与原路径保存命令被禁用。
 
 默认阈值是实现配置而非文件格式标准；MVP 按下列顺序判定，先命中的规则获胜：
 
-| 条件 | outcome |
-|---|---|
-| 明显二进制或无法无损支持的编码 | `Unsupported` |
-| 文件 `> 32 MiB` | `Unsupported` |
-| 单行 `> 1 MiB` 或 data image 估算 `> 512 KiB` | `SafetyBlocked` |
-| 文件 `<= 8 MiB` 且单行 `<= 256 KiB` | `Editable(normal)` |
-| 其余文件 `<= 32 MiB` | `Editable(largeText)` |
+| 条件                                          | outcome                |
+| --------------------------------------------- | ---------------------- |
+| 明显二进制或无法无损支持的编码                | `Unsupported`          |
+| 单行 `> 1 MiB` 或 data image 估算 `> 512 KiB` | `SafetyBlocked`        |
+| 文件 `<= 8 MiB` 且单行 `<= 256 KiB`           | `Editable(normal)`     |
+| 其余普通 UTF-8 多行文本                       | `Editable(sourceOnly)` |
 
-阈值 **MAY** 根据基准调整，但行为不变量不变：任何 `SafetyBlocked` 内容不得进入 WebView；任何 `largeText` 必须关闭高成本装饰、图表、图片预解码和拼写检查。
+阈值 **MAY** 根据基准调整，但行为不变量不变：任何 `SafetyBlocked` 内容不得进入 WebView；任何 `sourceOnly` 必须使用 CodeMirror 并关闭可视编辑、图表、图片预解码和拼写检查。普通 UTF-8 多行文本不因总字节数单独进入 Unsupported。
 
 报告必须与 outcome 同 kind。只有 `SafetyBlockedReport` 可签发 repair token；`extractDataImages/deleteDataImages` 只有在对应 data-image 原因与扫描位置存在时才可列入 allowedActions。`UnsupportedReport`（包括 binary）永远只有外部打开/取消，不得被 UI 或命令提升为内置修复。
 
@@ -712,133 +713,133 @@ type OpenMode = "normal" | "largeText"
 稳定接口 ID：`IPC-ENV-001`。
 
 ```ts
-const IPC_API_VERSION = "1.0" as const
+const IPC_API_VERSION = "1.0" as const;
 
 interface CommandRequest<T> {
-  apiVersion: typeof IPC_API_VERSION
-  requestId: RequestId
-  operationId?: OperationId
-  payload: T
+  apiVersion: typeof IPC_API_VERSION;
+  requestId: RequestId;
+  operationId?: OperationId;
+  payload: T;
 }
 
 type CommandResponse<T> =
   | {
-      apiVersion: typeof IPC_API_VERSION
-      requestId: RequestId
-      ok: true
-      payload: T
+      apiVersion: typeof IPC_API_VERSION;
+      requestId: RequestId;
+      ok: true;
+      payload: T;
     }
   | {
-      apiVersion: typeof IPC_API_VERSION
-      requestId: RequestId
-      ok: false
-      error: AppError
-    }
+      apiVersion: typeof IPC_API_VERSION;
+      requestId: RequestId;
+      ok: false;
+      error: AppError;
+    };
 ```
 
 每个 Tauri command 返回 `CommandResponse<T>`。schema 反序列化失败也必须尽可能带回 request id；完全无法识别时使用新生成的 correlation id。
 
 ### 10.2 应用与工作区命令
 
-| ID | 命令 | 请求 payload | 成功 payload |
-|---|---|---|---|
-| `IPC-CMD-001` | `app_capabilities_v1` | `{}` | `AppCapabilities` |
-| `IPC-CMD-002` | `app_state_reconcile_v1` | `{}` | `AppReconcileOutcome` |
-| `IPC-CMD-003` | `app_open_resources_ack_v1` | `{ nativeRequestId: string }` | `{ kind: "acknowledged" \| "alreadyAcknowledged" \| "unknown" }` |
-| `IPC-CMD-004` | `app_close_respond_v1` | `{ closeRequestId: string; decision: "cancel" \| "proceed" }` | `{ kind: "cancelled" \| "closing" \| "alreadyResolved" \| "unknown" }` |
-| `IPC-CMD-010` | `workspace_pick_v1` | `{ initialWorkspaceId?: WorkspaceId }` | `{ kind: "selected"; grantToken: string; displayPath: string } \| { kind: "cancelled" }` |
-| `IPC-CMD-011` | `workspace_open_v1` | `{ grantToken: string }` | `{ workspace: Workspace }` |
-| `IPC-CMD-012` | `workspace_open_recent_v1` | `{ workspaceId: WorkspaceId }` | `{ workspace: Workspace }` |
-| `IPC-CMD-013` | `workspace_close_v1` | `{ workspaceId: WorkspaceId; capabilityEpoch: number }` | `{ closed: true }` |
-| `IPC-CMD-014` | `workspace_rescan_v1` | `WorkspaceRescanRequest` | `WorkspaceSnapshotPage` |
-| `IPC-CMD-015` | `document_pick_v1` | `{ initialWorkspaceId?: WorkspaceId }` | `{ kind: "selected"; resource: Extract<ResourceRef, { kind: "markdown" }> } \| { kind: "cancelled" }` |
-| `IPC-CMD-016` | `resource_grant_v1` | `{ grantRequestId: GrantRequestId }` | `ResourceGrantOutcome` |
+| ID            | 命令                        | 请求 payload                                                  | 成功 payload                                                                                          |
+| ------------- | --------------------------- | ------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `IPC-CMD-001` | `app_capabilities_v1`       | `{}`                                                          | `AppCapabilities`                                                                                     |
+| `IPC-CMD-002` | `app_state_reconcile_v1`    | `{}`                                                          | `AppReconcileOutcome`                                                                                 |
+| `IPC-CMD-003` | `app_open_resources_ack_v1` | `{ nativeRequestId: string }`                                 | `{ kind: "acknowledged" \| "alreadyAcknowledged" \| "unknown" }`                                      |
+| `IPC-CMD-004` | `app_close_respond_v1`      | `{ closeRequestId: string; decision: "cancel" \| "proceed" }` | `{ kind: "cancelled" \| "closing" \| "alreadyResolved" \| "unknown" }`                                |
+| `IPC-CMD-010` | `workspace_pick_v1`         | `{ initialWorkspaceId?: WorkspaceId }`                        | `{ kind: "selected"; grantToken: string; displayPath: string } \| { kind: "cancelled" }`              |
+| `IPC-CMD-011` | `workspace_open_v1`         | `{ grantToken: string }`                                      | `{ workspace: Workspace }`                                                                            |
+| `IPC-CMD-012` | `workspace_open_recent_v1`  | `{ workspaceId: WorkspaceId }`                                | `{ workspace: Workspace }`                                                                            |
+| `IPC-CMD-013` | `workspace_close_v1`        | `{ workspaceId: WorkspaceId; capabilityEpoch: number }`       | `{ closed: true }`                                                                                    |
+| `IPC-CMD-014` | `workspace_rescan_v1`       | `WorkspaceRescanRequest`                                      | `WorkspaceSnapshotPage`                                                                               |
+| `IPC-CMD-015` | `document_pick_v1`          | `{ initialWorkspaceId?: WorkspaceId }`                        | `{ kind: "selected"; resource: Extract<ResourceRef, { kind: "markdown" }> } \| { kind: "cancelled" }` |
+| `IPC-CMD-016` | `resource_grant_v1`         | `{ grantRequestId: GrantRequestId }`                          | `ResourceGrantOutcome`                                                                                |
 
 ```ts
 interface AppCapabilities {
-  apiVersion: "1.0"
-  platform: "macos" | "windows" | "linux"
+  apiVersion: "1.0";
+  platform: "macos" | "windows" | "linux";
   features: {
-    clipboardImage: boolean
-    splitView: boolean
-    recovery: boolean
-    mermaid: boolean
-  }
+    clipboardImage: boolean;
+    splitView: boolean;
+    recovery: boolean;
+    mermaid: boolean;
+  };
   limits: {
-    policyVersion: 1
-    normalFileBytes: number
-    maxEditableFileBytes: number
-    maxNormalLineBytes: number
-    safetyBlockLineBytes: number
-    safetyBlockDataImageDecodedBytes: number
-    mermaidSourceBytes: number
-    mermaidMaxNodes: number
-    mermaidRenderTimeoutMs: number
-    imageDecodedPixelMax: number
-    previewMaxUtf8Bytes: number
-    previewMaxLines: number
-    nativeOpenQueueMaxTargets: number
-    workspaceScanPageMaxEntries: number
-    ipcDefaultPayloadBytes: number
-    ipcDocumentRawContentBytes: number
-    ipcDocumentWireBytes: number
-  }
+    policyVersion: 1;
+    normalFileBytes: number;
+    maxEditableFileBytes: number;
+    maxNormalLineBytes: number;
+    safetyBlockLineBytes: number;
+    safetyBlockDataImageDecodedBytes: number;
+    mermaidSourceBytes: number;
+    mermaidMaxNodes: number;
+    mermaidRenderTimeoutMs: number;
+    imageDecodedPixelMax: number;
+    previewMaxUtf8Bytes: number;
+    previewMaxLines: number;
+    nativeOpenQueueMaxTargets: number;
+    workspaceScanPageMaxEntries: number;
+    ipcDefaultPayloadBytes: number;
+    ipcDocumentRawContentBytes: number;
+    ipcDocumentWireBytes: number;
+  };
 }
 
 interface AppCloseRequest {
-  closeRequestId: string
-  deadlineUnixMs?: number
+  closeRequestId: string;
+  deadlineUnixMs?: number;
 }
 
 interface AppReconcileOutcome {
-  appSequence: number
-  pendingCloseRequest?: AppCloseRequest
-  pendingOpenRequests: NativeOpenResourcesRequested[]
-  pendingSaveAsIntents: PendingSaveAsSummary[]
+  appSequence: number;
+  pendingCloseRequest?: AppCloseRequest;
+  pendingOpenRequests: NativeOpenResourcesRequested[];
+  pendingSaveAsIntents: PendingSaveAsSummary[];
 }
 
 type WorkspaceRescanRequest =
   | {
-      kind: "start"
-      workspaceId: WorkspaceId
-      knownGeneration: number
-      requestedPageEntries?: number
+      kind: "start";
+      workspaceId: WorkspaceId;
+      knownGeneration: number;
+      requestedPageEntries?: number;
     }
   | {
-      kind: "next"
-      workspaceId: WorkspaceId
-      scanId: string
-      cursor: string
-    }
+      kind: "next";
+      workspaceId: WorkspaceId;
+      scanId: string;
+      cursor: string;
+    };
 
 interface WorkspaceSnapshotPage {
-  workspace: Workspace
-  scanId: string
-  targetGeneration: number
+  workspace: Workspace;
+  scanId: string;
+  targetGeneration: number;
   entries: Array<{
-    kind: "directory" | "markdown" | "asset" | "other"
-    relativePath: RelativePath
-    displayName: string
-    sizeBytes?: number
-    modifiedAtUnixMs?: number
-  }>
-  nextCursor?: string
-  complete: boolean
+    kind: "directory" | "markdown" | "asset" | "other";
+    relativePath: RelativePath;
+    displayName: string;
+    sizeBytes?: number;
+    modifiedAtUnixMs?: number;
+  }>;
+  nextCursor?: string;
+  complete: boolean;
 }
 
 type ResourceGrantOutcome =
   | {
-      kind: "resourceResolved"
-      grantRequestId: GrantRequestId
-      resolution: Exclude<ResourceResolution, { kind: "needsGrant" }>
+      kind: "resourceResolved";
+      grantRequestId: GrantRequestId;
+      resolution: Exclude<ResourceResolution, { kind: "needsGrant" }>;
     }
   | {
-      kind: "assetDirectoryGranted"
-      grantRequestId: GrantRequestId
-      owner: AssetOwner
-      pasteIntentId: string
+      kind: "assetDirectoryGranted";
+      grantRequestId: GrantRequestId;
+      owner: AssetOwner;
+      pasteIntentId: string;
     }
-  | { kind: "cancelled"; grantRequestId: GrantRequestId }
+  | { kind: "cancelled"; grantRequestId: GrantRequestId };
 ```
 
 `grantToken` 和 `grantRequestId` 单次、短期有效且只由 Rust 原生授权流程产生。`workspace_open_v1` **MUST NOT** 接受任意绝对 path 替代 grant token。`document_pick_v1` 为工作区外单文件建立 grantedFile locator；`resource_grant_v1` 只能续接 Rust 此前建立并绑定上下文的 `needsGrant`，不能接受前端提供的目标路径。普通链接授权成功返回 `resourceResolved`；资产目录授权成功只返回与原 owner、`pasteIntentId` 绑定的 `assetDirectoryGranted` receipt，随后前端以同一 `pasteIntentId` 重试导入。
@@ -853,129 +854,128 @@ Rust 按 `nativeRequestId` 持有并重投 native-open 批次，直到 `app_open
 
 ### 10.3 资源解析命令
 
-| ID | 命令 | 请求 payload | 成功 payload |
-|---|---|---|---|
-| `IPC-CMD-020` | `resource_resolve_v1` | `UnresolvedLink` | `ResourceResolution` |
+| ID            | 命令                  | 请求 payload             | 成功 payload             |
+| ------------- | --------------------- | ------------------------ | ------------------------ |
+| `IPC-CMD-020` | `resource_resolve_v1` | `UnresolvedLink`         | `ResourceResolution`     |
 | `IPC-CMD-021` | `resource_preview_v1` | `ResourcePreviewRequest` | `ResourcePreviewOutcome` |
 
 对于文件树项，Rust MAY 直接返回已解析 `ResourceRef + DocumentId`；正文链接必须走本命令或同语义的批量版本。未来增加批量命令时，其单项结果必须与本命令完全一致。`resource_preview_v1` 是 P1 Peek 的有界只读入口：服务端必须把 `maxUtf8Bytes/maxLines` 再夹到 capability 上限，先授权和预检，可取消，不创建 `DocumentSession`/`DocumentView`/`NavEntry`；virtual provider 通过第 08 章同语义的 provider preview port 实现。
 
 ### 10.4 文档命令
 
-| ID | 命令 | 请求 payload | 成功 payload |
-|---|---|---|---|
-| `IPC-CMD-028` | `document_save_as_abort_v1` | `{ documentId: DocumentId; saveAsIntentId: string; reason: "userCancelled" \| "superseded" \| "recoveryAbandoned" }` | `{ kind: "aborted" \| "alreadyAborted" \| "unknown" }` |
-| `IPC-CMD-029` | `document_create_draft_v1` | `DocumentCreateDraftRequest` | `DocumentCreateDraftOutcome` |
-| `IPC-CMD-030` | `document_open_v1` | `DocumentOpenRequest` | `DocumentOpenOutcome` |
-| `IPC-CMD-031` | `document_save_v1` | `DocumentSaveRequest` | `DocumentSaveOutcome` |
-| `IPC-CMD-032` | `document_reload_v1` | `{ documentId: DocumentId; knownDiskRevision: ExpectedDiskRevision }` | `DocumentOpenOutcome` |
-| `IPC-CMD-033` | `document_resolve_conflict_v1` | `ConflictResolutionRequest` | `ConflictResolutionOutcome` |
-| `IPC-CMD-034` | `document_repair_v1` | `DocumentRepairRequest` | `DocumentRepairOutcome` |
-| `IPC-CMD-035` | `document_prepare_save_as_v1` | `DocumentPrepareSaveAsRequest` | `DocumentPrepareSaveAsOutcome` |
-| `IPC-CMD-036` | `document_save_as_v1` | `DocumentSaveAsRequest` | `DocumentSaveAsOutcome` |
-| `IPC-CMD-037` | `document_read_disk_snapshot_v1` | `{ documentId: DocumentId; observedDiskRevision: ExpectedDiskRevision }` | `DocumentCompareOutcome` |
-| `IPC-CMD-038` | `document_save_as_status_v1` | `{ documentId: DocumentId; saveAsIntentId: string }` | `DocumentSaveAsStatusOutcome` |
-| `IPC-CMD-039` | `document_save_as_ack_v1` | `{ documentId: DocumentId; saveAsIntentId: string; acceptedDiskRevision: DiskRevision }` | `{ kind: "acknowledged" \| "alreadyAcknowledged" \| "unknown" }` |
+| ID            | 命令                             | 请求 payload                                                                                                         | 成功 payload                                                     |
+| ------------- | -------------------------------- | -------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| `IPC-CMD-028` | `document_save_as_abort_v1`      | `{ documentId: DocumentId; saveAsIntentId: string; reason: "userCancelled" \| "superseded" \| "recoveryAbandoned" }` | `{ kind: "aborted" \| "alreadyAborted" \| "unknown" }`           |
+| `IPC-CMD-029` | `document_create_draft_v1`       | `DocumentCreateDraftRequest`                                                                                         | `DocumentCreateDraftOutcome`                                     |
+| `IPC-CMD-030` | `document_open_v1`               | `DocumentOpenRequest`                                                                                                | `DocumentOpenOutcome`                                            |
+| `IPC-CMD-031` | `document_save_v1`               | `DocumentSaveRequest`                                                                                                | `DocumentSaveOutcome`                                            |
+| `IPC-CMD-032` | `document_reload_v1`             | `{ documentId: DocumentId; knownDiskRevision: ExpectedDiskRevision }`                                                | `DocumentOpenOutcome`                                            |
+| `IPC-CMD-033` | `document_resolve_conflict_v1`   | `ConflictResolutionRequest`                                                                                          | `ConflictResolutionOutcome`                                      |
+| `IPC-CMD-034` | `document_repair_v1`             | `DocumentRepairRequest`                                                                                              | `DocumentRepairOutcome`                                          |
+| `IPC-CMD-035` | `document_prepare_save_as_v1`    | `DocumentPrepareSaveAsRequest`                                                                                       | `DocumentPrepareSaveAsOutcome`                                   |
+| `IPC-CMD-036` | `document_save_as_v1`            | `DocumentSaveAsRequest`                                                                                              | `DocumentSaveAsOutcome`                                          |
+| `IPC-CMD-037` | `document_read_disk_snapshot_v1` | `{ documentId: DocumentId; observedDiskRevision: ExpectedDiskRevision }`                                             | `DocumentCompareOutcome`                                         |
+| `IPC-CMD-038` | `document_save_as_status_v1`     | `{ documentId: DocumentId; saveAsIntentId: string }`                                                                 | `DocumentSaveAsStatusOutcome`                                    |
+| `IPC-CMD-039` | `document_save_as_ack_v1`        | `{ documentId: DocumentId; saveAsIntentId: string; acceptedDiskRevision: DiskRevision }`                             | `{ kind: "acknowledged" \| "alreadyAcknowledged" \| "unknown" }` |
 
 ```ts
 interface DocumentCreateDraftRequest {
-  draftIntentId: string
-  suggestedName?: string
+  draftIntentId: string;
+  suggestedName?: string;
 }
 
 interface DocumentCreateDraftOutcome {
-  document: EditableDocument
+  document: EditableDocument;
   initialRevisions: {
-    current: SessionRevision
-    persisted: SessionRevision
-  }
+    current: SessionRevision;
+    persisted: SessionRevision;
+  };
 }
 
 interface DocumentOpenRequest {
-  resource: Extract<ResourceRef, { kind: "markdown" }>
-  expectedDocumentId?: DocumentId
+  resource: Extract<ResourceRef, { kind: "markdown" }>;
+  expectedDocumentId?: DocumentId;
 }
 
 type DocumentOpenOutcome =
   | { kind: "editable"; document: EditableDocument }
   | {
-      kind: "safetyBlocked"
-      descriptor: DocumentDescriptor
-      report: SafetyBlockedReport
-      repairToken: string
-      diskRevision: ExpectedDiskRevision
+      kind: "safetyBlocked";
+      descriptor: DocumentDescriptor;
+      report: SafetyBlockedReport;
+      repairToken: string;
+      diskRevision: ExpectedDiskRevision;
     }
-  | { kind: "unsupported"; descriptor?: DocumentDescriptor; report: UnsupportedReport }
+  | { kind: "unsupported"; descriptor?: DocumentDescriptor; report: UnsupportedReport };
 
 interface EditableDocument {
-  descriptor: DocumentDescriptor
-  content: string
-  mode: OpenMode
-  format: DocumentFormat
-  diskRevision: ExpectedDiskRevision
-  preflight: PreflightReport
+  descriptor: DocumentDescriptor;
+  content: string;
+  mode: OpenMode;
+  format: DocumentFormat;
+  diskRevision: ExpectedDiskRevision;
+  preflight: PreflightReport;
 }
 
 interface DocumentSaveRequest {
-  documentId: DocumentId
-  content: string
-  format: DocumentFormat
-  snapshotSessionRevision: SessionRevision
-  expectedDiskRevision: ExpectedDiskRevision
-  reason: "explicit" | "autosave" | "close" | "checkpointPromotion"
+  documentId: DocumentId;
+  content: string;
+  format: DocumentFormat;
+  snapshotSessionRevision: SessionRevision;
+  expectedDiskRevision: ExpectedDiskRevision;
+  reason: "explicit" | "autosave" | "close" | "checkpointPromotion";
 }
 
 type DocumentSaveOutcome =
   | {
-      kind: "saved"
-      documentId: DocumentId
-      savedSessionRevision: SessionRevision
-      newDiskRevision: DiskRevision
-      writeId: string
-      bytesWritten: number
+      kind: "saved";
+      documentId: DocumentId;
+      savedSessionRevision: SessionRevision;
+      newDiskRevision: DiskRevision;
+      writeId: string;
+      bytesWritten: number;
     }
   | {
-      kind: "noop"
-      documentId: DocumentId
-      savedSessionRevision: SessionRevision
-      diskRevision: ExpectedDiskRevision
-    }
+      kind: "noop";
+      documentId: DocumentId;
+      savedSessionRevision: SessionRevision;
+      diskRevision: ExpectedDiskRevision;
+    };
 
 type ConflictResolutionRequest =
   | {
-      action: "reload"
-      documentId: DocumentId
-      observedDiskRevision: ExpectedDiskRevision
+      action: "reload";
+      documentId: DocumentId;
+      observedDiskRevision: ExpectedDiskRevision;
     }
   | {
-      action: "overwrite"
-      documentId: DocumentId
-      content: string
-      format: DocumentFormat
-      snapshotSessionRevision: SessionRevision
-      observedDiskRevision: ExpectedDiskRevision
+      action: "overwrite";
+      documentId: DocumentId;
+      content: string;
+      format: DocumentFormat;
+      snapshotSessionRevision: SessionRevision;
+      observedDiskRevision: ExpectedDiskRevision;
     }
   | {
-      action: "recreate"
-      documentId: DocumentId
-      content: string
-      format: DocumentFormat
-      snapshotSessionRevision: SessionRevision
-      observedDiskRevision: { kind: "absent" }
-    }
+      action: "recreate";
+      documentId: DocumentId;
+      content: string;
+      format: DocumentFormat;
+      snapshotSessionRevision: SessionRevision;
+      observedDiskRevision: { kind: "absent" };
+    };
 
 type ConflictResolutionOutcome =
   | { kind: "reloadChecked"; outcome: DocumentOpenOutcome }
-  | { kind: "saved"; result: DocumentSaveOutcome }
+  | { kind: "saved"; result: DocumentSaveOutcome };
 
 interface DocumentPrepareSaveAsRequest {
-  saveAsIntentId: string
-  documentId: DocumentId
-  sourceSnapshotSessionRevision: SessionRevision
+  saveAsIntentId: string;
+  documentId: DocumentId;
+  sourceSnapshotSessionRevision: SessionRevision;
   target:
-    | { kind: "prompt"; suggestedName?: string }
-    | { kind: "grant"; grantToken: string }
-  referencedDraftAssetIds: AssetId[]
+    { kind: "prompt"; suggestedName?: string } | { kind: "grant"; grantToken: string };
+  referencedDraftAssetIds: AssetId[];
 }
 
 type DocumentPrepareSaveAsOutcome =
@@ -983,30 +983,30 @@ type DocumentPrepareSaveAsOutcome =
   | { kind: "sameDocument"; saveAsIntentId: string; documentId: DocumentId }
   | { kind: "targetAlreadyOpen"; saveAsIntentId: string; target: DocumentDescriptor }
   | {
-      kind: "prepared"
-      saveAsIntentId: string
-      saveAsToken: string
-      newDescriptor: DocumentDescriptor
-      targetExpectedDiskRevision: ExpectedDiskRevision
-      uriReplacements: Array<{ assetId: AssetId; oldUri: string; newUri: string }>
-      relativeLinkImpact: "none" | "baseDirectoryChanged"
-    }
+      kind: "prepared";
+      saveAsIntentId: string;
+      saveAsToken: string;
+      newDescriptor: DocumentDescriptor;
+      targetExpectedDiskRevision: ExpectedDiskRevision;
+      uriReplacements: Array<{ assetId: AssetId; oldUri: string; newUri: string }>;
+      relativeLinkImpact: "none" | "baseDirectoryChanged";
+    };
 
 interface DocumentSaveAsRequest {
-  saveAsIntentId: string
-  documentId: DocumentId
-  saveAsToken: string
-  content: string                     // 已应用 plan 中 URI replacement
-  format: DocumentFormat
-  sourceSnapshotSessionRevision: SessionRevision
-  snapshotSessionRevision: SessionRevision
+  saveAsIntentId: string;
+  documentId: DocumentId;
+  saveAsToken: string;
+  content: string; // 已应用 plan 中 URI replacement
+  format: DocumentFormat;
+  sourceSnapshotSessionRevision: SessionRevision;
+  snapshotSessionRevision: SessionRevision;
 }
 
 interface DocumentSaveAsOutcome {
-  kind: "saved"
-  saveAsIntentId: string
-  result: DocumentSaveOutcome
-  newDescriptor: DocumentDescriptor   // documentId 与晋升前相同
+  kind: "saved";
+  saveAsIntentId: string;
+  result: DocumentSaveOutcome;
+  newDescriptor: DocumentDescriptor; // documentId 与晋升前相同
 }
 
 type DocumentSaveAsStatusOutcome =
@@ -1015,45 +1015,45 @@ type DocumentSaveAsStatusOutcome =
   | { kind: "committing"; saveAsIntentId: string; documentId: DocumentId }
   | { kind: "committed"; outcome: DocumentSaveAsOutcome }
   | { kind: "rolledBack"; saveAsIntentId: string; documentId: DocumentId; error?: AppError }
-  | { kind: "acknowledged"; saveAsIntentId: string; documentId: DocumentId }
+  | { kind: "acknowledged"; saveAsIntentId: string; documentId: DocumentId };
 
 interface PendingSaveAsSummary {
-  documentId: DocumentId
-  saveAsIntentId: string
-  phase: "prepared" | "committing" | "committed" | "rolledBack"
+  documentId: DocumentId;
+  saveAsIntentId: string;
+  phase: "prepared" | "committing" | "committed" | "rolledBack";
 }
 
 type DocumentCompareOutcome =
   | {
-      kind: "snapshot"
-      content: string
-      format: DocumentFormat
-      diskRevision: ExpectedDiskRevision
+      kind: "snapshot";
+      content: string;
+      format: DocumentFormat;
+      diskRevision: ExpectedDiskRevision;
     }
   | {
-      kind: "safetyBlocked"
-      report: SafetyBlockedReport
-      diskRevision: ExpectedDiskRevision
+      kind: "safetyBlocked";
+      report: SafetyBlockedReport;
+      diskRevision: ExpectedDiskRevision;
     }
   | {
-      kind: "unsupported"
-      report: UnsupportedReport
-      diskRevision: ExpectedDiskRevision
-    }
+      kind: "unsupported";
+      report: UnsupportedReport;
+      diskRevision: ExpectedDiskRevision;
+    };
 
 interface DocumentRepairRequest {
-  repairToken: string
-  expectedDiskRevision: ExpectedDiskRevision
+  repairToken: string;
+  expectedDiskRevision: ExpectedDiskRevision;
   action:
     | { kind: "extractDataImages"; assetDirectoryName: string }
-    | { kind: "deleteDataImages" }
+    | { kind: "deleteDataImages" };
 }
 
 interface DocumentRepairOutcome {
-  backupDisplayPath: string
-  repairedDiskRevision: DiskRevision
-  extractedAssets: AssetRef[]
-  reopen: DocumentOpenOutcome
+  backupDisplayPath: string;
+  repairedDiskRevision: DiskRevision;
+  extractedAssets: AssetRef[];
+  reopen: DocumentOpenOutcome;
 }
 ```
 
@@ -1084,147 +1084,147 @@ interface DocumentRepairOutcome {
 
 ### 10.5 Asset、恢复与取消命令
 
-| ID | 命令 | 请求 payload | 成功 payload |
-|---|---|---|---|
-| `IPC-CMD-040` | `asset_import_clipboard_v1` | `AssetImportClipboardRequest` | `AssetImportClipboardOutcome` |
-| `IPC-CMD-041` | `asset_release_v1` | `{ assetId: AssetId; reason: "insertFailed" \| "undo" \| "documentClosed"; retainUntilUnixMs: number }` | `{ state: AssetState }` |
-| `IPC-CMD-050` | `session_checkpoint_v1` | `SessionCheckpointRequest` | `{ checkpointed: SessionRevision; storedAt: string }` |
-| `IPC-CMD-051` | `recovery_list_v1` | `{}` | `{ items: RecoveryDescriptor[]; safeMode: boolean }` |
-| `IPC-CMD-052` | `recovery_open_v1` | `{ recoveryId: RecoveryId }` | `RecoveryOpenOutcome` |
-| `IPC-CMD-053` | `recovery_discard_v1` | `{ recoveryId: RecoveryId }` | `{ discarded: true }` |
-| `IPC-CMD-054` | `window_state_save_v1` | `{ snapshot: WindowStateSnapshotV1 }` | `{ storedAt: string }` |
-| `IPC-CMD-055` | `window_state_load_v1` | `{}` | `{ snapshot?: WindowStateSnapshotV1; safeMode: boolean }` |
-| `IPC-CMD-056` | `session_discard_v1` | `SessionDiscardRequest` | `SessionDiscardOutcome` |
-| `IPC-CMD-060` | `task_cancel_v1` | `{ operationId: OperationId }` | `{ kind: "requested" \| "notFound" \| "pastCommitPoint" }` |
-| `IPC-CMD-070` | `resource_open_external_v1` | `{ resource: ResourceRef }` | `{ opened: true }` |
-| `IPC-CMD-071` | `resource_reveal_v1` | `{ target: RevealTarget }` | `{ revealed: true }` |
+| ID            | 命令                        | 请求 payload                                                                                            | 成功 payload                                               |
+| ------------- | --------------------------- | ------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| `IPC-CMD-040` | `asset_import_clipboard_v1` | `AssetImportClipboardRequest`                                                                           | `AssetImportClipboardOutcome`                              |
+| `IPC-CMD-041` | `asset_release_v1`          | `{ assetId: AssetId; reason: "insertFailed" \| "undo" \| "documentClosed"; retainUntilUnixMs: number }` | `{ state: AssetState }`                                    |
+| `IPC-CMD-050` | `session_checkpoint_v1`     | `SessionCheckpointRequest`                                                                              | `{ checkpointed: SessionRevision; storedAt: string }`      |
+| `IPC-CMD-051` | `recovery_list_v1`          | `{}`                                                                                                    | `{ items: RecoveryDescriptor[]; safeMode: boolean }`       |
+| `IPC-CMD-052` | `recovery_open_v1`          | `{ recoveryId: RecoveryId }`                                                                            | `RecoveryOpenOutcome`                                      |
+| `IPC-CMD-053` | `recovery_discard_v1`       | `{ recoveryId: RecoveryId }`                                                                            | `{ discarded: true }`                                      |
+| `IPC-CMD-054` | `window_state_save_v1`      | `{ snapshot: WindowStateSnapshotV1 }`                                                                   | `{ storedAt: string }`                                     |
+| `IPC-CMD-055` | `window_state_load_v1`      | `{}`                                                                                                    | `{ snapshot?: WindowStateSnapshotV1; safeMode: boolean }`  |
+| `IPC-CMD-056` | `session_discard_v1`        | `SessionDiscardRequest`                                                                                 | `SessionDiscardOutcome`                                    |
+| `IPC-CMD-060` | `task_cancel_v1`            | `{ operationId: OperationId }`                                                                          | `{ kind: "requested" \| "notFound" \| "pastCommitPoint" }` |
+| `IPC-CMD-070` | `resource_open_external_v1` | `{ resource: ResourceRef }`                                                                             | `{ opened: true }`                                         |
+| `IPC-CMD-071` | `resource_reveal_v1`        | `{ target: RevealTarget }`                                                                              | `{ revealed: true }`                                       |
 
 ```ts
 interface AssetImportClipboardRequest {
-  pasteIntentId: string
-  owner: AssetOwner
-  preferredFormat: "png" | "preserve"
-  namingHint?: string
+  pasteIntentId: string;
+  owner: AssetOwner;
+  preferredFormat: "png" | "preserve";
+  namingHint?: string;
 }
 
 type AssetImportClipboardOutcome =
   | { kind: "imported"; asset: AssetRef }
   | {
-      kind: "needsGrant"
-      grantRequestId: GrantRequestId
-      owner: AssetOwner
-      pasteIntentId: string
-      displayTarget: string
-      reason: "assetDirectory"
-    }
+      kind: "needsGrant";
+      grantRequestId: GrantRequestId;
+      owner: AssetOwner;
+      pasteIntentId: string;
+      displayTarget: string;
+      reason: "assetDirectory";
+    };
 
 interface SessionCheckpointRequest {
-  documentId: DocumentId
-  sessionRevision: SessionRevision
-  persistedSessionRevision: SessionRevision
-  baseDiskRevision: ExpectedDiskRevision
-  content: string
-  reason: "debounce" | "appClose" | "crashGuard" | "saveAsPrepare"
-  pendingSaveAsIntentId?: string
+  documentId: DocumentId;
+  sessionRevision: SessionRevision;
+  persistedSessionRevision: SessionRevision;
+  baseDiskRevision: ExpectedDiskRevision;
+  content: string;
+  reason: "debounce" | "appClose" | "crashGuard" | "saveAsPrepare";
+  pendingSaveAsIntentId?: string;
 }
 
 interface SessionDiscardRequest {
-  discardIntentId: string
-  documentId: DocumentId
-  snapshotSessionRevision: SessionRevision
+  discardIntentId: string;
+  documentId: DocumentId;
+  snapshotSessionRevision: SessionRevision;
 }
 
 interface SessionDiscardOutcome {
-  kind: "discarded"
-  documentId: DocumentId
-  discardedRecoveryIds: RecoveryId[]
-  orphanedAssetIds: AssetId[]
-  draftIdentityReleased: boolean
+  kind: "discarded";
+  documentId: DocumentId;
+  discardedRecoveryIds: RecoveryId[];
+  orphanedAssetIds: AssetId[];
+  draftIdentityReleased: boolean;
 }
 
 interface RecoveryDescriptor {
-  id: RecoveryId
-  titleSnapshot: string
-  locatorHint?: DocumentLocator
-  sessionRevision: SessionRevision
-  persistedSessionRevision: SessionRevision
-  baseDiskRevision: ExpectedDiskRevision
-  capturedAt: string
-  quarantined: boolean
-  pendingSaveAsIntentId?: string
+  id: RecoveryId;
+  titleSnapshot: string;
+  locatorHint?: DocumentLocator;
+  sessionRevision: SessionRevision;
+  persistedSessionRevision: SessionRevision;
+  baseDiskRevision: ExpectedDiskRevision;
+  capturedAt: string;
+  quarantined: boolean;
+  pendingSaveAsIntentId?: string;
 }
 
 interface RecoveredEditableDocument {
-  descriptor: DocumentDescriptor
-  content: string
-  mode: OpenMode
-  format: DocumentFormat
-  observedDiskRevision: ExpectedDiskRevision
-  preflight: PreflightReport
+  descriptor: DocumentDescriptor;
+  content: string;
+  mode: OpenMode;
+  format: DocumentFormat;
+  observedDiskRevision: ExpectedDiskRevision;
+  preflight: PreflightReport;
 }
 
 type RecoveryOpenOutcome =
   | {
-      kind: "editable"
-      recovery: RecoveryDescriptor
-      document: RecoveredEditableDocument
+      kind: "editable";
+      recovery: RecoveryDescriptor;
+      document: RecoveredEditableDocument;
       restoredRevisions: {
-        current: SessionRevision
-        persisted: SessionRevision
-      }
+        current: SessionRevision;
+        persisted: SessionRevision;
+      };
       initialPersistence:
         | { kind: "clean" }
         | { kind: "dirty" }
         | {
-            kind: "conflict"
-            expected: ExpectedDiskRevision
-            actual: ExpectedDiskRevision
-            reason: "modified" | "deleted" | "replaced" | "created"
-          }
+            kind: "conflict";
+            expected: ExpectedDiskRevision;
+            actual: ExpectedDiskRevision;
+            reason: "modified" | "deleted" | "replaced" | "created";
+          };
       reconciledSaveAs?: {
-        saveAsIntentId: string
-        outcome: DocumentSaveAsOutcome
-        requiresAck: true
-      }
+        saveAsIntentId: string;
+        outcome: DocumentSaveAsOutcome;
+        requiresAck: true;
+      };
     }
   | {
-      kind: "safetyBlocked"
-      descriptor: RecoveryDescriptor
-      report: SafetyBlockedReport
-    }
+      kind: "safetyBlocked";
+      descriptor: RecoveryDescriptor;
+      report: SafetyBlockedReport;
+    };
 
 interface WindowStateSnapshotV1 {
-  schemaVersion: 1
+  schemaVersion: 1;
   tabs: Array<{
-    id: TabId
-    history: NavigationHistory
-    pinned: boolean
-  }>
+    id: TabId;
+    history: NavigationHistory;
+    pinned: boolean;
+  }>;
   recentlyClosedTabs: Array<{
-    history: NavigationHistory
-    pinned: boolean
-    closedAt: number
-  }>
-  sidebar: { visible: boolean; width: number }
+    history: NavigationHistory;
+    pinned: boolean;
+    closedAt: number;
+  }>;
+  sidebar: { visible: boolean; width: number };
   layout:
     | {
-        kind: "single"
-        pane: PaneSnapshot
-        focusedPaneId: PaneId
+        kind: "single";
+        pane: PaneSnapshot;
+        focusedPaneId: PaneId;
       }
     | {
-        kind: "split"
-        left: PaneSnapshot
-        right: PaneSnapshot
-        ratio: number
-        focusedPaneId: PaneId
-      }
+        kind: "split";
+        left: PaneSnapshot;
+        right: PaneSnapshot;
+        ratio: number;
+        focusedPaneId: PaneId;
+      };
 }
 
 interface PaneSnapshot {
-  paneId: PaneId
-  tabIds: TabId[]
-  activeTabId?: TabId
+  paneId: PaneId;
+  tabIds: TabId[];
+  activeTabId?: TabId;
 }
 ```
 
@@ -1254,103 +1254,107 @@ window snapshot 中每个 open TabId 必须恰好出现在一个 `PaneSnapshot.t
 
 ```ts
 interface EventEnvelope<T> {
-  apiVersion: "1.0"
-  eventId: EventId
-  eventType: string
-  emittedAt: string
-  scope: EventScope
-  sequence: number
-  payload: T
+  apiVersion: "1.0";
+  eventId: EventId;
+  eventType: string;
+  emittedAt: string;
+  scope: EventScope;
+  sequence: number;
+  payload: T;
 }
 
 type EventScope =
   | { kind: "app" }
   | { kind: "workspace"; workspaceId: WorkspaceId }
   | { kind: "document"; documentId: DocumentId }
-  | { kind: "operation"; operationId: OperationId }
+  | { kind: "operation"; operationId: OperationId };
 ```
 
 sequence 在各 scope 内单调增加，不要求跨 scope 全局排序。前端必须用 `eventId` 去重；检测 sequence 跳号时按 scope 进行 reconcile。
 
-| ID | eventType | payload |
-|---|---|---|
-| `IPC-EVT-010` | `workspace.filesChanged` | `WorkspaceFilesChanged` |
-| `IPC-EVT-011` | `workspace.capabilityChanged` | `WorkspaceCapabilityChanged` |
-| `IPC-EVT-020` | `document.externalChanged` | `DocumentExternalChanged` |
-| `IPC-EVT-030` | `task.progress` | `TaskProgress` |
-| `IPC-EVT-031` | `task.finished` | `TaskFinished` |
-| `IPC-EVT-040` | `recovery.snapshotFailed` | `{ documentId: DocumentId; error: AppError }` |
-| `IPC-EVT-050` | `app.closeRequested` | `AppCloseRequest` |
-| `IPC-EVT-060` | `app.openResourcesRequested` | `NativeOpenResourcesRequested` |
+| ID            | eventType                     | payload                                       |
+| ------------- | ----------------------------- | --------------------------------------------- |
+| `IPC-EVT-010` | `workspace.filesChanged`      | `WorkspaceFilesChanged`                       |
+| `IPC-EVT-011` | `workspace.capabilityChanged` | `WorkspaceCapabilityChanged`                  |
+| `IPC-EVT-020` | `document.externalChanged`    | `DocumentExternalChanged`                     |
+| `IPC-EVT-030` | `task.progress`               | `TaskProgress`                                |
+| `IPC-EVT-031` | `task.finished`               | `TaskFinished`                                |
+| `IPC-EVT-040` | `recovery.snapshotFailed`     | `{ documentId: DocumentId; error: AppError }` |
+| `IPC-EVT-050` | `app.closeRequested`          | `AppCloseRequest`                             |
+| `IPC-EVT-060` | `app.openResourcesRequested`  | `NativeOpenResourcesRequested`                |
 
 ```ts
 interface WorkspaceFilesChanged {
-  generationHint: number
-  overflow: boolean
+  generationHint: number;
+  overflow: boolean;
   changes: Array<
     | { kind: "created" | "modified" | "removed"; relativePath: RelativePath }
-    | { kind: "renamed"; from: RelativePath; to: RelativePath; confidence: "certain" | "likely" }
-  >
+    | {
+        kind: "renamed";
+        from: RelativePath;
+        to: RelativePath;
+        confidence: "certain" | "likely";
+      }
+  >;
 }
 
 interface WorkspaceCapabilityChanged {
-  workspaceId: WorkspaceId
-  previousEpoch: number
-  capabilityEpoch: number
-  state: "ready" | "revoked"
-  error?: AppError
+  workspaceId: WorkspaceId;
+  previousEpoch: number;
+  capabilityEpoch: number;
+  state: "ready" | "revoked";
+  error?: AppError;
 }
 
 type DocumentChangeProvenance =
-  | { source: "external"; writeId?: never }
-  | { source: "ownWrite"; writeId: string }
+  { source: "external"; writeId?: never } | { source: "ownWrite"; writeId: string };
 
 type DocumentExternalChanged =
   | ({
-      documentId: DocumentId
-      change: "modified" | "deleted" | "replaced" | "metadataOnly"
-      observedDiskRevision: ExpectedDiskRevision
+      documentId: DocumentId;
+      change: "modified" | "deleted" | "replaced" | "metadataOnly";
+      observedDiskRevision: ExpectedDiskRevision;
     } & DocumentChangeProvenance)
   | {
-      documentId: DocumentId
-      change: "permissionChanged"
-      readOnly: boolean
-      capabilityEpoch: number
-      source: "external"
-      writeId?: never
-      error?: AppError
-    }
+      documentId: DocumentId;
+      change: "permissionChanged";
+      readOnly: boolean;
+      capabilityEpoch: number;
+      source: "external";
+      writeId?: never;
+      error?: AppError;
+    };
 
 type NativeOpenTarget =
   | {
-      kind: "workspace"
-      grantToken: string
-      displayPath: string
+      kind: "workspace";
+      grantToken: string;
+      displayPath: string;
     }
   | {
-      kind: "document"
-      resource: Extract<ResourceRef, { kind: "markdown" }>
-    }
+      kind: "document";
+      resource: Extract<ResourceRef, { kind: "markdown" }>;
+    };
 
 interface NativeOpenResourcesRequested {
-  nativeRequestId: string
-  source: "launch" | "finder" | "dragDrop"
-  originPaneId?: PaneId
-  targets: NativeOpenTarget[]
+  nativeRequestId: string;
+  source: "launch" | "finder" | "dragDrop";
+  originPaneId?: PaneId;
+  targets: NativeOpenTarget[];
 }
 
 interface TaskProgress {
-  operationId: OperationId
-  phase: string
-  completedUnits?: number
-  totalUnits?: number
-  messageKey?: string
+  operationId: OperationId;
+  phase: string;
+  completedUnits?: number;
+  totalUnits?: number;
+  messageKey?: string;
 }
 
 interface TaskFinished {
-  operationId: OperationId
-  outcome: "succeeded" | "failed" | "cancelled"
-  error?: AppError
+  operationId: OperationId;
+  outcome: "succeeded" | "failed" | "cancelled";
+  error?: AppError;
 }
 ```
 
@@ -1385,9 +1389,9 @@ Outline、Mermaid、链接索引等结果至少携带：
 
 ```ts
 interface DerivedResultKey {
-  documentId: DocumentId
-  sessionRevision: SessionRevision
-  producerVersion: string
+  documentId: DocumentId;
+  sessionRevision: SessionRevision;
+  producerVersion: string;
 }
 ```
 
@@ -1430,15 +1434,15 @@ Rust `document_save_v1` **MUST** 依次执行：
 
 ### 13.3 外部变化决策表
 
-| 当前状态 | 事件 | MUST 行为 |
-|---|---|---|
-| clean | 内容 modified/replaced | 去抖后重载；保存 view anchor；替换正文并建立新 undo 边界；恢复 view |
-| clean | metadataOnly 且 hash 相同 | 仅接纳新 disk revision，不替换正文 |
-| clean | deleted | 进入 missing，保留只读 buffer，提示另存/关闭 |
-| dirty | modified/replaced | 进入 conflict；保留本地 buffer；提供比较、重载、覆盖、另存 |
-| dirty | deleted | conflict reason=`deleted`；不得自动重建文件 |
-| saving | 任意变化 | 事件排队；保存的双重 revision 检查决定终态，之后 reconcile |
-| conflict | 再次变化 | 更新 actual revision 和提示；此前 overwrite 授权失效 |
+| 当前状态 | 事件                      | MUST 行为                                                           |
+| -------- | ------------------------- | ------------------------------------------------------------------- |
+| clean    | 内容 modified/replaced    | 去抖后重载；保存 view anchor；替换正文并建立新 undo 边界；恢复 view |
+| clean    | metadataOnly 且 hash 相同 | 仅接纳新 disk revision，不替换正文                                  |
+| clean    | deleted                   | 进入 missing，保留只读 buffer，提示另存/关闭                        |
+| dirty    | modified/replaced         | 进入 conflict；保留本地 buffer；提供比较、重载、覆盖、另存          |
+| dirty    | deleted                   | conflict reason=`deleted`；不得自动重建文件                         |
+| saving   | 任意变化                  | 事件排队；保存的双重 revision 检查决定终态，之后 reconcile          |
+| conflict | 再次变化                  | 更新 actual revision 和提示；此前 overwrite 授权失效                |
 
 文件重命名只有 watcher 能以足够置信度配对且目标仍在授权根内时 MAY 自动更新 locator；否则按 remove + create 处理。重命名后的链接批量改写必须是另一个用户可撤销事务，不属于 watcher 默认行为。
 
@@ -1589,18 +1593,18 @@ const KNOWN_APP_ERROR_CODES = [
   "ERR_STALE_TOKEN",
   "ERR_ASSET_MIGRATION_FAILED",
   "ERR_RECOVERY_CORRUPT",
-] as const
+] as const;
 
-type KnownAppErrorCode = (typeof KNOWN_APP_ERROR_CODES)[number]
-type UnknownAppErrorCode = Brand<string, "UnknownAppErrorCode">
-type AppErrorCode = KnownAppErrorCode | UnknownAppErrorCode
+type KnownAppErrorCode = (typeof KNOWN_APP_ERROR_CODES)[number];
+type UnknownAppErrorCode = Brand<string, "UnknownAppErrorCode">;
+type AppErrorCode = KnownAppErrorCode | UnknownAppErrorCode;
 
 interface AppError {
-  code: AppErrorCode
-  message: string                   // 可直接展示的保守消息；不含正文/堆栈
-  messageKey?: string               // 本地化键
-  retryable: boolean
-  correlationId: string
+  code: AppErrorCode;
+  message: string; // 可直接展示的保守消息；不含正文/堆栈
+  messageKey?: string; // 本地化键
+  retryable: boolean;
+  correlationId: string;
   recoveryActions?: Array<
     | "retry"
     | "requestGrant"
@@ -1610,8 +1614,8 @@ interface AppError {
     | "overwrite"
     | "saveAs"
     | "openExternal"
-  >
-  details?: AppErrorDetails
+  >;
+  details?: AppErrorDetails;
 }
 
 type AppErrorDetails =
@@ -1621,23 +1625,23 @@ type AppErrorDetails =
   | { kind: "validation"; field?: string; reason: string }
   | { kind: "operation"; operationId: OperationId; phase?: string }
   | {
-      kind: "grant"
-      grantRequestId: GrantRequestId
-      purpose: "resourceResolution" | "assetDirectory"
-      displayTarget: string
+      kind: "grant";
+      grantRequestId: GrantRequestId;
+      purpose: "resourceResolution" | "assetDirectory";
+      displayTarget: string;
     }
   | {
-      kind: "assetWrite"
-      cause: IoFailureCause
-      displayTarget?: string
-      owner: AssetOwner
+      kind: "assetWrite";
+      cause: IoFailureCause;
+      displayTarget?: string;
+      owner: AssetOwner;
     }
   | {
-      kind: "io"
-      operation: "read" | "write" | "flush" | "rename" | "remove" | "stat"
-      cause: IoFailureCause
-      displayPath?: string
-    }
+      kind: "io";
+      operation: "read" | "write" | "flush" | "rename" | "remove" | "stat";
+      cause: IoFailureCause;
+      displayPath?: string;
+    };
 
 type IoFailureCause =
   | "readOnly"
@@ -1648,39 +1652,39 @@ type IoFailureCause =
   | "pathConflict"
   | "notFound"
   | "deviceUnavailable"
-  | "unknown"
+  | "unknown";
 ```
 
 Wire 上 `code` 是有长度上限的非空字符串，不使用会拒绝新值的 closed enum。解码器先按 `KNOWN_APP_ERROR_CODES` 分类；不在列表内的值标记为 `UnknownAppErrorCode`、保留到脱敏诊断，并使用 `ERR_INTERNAL` 的只读 UI/恢复策略。未知 code 绝不授权写入或执行 recovery action。上面的常量列表是 known-code schema 的唯一生成来源；下表是人类说明，文档校验必须保证两者集合一致。
 
 ### 15.2 稳定错误码
 
-| ID / code | 场景 | retryable | 默认 UI |
-|---|---|---:|---|
-| `ERR-001 / ERR_API_VERSION_MISMATCH` | IPC major 不兼容 | 否 | 阻止继续，提示升级/重启 |
-| `ERR-002 / ERR_INVALID_REQUEST` | schema 或字段非法 | 否 | 局部错误并记录 correlation id |
-| `ERR-003 / ERR_INVALID_PATH` | 路径语法/规范化失败 | 否 | 显示无效链接 |
-| `ERR-004 / ERR_PATH_OUTSIDE_SCOPE` | 解析越出授权根 | 否 | 提供授权入口 |
-| `ERR-005 / ERR_GRANT_REQUIRED` | grant 缺失/过期；可续接时必须带 `details.kind=grant` | 是 | 打开原生授权流程 |
-| `ERR-006 / ERR_NOT_FOUND` | 文件/资源不存在 | 是 | 错误页，可后退/重试 |
-| `ERR-007 / ERR_PERMISSION_DENIED` | OS 拒绝访问 | 是 | 提示权限/另存 |
-| `ERR-008 / ERR_INVALID_UTF8` | P0 不支持编码 | 否 | 转码说明/外部工具建议 |
-| `ERR-009 / ERR_UNSAFE_CONTENT` | 超长行/大 data URI | 否 | 安全页，提供修复 |
-| `ERR-010 / ERR_FILE_TOO_LARGE` | 超出硬上限 | 否 | 外部工具建议 |
-| `ERR-011 / ERR_REVISION_CONFLICT` | expected 与 actual 不同 | 是 | 进入 conflict UI |
-| `ERR-012 / ERR_DOCUMENT_BUSY` | 同文档存在不可并行操作 | 是 | 等待/重试，可取消现任务 |
-| `ERR-013 / ERR_CANCELLED` | 原操作已在提交前取消 | 是 | 静默或保留当前页 |
-| `ERR-014 / ERR_CLIPBOARD_NO_IMAGE` | 剪贴板没有可用图片 | 是 | 不修改正文 |
-| `ERR-015 / ERR_UNSUPPORTED_IMAGE` | 图片格式不可解码 | 否 | 不修改正文，显示错误 |
-| `ERR-016 / ERR_ASSET_WRITE_FAILED` | 资源写入失败；必须带 `assetWrite.cause` | 按 cause | 不修改正文，按只读/权限过期/磁盘满/冲突分类恢复 |
-| `ERR-017 / ERR_WATCH_OVERFLOW` | 文件事件丢失 | 是 | 标记 degraded 并重扫 |
-| `ERR-018 / ERR_IO` | 已归类的普通 I/O 错误；必须带 `io.operation/cause` | 按 cause | 保留状态，给出安全恢复动作 |
-| `ERR-019 / ERR_UNSUPPORTED` | 当前版本/平台未实现 | 否 | 显示功能不可用 |
-| `ERR-020 / ERR_INTERNAL` | 未知/panic 边界错误 | 否 | 局部失败，显示 correlation id |
-| `ERR-021 / ERR_INVALID_STATE` | 在错误 session/workspace/task 阶段调用命令 | 否 | 保留状态，修正调用流程 |
-| `ERR-022 / ERR_STALE_TOKEN` | repair/save-as 等短期 token 已过期或 revision 不再匹配 | 是 | 重新预检或重新准备 |
-| `ERR-023 / ERR_ASSET_MIGRATION_FAILED` | 草稿资产迁移或 URI 提交失败 | 是 | 回滚 URI、保留 staging 并重试 |
-| `ERR-024 / ERR_RECOVERY_CORRUPT` | checkpoint schema/hash 损坏 | 否 | 隔离恢复项，不自动删除 |
+| ID / code                              | 场景                                                   | retryable | 默认 UI                                         |
+| -------------------------------------- | ------------------------------------------------------ | --------: | ----------------------------------------------- |
+| `ERR-001 / ERR_API_VERSION_MISMATCH`   | IPC major 不兼容                                       |        否 | 阻止继续，提示升级/重启                         |
+| `ERR-002 / ERR_INVALID_REQUEST`        | schema 或字段非法                                      |        否 | 局部错误并记录 correlation id                   |
+| `ERR-003 / ERR_INVALID_PATH`           | 路径语法/规范化失败                                    |        否 | 显示无效链接                                    |
+| `ERR-004 / ERR_PATH_OUTSIDE_SCOPE`     | 解析越出授权根                                         |        否 | 提供授权入口                                    |
+| `ERR-005 / ERR_GRANT_REQUIRED`         | grant 缺失/过期；可续接时必须带 `details.kind=grant`   |        是 | 打开原生授权流程                                |
+| `ERR-006 / ERR_NOT_FOUND`              | 文件/资源不存在                                        |        是 | 错误页，可后退/重试                             |
+| `ERR-007 / ERR_PERMISSION_DENIED`      | OS 拒绝访问                                            |        是 | 提示权限/另存                                   |
+| `ERR-008 / ERR_INVALID_UTF8`           | P0 不支持编码                                          |        否 | 转码说明/外部工具建议                           |
+| `ERR-009 / ERR_UNSAFE_CONTENT`         | 超长行/大 data URI                                     |        否 | 安全页，提供修复                                |
+| `ERR-010 / ERR_FILE_TOO_LARGE`         | 超出硬上限                                             |        否 | 外部工具建议                                    |
+| `ERR-011 / ERR_REVISION_CONFLICT`      | expected 与 actual 不同                                |        是 | 进入 conflict UI                                |
+| `ERR-012 / ERR_DOCUMENT_BUSY`          | 同文档存在不可并行操作                                 |        是 | 等待/重试，可取消现任务                         |
+| `ERR-013 / ERR_CANCELLED`              | 原操作已在提交前取消                                   |        是 | 静默或保留当前页                                |
+| `ERR-014 / ERR_CLIPBOARD_NO_IMAGE`     | 剪贴板没有可用图片                                     |        是 | 不修改正文                                      |
+| `ERR-015 / ERR_UNSUPPORTED_IMAGE`      | 图片格式不可解码                                       |        否 | 不修改正文，显示错误                            |
+| `ERR-016 / ERR_ASSET_WRITE_FAILED`     | 资源写入失败；必须带 `assetWrite.cause`                |  按 cause | 不修改正文，按只读/权限过期/磁盘满/冲突分类恢复 |
+| `ERR-017 / ERR_WATCH_OVERFLOW`         | 文件事件丢失                                           |        是 | 标记 degraded 并重扫                            |
+| `ERR-018 / ERR_IO`                     | 已归类的普通 I/O 错误；必须带 `io.operation/cause`     |  按 cause | 保留状态，给出安全恢复动作                      |
+| `ERR-019 / ERR_UNSUPPORTED`            | 当前版本/平台未实现                                    |        否 | 显示功能不可用                                  |
+| `ERR-020 / ERR_INTERNAL`               | 未知/panic 边界错误                                    |        否 | 局部失败，显示 correlation id                   |
+| `ERR-021 / ERR_INVALID_STATE`          | 在错误 session/workspace/task 阶段调用命令             |        否 | 保留状态，修正调用流程                          |
+| `ERR-022 / ERR_STALE_TOKEN`            | repair/save-as 等短期 token 已过期或 revision 不再匹配 |        是 | 重新预检或重新准备                              |
+| `ERR-023 / ERR_ASSET_MIGRATION_FAILED` | 草稿资产迁移或 URI 提交失败                            |        是 | 回滚 URI、保留 staging 并重试                   |
+| `ERR-024 / ERR_RECOVERY_CORRUPT`       | checkpoint schema/hash 损坏                            |        否 | 隔离恢复项，不自动删除                          |
 
 规范：
 
@@ -1738,7 +1742,7 @@ Wire 上 `code` 是有长度上限的非空字符串，不使用会拒绝新值�
 9. `CONTRACT-009`：事件 duplicate 被去重；sequence gap 触发按 scope 的权威 rescan/reconcile。属性测试交错 snapshot(S) 与实时 app 事件，证明安装快照后只丢 `<=S`、连续重放 `>S`，二次 gap 必须重试且不丢/重做 native intent。app listener 晚注册、事件丢失与 ack 响应丢失时，未 ack native-open 批次按 request/target 幂等重投，未决 close request 可查询并只被匹配 id 的 cancel/proceed 解析。
 10. `CONTRACT-010`：取消在提交点前产生 `ERR_CANCELLED`，提交点后最终结果与磁盘一致且唯一。
 11. `CONTRACT-011`：`SafetyBlocked` response 中不存在正文或 Base64 片段且只使用 `SafetyBlockedReport`；binary/编码/超限 `Unsupported` 只使用 `UnsupportedReport`，其 actions 不可能包含 extract/delete 修复。
-12. `CONTRACT-012`：图片写入失败时 CodeMirror doc、session revision、dirty 和 undo history 均不改变。
+12. `CONTRACT-012`：图片写入失败时当前编辑表面正文、session revision、dirty 和 undo history 均不改变。
 13. `CONTRACT-013`：back/forward 恢复块锚点；图片/Mermaid 改变高度后仍回到原阅读位置。
 14. `CONTRACT-014`：关闭一个同文档 Tab 不回收另一个 Tab 正在使用的 session。
 15. `CONTRACT-015`：checkpoint 成功不把 dirty 变 clean，checkpoint 失败不阻断显式保存。
@@ -1750,6 +1754,7 @@ Wire 上 `code` 是有长度上限的非空字符串，不使用会拒绝新值�
 21. `CONTRACT-021`：prepared 用户取消/过期通过幂等 abort 转 rolledBack；Save As 目标 revision 冲突、资产列表漏报/多报/越权、迁移或 Markdown 提交失败均回滚 URI transaction、清理本次目标产物并保留原正文、旧文件、staging 与恢复稿；abort 在 committing/committed 被拒绝。对每个 committing 子阶段强制崩溃或丢响应后，journal/status/recovery 只能确定为同一 committed outcome 或完整 rollback，ack 前 recovery alias 有效，任何 app staging URI 都不得进入已保存 Markdown。
 22. `CONTRACT-022`：同一 `draftIntentId` 重试只创建一个 Rust-owned DraftId/DocumentId；空白 draft 以 current=1/persisted=0 建立 dirty session，普通 Save 被拒绝且首次 Save As 原位晋升。
 23. `CONTRACT-023`：关闭 dirty session 的取消不改变任何状态并以匹配 closeRequestId 解除 native close hold；显式“不保存”在冻结/revision 校验后幂等移除对应 checkpoint，draft staging 先 tombstone 后释放 identity，失败保持 session 可恢复且不发送 proceed；checkpoint-only 永不满足用户决议，只有每个 dirty session 的 save 或 explicit discard 全部成功后 app close 才继续，且永不修改用户文件/资产。
-24. `CONTRACT-024`：所有完整正文 IPC 在 raw/wire 双预算边界 `-1/==/+1` 行为一致；32 MiB largeText 的 open/save/checkpoint/recovery/compare 可往返，最坏 JSON escaping 不绕过或误落普通 1 MiB 上限。
+24. `CONTRACT-024`：Deprecated by ADR-0005；旧 32 MiB/193 MiB 巨型 transport 门禁不得恢复为当前合并前提。
+25. `CONTRACT-025`：可视正文 transaction 同步更新 session/latest-text；同一事件循环内立即保存不漏最后字符，测试不等待 debounce timer。
 
 上述测试名称和稳定 ID **SHOULD** 直接出现在测试文件名或测试描述中，方便代理在上下文压缩后从失败输出追溯到本规范。

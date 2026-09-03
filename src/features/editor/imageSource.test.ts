@@ -21,4 +21,25 @@ describe("Markdown image source", () => {
       "assets/a.png",
     );
   });
+
+  it("resolves local file URLs and encoded filename characters without query fragments", () => {
+    expect(markdownImagePath("/workspace/readme.md", "file:///tmp/a%20b.png#detail")).toBe(
+      "/tmp/a b.png",
+    );
+    expect(
+      markdownImagePath("file:///workspace/docs/readme.md", "../images/a%23b.svg?cache=1"),
+    ).toBe("/workspace/images/a#b.svg");
+    expect(
+      markdownImagePath("/workspace/readme.md", "file://server/share/photo.png"),
+    ).toBeNull();
+    expect(markdownImagePath("C:\\notes\\readme.md", "..\\images\\photo.png")).toBe(
+      "C:/images/photo.png",
+    );
+    expect(markdownImagePath("/workspace/readme.md", "C:\\images\\photo.png")).toBe(
+      "C:/images/photo.png",
+    );
+    expect(markdownImagePath("/workspace/readme.md", "file:///C:/images/photo.png")).toBe(
+      "C:/images/photo.png",
+    );
+  });
 });

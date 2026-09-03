@@ -1,0 +1,149 @@
+.editor-context-menu {
+  position: fixed;
+  z-index: 1100;
+  box-sizing: border-box;
+  width: 224px;
+  max-height: calc(100vh - 16px);
+  padding: 5px;
+  overflow: visible;
+  border: 1px solid rgba(191, 194, 201, 0.82);
+  border-radius: 9px;
+  color: #202124;
+  background: rgba(248, 248, 249, 0.97);
+  box-shadow:
+    0 16px 36px rgba(20, 24, 32, 0.2),
+    0 2px 7px rgba(20, 24, 32, 0.13),
+    inset 0 1px rgba(255, 255, 255, 0.78);
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", sans-serif;
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.25;
+  -webkit-font-smoothing: antialiased;
+  backdrop-filter: blur(22px) saturate(1.22);
+}
+
+.editor-context-menu__item {
+  display: flex;
+  box-sizing: border-box;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-height: 27px;
+  padding: 4px 9px;
+  border: 0;
+  border-radius: 5px;
+  color: inherit;
+  text-align: left;
+  background: transparent;
+  cursor: default;
+}
+
+.editor-context-menu__item > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.editor-context-menu__item:hover,
+.editor-context-menu__item:focus-visible {
+  color: #ffffff;
+  background: #1769e0;
+  outline: 0;
+}
+
+.editor-context-menu__item:disabled {
+  color: rgba(32, 33, 36, 0.38);
+  background: transparent;
+  cursor: default;
+}
+
+.editor-context-menu__item:disabled kbd {
+  color: rgba(32, 33, 36, 0.28);
+}
+
+.editor-context-menu__item--separated {
+  position: relative;
+  margin-top: 6px;
+}
+
+.editor-context-menu__item--separated::before {
+  position: absolute;
+  right: 5px;
+  bottom: calc(100% + 3px);
+  left: 5px;
+  height: 1px;
+  content: "";
+  background: rgba(123, 127, 135, 0.24);
+}
+
+.editor-context-menu__item kbd {
+  margin-left: 14px;
+  color: rgba(55, 58, 65, 0.54);
+  font-family: inherit;
+  font-size: 11.5px;
+  font-weight: 400;
+  letter-spacing: -0.01em;
+}
+
+.editor-context-menu__item:hover kbd,
+.editor-context-menu__item:focus-visible kbd {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.editor-context-menu__item:disabled:hover kbd {
+  color: rgba(32, 33, 36, 0.28);
+}
+
+.editor-context-menu__branch {
+  position: relative;
+}
+
+.editor-context-menu__error {
+  margin: 8px;
+  color: #aa3434;
+  font-size: 12px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.editor-context-menu__chevron {
+  flex: 0 0 auto;
+  margin-left: 10px;
+  color: rgba(42, 45, 51, 0.62);
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 1;
+  transform: translateY(-0.5px);
+}
+
+.editor-context-menu__item:hover .editor-context-menu__chevron,
+.editor-context-menu__item:focus-visible .editor-context-menu__chevron {
+  color: rgba(255, 255, 255, 0.86);
+}
+
+.editor-context-menu__submenu {
+  position: absolute;
+  top: -5px;
+  left: calc(100% - 3px);
+  max-height: min(520px, calc(100vh - 16px));
+  overflow-y: auto;
+}
+
+.editor-context-menu__submenu--left {
+  right: calc(100% - 3px);
+  left: auto;
+}
+
+@supports not (backdrop-filter: blur(1px)) {
+  .editor-context-menu {
+    background: #f8f8f9;
+  }
+}
+
+@media (max-width: 640px) {
+  .editor-context-menu__submenu {
+    right: calc(100% - 3px);
+    left: auto;
+  }
+}

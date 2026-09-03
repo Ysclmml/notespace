@@ -1,0 +1,218 @@
+.code-file-preview {
+  position: relative;
+  isolation: isolate;
+  display: grid;
+  box-sizing: border-box;
+  min-width: 0;
+  min-height: 0;
+  grid-template-rows: 46px auto minmax(0, 1fr);
+  border: 1px solid #dde1e8;
+  overflow: hidden;
+  color: #252a32;
+  background: #fbfbfc;
+  font-family: var(--font-ui);
+  text-align: left;
+}
+
+.code-file-preview--tab {
+  width: 100%;
+  height: 100%;
+  border-radius: 10px;
+  box-shadow: 0 6px 22px rgba(31, 42, 61, 0.06);
+}
+
+.code-file-preview__find {
+  min-width: 0;
+  min-height: 0;
+}
+
+.code-file-preview--popover {
+  width: 100%;
+  height: clamp(360px, 62vh, 680px);
+  max-height: calc(100vh - 88px);
+  grid-template-rows: 48px auto minmax(0, 1fr);
+  border-radius: 10px;
+  box-shadow: 0 16px 48px rgba(31, 42, 61, 0.2);
+}
+
+.code-file-preview--split {
+  width: 100%;
+  height: 100%;
+  min-height: 280px;
+  border-radius: 0;
+  border-top: 0;
+  border-right: 0;
+  border-bottom: 0;
+  box-shadow: -8px 0 24px rgba(31, 42, 61, 0.055);
+}
+
+.code-file-preview__toolbar {
+  display: grid;
+  min-width: 0;
+  align-items: center;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  padding: 0 10px 0 14px;
+  border-bottom: 1px solid #e4e7ec;
+  background: #f7f8fa;
+}
+
+.code-file-preview__identity,
+.code-file-preview__actions {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+}
+
+.code-file-preview__identity {
+  overflow: hidden;
+}
+
+.code-file-preview__actions {
+  flex: 0 0 auto;
+}
+
+.code-file-preview__language {
+  flex: 0 0 auto;
+  color: #323a47;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.code-file-preview__path {
+  min-width: 40px;
+  overflow: hidden;
+  color: #7b8492;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.code-file-preview__line {
+  flex: 0 0 auto;
+  padding: 2px 6px;
+  border-radius: 4px;
+  color: #47619a;
+  background: #eaf0ff;
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.code-file-preview__actions button {
+  min-width: max-content;
+  height: 29px;
+  padding: 0 10px;
+  border: 1px solid #d8dde6;
+  border-radius: 6px;
+  color: #4d5869;
+  background: #fff;
+  font-size: 11px;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.code-file-preview__actions button:hover {
+  border-color: #b9c7e6;
+  color: #315fcf;
+  background: #f5f8ff;
+}
+
+.code-file-preview__actions button:focus-visible {
+  outline: 2px solid rgba(63, 105, 210, 0.35);
+  outline-offset: 1px;
+}
+
+.code-file-preview__editor {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  overscroll-behavior: contain;
+  background: #fbfbfc;
+}
+
+.code-file-preview__editor .cm-editor {
+  width: 100%;
+  height: 100%;
+}
+
+.code-file-preview__editor .cm-scroller {
+  min-width: 0;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+.code-file-preview__editor .cm-content {
+  margin: 0;
+  color: #252a32;
+  font-family: var(--font-mono);
+  font-style: normal;
+  font-weight: 400;
+  letter-spacing: normal;
+  text-decoration: none;
+}
+
+.code-file-preview__editor .cm-line {
+  display: block;
+  margin: 0;
+  border: 0;
+  font: inherit;
+}
+
+.code-file-preview__editor .cm-editor.cm-focused .cm-selectionBackground,
+.code-file-preview__editor .cm-editor .cm-selectionBackground {
+  background-color: #b8cff8;
+}
+
+.code-file-preview__editor .cm-content ::selection {
+  color: #17233a;
+  background-color: #b8cff8;
+}
+
+.code-file-preview__editor .cm-editor .cm-activeLine {
+  background-color: rgba(65, 105, 180, 0.12);
+}
+
+.code-file-preview__editor .cm-editor .cm-activeLineGutter {
+  color: #44546b;
+  background-color: #dbe5f5;
+}
+
+.code-file-preview__editor .cm-gutters {
+  flex: 0 0 auto;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  user-select: none;
+}
+
+.code-file-preview--popover .cm-scroller,
+.code-file-preview--split .cm-scroller {
+  font-size: 12px;
+}
+
+.code-file-preview--popover .cm-content {
+  padding-top: 10px;
+}
+
+.code-file-preview__editor .code-file-preview__target-line {
+  background: rgba(53, 104, 232, 0.11);
+  box-shadow: inset 3px 0 #4d78df;
+}
+
+@media (max-width: 720px) {
+  .code-file-preview__toolbar {
+    gap: 6px;
+    padding-left: 10px;
+  }
+
+  .code-file-preview__path {
+    display: none;
+  }
+
+  .code-file-preview__actions button {
+    padding: 0 8px;
+  }
+}
