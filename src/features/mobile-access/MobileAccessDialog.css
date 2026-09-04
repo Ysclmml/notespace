@@ -1,0 +1,508 @@
+.mobile-access-dialog-layer {
+  position: fixed;
+  z-index: 1260;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 28px;
+  background: rgb(27 33 45 / 24%);
+  backdrop-filter: blur(3px);
+}
+
+.mobile-access-dialog {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  box-sizing: border-box;
+  width: min(680px, 100%);
+  max-height: min(760px, calc(100dvh - 56px));
+  overflow: hidden;
+  color: var(--ink-950);
+  background: var(--paper-0);
+  border: 1px solid var(--line-300);
+  border-radius: 16px;
+  box-shadow: 0 22px 70px rgb(25 32 45 / 28%);
+  font: 14px/1.55 var(--font-ui, -apple-system, BlinkMacSystemFont, sans-serif);
+}
+
+.mobile-access-dialog__titlebar {
+  position: relative;
+  padding: 22px 64px 19px 24px;
+  background: var(--paper-1);
+  border-bottom: 1px solid var(--line-200);
+}
+
+.mobile-access-dialog__titlebar h2,
+.mobile-access-dialog__titlebar p,
+.mobile-access-section h3,
+.mobile-access-section p {
+  margin: 0;
+}
+
+.mobile-access-dialog__titlebar h2 {
+  font-size: 19px;
+  line-height: 1.35;
+}
+
+.mobile-access-dialog__titlebar p {
+  margin-top: 4px;
+  color: var(--ink-500);
+  font-size: 13px;
+}
+
+.mobile-access-dialog__close {
+  position: absolute;
+  top: 19px;
+  right: 20px;
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  padding: 0 0 2px;
+  color: var(--ink-700);
+  background: var(--paper-0);
+  border: 1px solid var(--line-300);
+  border-radius: 50%;
+  font: inherit;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.mobile-access-dialog__body {
+  display: grid;
+  gap: 16px;
+  min-height: 0;
+  padding: 20px 24px 24px;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.mobile-access-status {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 9px;
+  align-items: center;
+  min-height: 22px;
+  color: var(--ink-500);
+  font-size: 13px;
+}
+
+.mobile-access-status strong {
+  color: var(--ink-800);
+  font-weight: 650;
+}
+
+.mobile-access-status__mark {
+  width: 9px;
+  height: 9px;
+  background: var(--line-300);
+  border: 2px solid var(--paper-0);
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px var(--line-300);
+}
+
+.mobile-access-status__mark--starting,
+.mobile-access-status__mark--stopping {
+  background: var(--accent-600);
+  box-shadow: 0 0 0 1px var(--accent-300, #aab9ff);
+}
+
+.mobile-access-status__mark--running {
+  background: var(--success-600, #2f8b55);
+  box-shadow: 0 0 0 1px var(--success-300, #9acdab);
+}
+
+.mobile-access-status__mark--failed {
+  background: var(--danger-600, #a13d35);
+  box-shadow: 0 0 0 1px var(--danger-300, #dfaaa4);
+}
+
+.mobile-access-port-setting {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(138px, 190px);
+  gap: 20px;
+  align-items: start;
+  padding: 14px 17px;
+  background: var(--paper-1);
+  border: 1px solid var(--line-200);
+  border-radius: 11px;
+}
+
+.mobile-access-port-setting label {
+  display: grid;
+  gap: 3px;
+}
+
+.mobile-access-port-setting label strong {
+  font-size: 14px;
+}
+
+.mobile-access-port-setting label span {
+  color: var(--ink-500);
+  font-size: 12px;
+}
+
+.mobile-access-port-setting > div {
+  display: grid;
+  gap: 5px;
+}
+
+.mobile-access-port-setting input {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 36px;
+  padding: 6px 10px;
+  color: var(--ink-800);
+  background: var(--paper-0);
+  border: 1px solid var(--line-300);
+  border-radius: 8px;
+  font: 14px/1.4 var(--font-mono, ui-monospace, SFMono-Regular, monospace);
+  font-variant-numeric: tabular-nums;
+}
+
+.mobile-access-port-setting input:disabled {
+  color: var(--ink-500);
+  background: var(--paper-2);
+}
+
+.mobile-access-port-setting input[aria-invalid="true"] {
+  border-color: var(--danger-400, #cf7c73);
+}
+
+.mobile-access-port-setting__error {
+  color: var(--danger-600, #a13d35);
+  font-size: 11px;
+}
+
+.mobile-access-section {
+  overflow: hidden;
+  background: var(--paper-1);
+  border: 1px solid var(--line-200);
+  border-radius: 11px;
+}
+
+.mobile-access-section__heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 15px 17px;
+  border-bottom: 1px solid var(--line-200);
+}
+
+.mobile-access-section__heading--service {
+  align-items: center;
+}
+
+.mobile-access-section__heading h3 {
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.mobile-access-section__heading p,
+.mobile-access-section__heading small {
+  color: var(--ink-500);
+  font-size: 12px;
+}
+
+.mobile-access-section__heading p {
+  margin-top: 3px;
+}
+
+.mobile-access-section__heading small {
+  flex: 0 0 auto;
+  padding-top: 2px;
+}
+
+.mobile-access-workspaces {
+  max-height: 184px;
+  overflow: auto;
+}
+
+.mobile-access-workspace {
+  display: flex;
+  gap: 18px;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 52px;
+  padding: 10px 17px;
+  cursor: pointer;
+}
+
+.mobile-access-workspace + .mobile-access-workspace {
+  border-top: 1px solid var(--line-200);
+}
+
+.mobile-access-workspace:has(input:disabled) {
+  cursor: not-allowed;
+}
+
+.mobile-access-workspace__copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.mobile-access-workspace__copy strong,
+.mobile-access-workspace__copy small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mobile-access-workspace__copy strong {
+  font-weight: 600;
+}
+
+.mobile-access-workspace__copy small {
+  color: var(--ink-500);
+  font-size: 12px;
+}
+
+.mobile-access-checkbox {
+  position: relative;
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+}
+
+.mobile-access-checkbox input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  opacity: 0;
+}
+
+.mobile-access-checkbox span {
+  position: absolute;
+  inset: 0;
+  box-sizing: border-box;
+  background: var(--paper-0);
+  border: 1px solid var(--line-300);
+  border-radius: 5px;
+}
+
+.mobile-access-checkbox input:checked + span {
+  background: var(--accent-700);
+  border-color: var(--accent-700);
+}
+
+.mobile-access-checkbox input:checked + span::after {
+  position: absolute;
+  top: 3px;
+  left: 6px;
+  width: 5px;
+  height: 9px;
+  content: "";
+  border: solid white;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+.mobile-access-checkbox input:disabled + span {
+  opacity: 0.55;
+}
+
+.mobile-access-checkbox input:focus-visible + span {
+  outline: 2px solid var(--accent-600);
+  outline-offset: 2px;
+}
+
+.mobile-access-workspaces__empty {
+  padding: 24px 17px;
+  color: var(--ink-500);
+  text-align: center;
+}
+
+.mobile-access-secondary-button,
+.mobile-access-copy-button,
+.mobile-access-dialog__footer button {
+  min-height: 34px;
+  padding: 6px 13px;
+  color: var(--ink-800);
+  background: var(--paper-0);
+  border: 1px solid var(--line-300);
+  border-radius: 8px;
+  font: inherit;
+  cursor: pointer;
+}
+
+.mobile-access-secondary-button:hover:not(:disabled),
+.mobile-access-copy-button:hover:not(:disabled),
+.mobile-access-dialog__footer button:hover:not(:disabled),
+.mobile-access-dialog__close:hover {
+  background: var(--paper-3);
+}
+
+.mobile-access-secondary-button:disabled,
+.mobile-access-copy-button:disabled,
+.mobile-access-dialog__footer button:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
+.mobile-access-service {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: 0;
+}
+
+.mobile-access-service > div {
+  min-width: 0;
+  padding: 13px 17px 15px;
+}
+
+.mobile-access-service > div + div {
+  border-left: 1px solid var(--line-200);
+}
+
+.mobile-access-service > .mobile-access-service__addresses {
+  grid-column: 1 / -1;
+  border-bottom: 1px solid var(--line-200);
+}
+
+.mobile-access-service > .mobile-access-service__addresses + div {
+  border-left: 0;
+}
+
+.mobile-access-service dt {
+  margin-bottom: 5px;
+  color: var(--ink-500);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.mobile-access-service dd {
+  margin: 0;
+  color: var(--ink-800);
+  overflow-wrap: anywhere;
+}
+
+.mobile-access-address {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px 12px;
+  align-items: center;
+}
+
+.mobile-access-address + .mobile-access-address {
+  margin-top: 9px;
+}
+
+.mobile-access-address code {
+  min-width: 0;
+  padding: 7px 9px;
+  overflow: auto hidden;
+  color: var(--ink-800);
+  white-space: nowrap;
+  background: var(--paper-2);
+  border: 1px solid var(--line-200);
+  border-radius: 7px;
+  font: 12px/1.45 var(--font-mono, ui-monospace, SFMono-Regular, monospace);
+}
+
+.mobile-access-copy-button {
+  min-width: 76px;
+}
+
+.mobile-access-address__error {
+  grid-column: 1 / -1;
+  color: var(--danger-600, #a13d35);
+}
+
+.mobile-access-service__muted {
+  color: var(--ink-500);
+}
+
+.mobile-access-service__active-request-count {
+  color: var(--accent-700);
+  font-size: 18px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.mobile-access-dialog__error {
+  margin: 0;
+  padding: 10px 12px;
+  color: var(--danger-600, #a13d35);
+  background: var(--danger-50, #fff3f1);
+  border: 1px solid var(--danger-200, #efd0cb);
+  border-radius: 8px;
+}
+
+.mobile-access-dialog__footer {
+  display: flex;
+  justify-content: flex-end;
+  padding: 16px 24px;
+  background: var(--paper-1);
+  border-top: 1px solid var(--line-200);
+}
+
+.mobile-access-dialog__footer button {
+  min-width: 108px;
+}
+
+.mobile-access-dialog__footer button.mobile-access-primary-button {
+  color: white;
+  background: var(--accent-700);
+  border-color: var(--accent-700);
+}
+
+.mobile-access-dialog__footer button.mobile-access-danger-button {
+  color: var(--danger-600, #a13d35);
+  background: var(--danger-50, #fff3f1);
+  border-color: var(--danger-200, #efd0cb);
+}
+
+.mobile-access-dialog :is(button, input):focus-visible {
+  outline: 2px solid var(--accent-600);
+  outline-offset: 2px;
+}
+
+@media (max-width: 600px) {
+  .mobile-access-dialog-layer {
+    padding: 12px;
+  }
+
+  .mobile-access-dialog {
+    max-height: calc(100dvh - 24px);
+  }
+
+  .mobile-access-dialog__titlebar {
+    padding-left: 18px;
+  }
+
+  .mobile-access-dialog__body {
+    padding-inline: 18px;
+  }
+
+  .mobile-access-section__heading {
+    flex-direction: column;
+  }
+
+  .mobile-access-port-setting {
+    grid-template-columns: 1fr;
+  }
+
+  .mobile-access-section__heading--service {
+    align-items: stretch;
+  }
+
+  .mobile-access-service {
+    grid-template-columns: 1fr;
+  }
+
+  .mobile-access-service > div,
+  .mobile-access-service > div + div,
+  .mobile-access-service > .mobile-access-service__addresses + div {
+    border-left: 0;
+    border-top: 1px solid var(--line-200);
+  }
+
+  .mobile-access-service > .mobile-access-service__addresses {
+    border-top: 0;
+  }
+}

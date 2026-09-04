@@ -2,15 +2,15 @@
 
 | 字段     | 值                                                                               |
 | -------- | -------------------------------------------------------------------------------- |
-| 状态     | Approved baseline 1.8（ADR-0021，NoteSpace 0.2.0）                               |
+| 状态     | Approved baseline 2.3（ADR-0026；NoteSpace 0.2.1，跨表面数学分隔符兼容）         |
 | 日期     | 2026-09-04                                                                       |
-| 首发平台 | macOS                                                                            |
+| 首发平台 | macOS 桌面端；Android 移动阅读端优先                                             |
 | 技术栈   | React 19 + TypeScript + Milkdown/ProseMirror + CodeMirror 6 + Tauri 2 + Rust     |
 | 数据原则 | 本地 Markdown、文本与图片资源文件是唯一持久化真相；UI 投影和本机便利状态均可重建 |
 
 本文是实现、评审和上下文压缩后的首要产品规范。若历史设计与本文冲突，以 [ADR-0005](decisions/0005-lean-local-editor-boundary.md)、[ADR-0006](decisions/0006-visual-editor-explicit-source-mode.md)、[ADR-0007](decisions/0007-local-files-multiple-workspaces-and-split-preview.md)、[ADR-0008](decisions/0008-save-workspace-files-and-visual-tables.md)、[ADR-0009](decisions/0009-recoverable-workspace-delete-and-dirty-close.md)、[ADR-0010](decisions/0010-workspace-context-actions-and-folder-creation.md)、[ADR-0011](decisions/0011-editor-groups-preview-tabs-and-image-links.md) 和本文为准。
 
-导航规则由 [ADR-0012](decisions/0012-markdown-link-policy-and-window-navigation.md) 更新：普通 Markdown 链接按当前标签是否固定选择新页/原位，工具栏前进/后退使用窗口级跨标签访问轨迹。[ADR-0013](decisions/0013-browsing-restore-and-unified-editor-panes.md) 进一步取代旧的独立右侧只读栏、分屏复制标签和不恢复浏览元数据边界。[ADR-0014](decisions/0014-external-filesystem-changes.md) 接受轻量外部文件监听、重载与版本检查，取代“外部修改后置”。[ADR-0015](decisions/0015-workspace-clipboard-images.md) 接受每工作区截图位置、剪贴板兼容和本地图片单文件授权；冲突时以最新适用 ADR 和当前 baseline 1.8 为准。
+导航规则由 [ADR-0012](decisions/0012-markdown-link-policy-and-window-navigation.md) 更新：普通 Markdown 链接按当前标签是否固定选择新页/原位，工具栏前进/后退使用窗口级跨标签访问轨迹。[ADR-0013](decisions/0013-browsing-restore-and-unified-editor-panes.md) 进一步取代旧的独立右侧只读栏、分屏复制标签和不恢复浏览元数据边界。[ADR-0014](decisions/0014-external-filesystem-changes.md) 接受轻量外部文件监听、重载与版本检查，取代“外部修改后置”。[ADR-0015](decisions/0015-workspace-clipboard-images.md) 接受每工作区截图位置、剪贴板兼容和本地图片单文件授权；冲突时以最新适用 ADR 和当前 baseline 2.3 为准。
 
 ## 1. 产品定义
 
@@ -23,6 +23,14 @@
 [ADR-0020](decisions/0020-search-history-favorites-menu-and-markdown-associations.md) 增加有界的最近搜索条件、明确的收藏关闭菜单，以及打包应用的 `.md/.markdown` 文件关联；新增 `take_opened_document_paths()` 后当前有 27 个实际命令，原生菜单动作仍为 19 个。
 
 [ADR-0021](decisions/0021-search-session-and-desktop-ui-localization.md) 让全文搜索在结果跳转后恢复本次运行内的结果与位置，历史上限改为默认 15、可配 1–30，并补齐 macOS 系统菜单本地化和 About 稳定状态区；命令与原生菜单动作数量不变。
+
+[ADR-0022](decisions/0022-mobile-lan-reader.md) 接受一个 Android 优先的真实移动 App：桌面端只在用户明确开启并选择根后提供局域网只读数据，手机负责目录、搜索、收藏、最近和 Markdown 阅读。移动 UI 随 App 打包；生产发布前必须完成 HTTPS 证书固定、一次性配对和逐设备撤销，Debug 明文纵向链路不算发布能力。
+
+[ADR-0023](decisions/0023-debug-lan-sharing-without-pairing.md) 取代 ADR-0022 对开发期原型的一次性口令/配对要求：当前纵向链路是仅 Debug 可启动的无认证 HTTP/JSON 服务，通过 mDNS 发现并保留 `host:port` 手动连接，同一电脑允许多个手机并发阅读。用户明确启停、勾选根、只读、opaque ID 和路径边界继续生效；Release 必须拒绝这套无认证传输。
+
+[ADR-0024](decisions/0024-debug-lan-runtime-and-release-isolation.md) 纠正该原型的运行时语义：协议和桌面只显示瞬时 `activeRequestCount`，不推断在线/配对设备；mDNS 返回多个地址候选并逐一探测，磁盘 I/O 不持全局锁，停止会取消长任务并立即废弃 listener/旧 ID。Release 在编译、命令注册、CSP 和 Android 多播权限四层排除无认证链路，不能只依赖运行时拒绝。
+
+[ADR-0025](decisions/0025-lan-offline-reader.md) 取代上述 Debug/Release 隔离与发布前可信配对门槛：无认证局域网阅读进入普通桌面和移动构建，仍须用户显式启动、选择当前已打开根且保持只读。两端默认端口统一为 `49920`，桌面可持久修改；手机可只填主机。用户还可逐工作区保存有界、原子替换的 IndexedDB Markdown 离线快照，断网时继续浏览/搜索/最近，重连后自动刷新。图片/资源不进入本轮离线包；APK 更新器另行实现。
 
 NoteSpace（笔记空间）是一个“像 Typora 一样编辑、像浏览器一样阅读”的本地桌面编辑器：Markdown 使用稳定真可视编辑；文档跳转具有 Tab、前进和后退；代码/配置/纯文本也能直接编辑。默认单画布，可将原标签移动到横向编辑组并在组间拖动；本地引用可先看只读浮层或进入普通右侧编辑组，图片链接进入专门查看器。启动可恢复上次浏览的路径与视图，也可按偏好打开空白窗口，正文始终从磁盘读取。
 
@@ -70,21 +78,22 @@ NoteSpace（笔记空间）是一个“像 Typora 一样编辑、像浏览器一
 - 十三项本地持久设置；Base64 预检、截图落盘后插链接、同目录原子保存三项实用护栏。
 - GFM 表格真可视编辑、内部横向滚动、view-only 列宽、尺寸网格和行列结构操作。
 - Mermaid/图片文内预览与沉浸查看器。
+- 同仓库已有独立的 NoteSpace Mobile 构建表面与 Android 工程。真实无认证 HTTP/mDNS transport 是普通构建能力，优先取得多个地址候选并逐一探测，也可输入主机并使用默认 `49920` 端口。桌面共享核心仅为本次勾选的已打开根生成 opaque ID，从磁盘有界读取且 I/O 不持全局锁；同网多个手机可并发浏览。手机可将明确标记的工作区完整保存为 IndexedDB Markdown 快照，断网时继续浏览/搜索/最近并在重连后原子刷新。
 
 自动验证、桌面验收与构建状态以对应修订的实际执行结果为准，不用历史结果替代当前验证。
 
 ### 2.2 明确不做
 
-- 账户、云同步、协作、服务端、遥测或默认网络上传。
+- 账户、云同步、协作、公共/云端服务、遥测、默认网络上传或后台常驻共享。ADR-0025 只增加用户显式开启的同一局域网进程内只读服务，以及用户逐工作区明确保存的手机本地离线投影。
 - ProseMirror JSON、工作区数据库、Tab 正文快照或窗口布局作为保存真相。
 - 纵向/递归分屏、pane tree、跨窗口拖拽或 IDE docking framework；当前仅扁平横向编辑组。
 - LSP、语义代码导航、补全服务器、debug/build/run、终端或完整 IDE。
 - Base64 自动提取修复、隔离区、崩溃恢复日志、资产 journal/GC。
 - 文件锁服务、自动三方合并、外部重命名身份跟踪或后台文件同步引擎；当前只做路径通知、元数据检查和用户可控重载/保存。
-- HMAC/nonce、repair token、193 MiB IPC 测试、37 命令 schema、通用 feature flags。
+- 与文件修复无关的 HMAC/repair token、193 MiB IPC 测试、37 命令 schema、通用 feature flags。当前 ADR-0025 局域网服务明确不使用设备认证 nonce/token、TLS 或配对；这不取消所选根、只读和路径预算。
 - 递归创建目录、重命名、移动、复制文件内容、永久删除、批量文件操作或通用文件管理器。
 - Git、知识图谱、AI、插件市场；真实需求出现后逐项决策。
-- 任意更新源、自动下载/安装、静默替换应用包或携带文档/工作区路径的更新请求；当前只允许 ADR-0019 的固定 GitHub 最新发布查询。
+- 任意更新源、静默替换应用包、JavaScript/HTML 热更新或携带文档/工作区路径的更新请求；桌面当前只允许 ADR-0019 的固定 GitHub 最新发布查询，手机 APK 的固定 GitHub Release 检查、用户确认下载和系统安装器仍为后续工作。
 
 ## 3. 体验与视觉
 
@@ -162,7 +171,7 @@ NoteSpace（笔记空间）是一个“像 Typora 一样编辑、像浏览器一
 - “更多 → 使用帮助”与原生帮助 `help.open` 打开独立离线功能指南及当前快捷键速查；焦点约束、Esc 与恢复焦点，不创建正文。更多菜单和原生文件菜单统一一个导出父项，HTML/PDF 为二级选择，继续使用既有导出确认流程。
 - 自定义右键在编辑器、链接、只读代码、标签和工作区树目标上处理右键/Control-click。可视 Markdown 除 Undo/Redo/Cut/Copy/Paste/Select All 外，提供正文/标题、引用、列表、常用格式、代码块、分割线和表格；表格内再提供行列增删与删除表格。根、文件和目录菜单保持已有动作；标签增加保持打开、向右分屏、移到其他组与关闭。
 - 页面 capture 层默认阻止 WebView 平台菜单，但不停止事件传播，因此应用自定义菜单仍正常。只有显式标记的顶部工具栏放行平台菜单；菜单/对话框和确认期间不放行。debug 原生“显示 → 开发者工具”直接由 Rust 打开 DevTools，release 隐藏，不增加 invoke 或前端 action ID。
-- `markdown-workspace.settings.v1` 存储十三项 UI/保存/启动/快捷键偏好；`markdown-workspace.workspaces.v1` 存储打开/最近工作区、最近文件、活动根和每根隐藏项偏好；`markdown-workspace.session.v1` 存储有界的路径、分组/标签和数值阅读位置；`markdown-workspace.favorites.v1` 只存最多 100 个收藏路径；`markdown-workspace.search-history.v1` 按 `searchHistoryLimit` 只存默认 15、可配 1–30 条成功搜索条件，不存结果或正文。搜索结果、滚动和最后激活项仅保留在当前运行内存。以上均是可丢弃的本机便利状态，损坏或不可用时回退，不影响正文编辑；关闭收藏分组不会改写收藏路径。
+- `markdown-workspace.settings.v1` 存储十三项 UI/保存/启动/快捷键偏好；`markdown-workspace.mobile-access.v1` 独立保存桌面共享端口，避免为局域网服务扩展通用设置模型；`markdown-workspace.workspaces.v1` 存储打开/最近工作区、最近文件、活动根和每根隐藏项偏好；`markdown-workspace.session.v1` 存储有界的路径、分组/标签和数值阅读位置；`markdown-workspace.favorites.v1` 只存最多 100 个收藏路径；`markdown-workspace.search-history.v1` 按 `searchHistoryLimit` 只存默认 15、可配 1–30 条成功搜索条件，不存结果或正文。搜索结果、滚动和最后激活项仅保留在当前运行内存。以上均是可丢弃的本机便利状态，损坏或不可用时回退，不影响正文编辑；关闭收藏分组不会改写收藏路径。
 
 | 偏好                    | 默认值     | 归一化/作用域                                            |
 | ----------------------- | ---------- | -------------------------------------------------------- |
@@ -179,6 +188,32 @@ NoteSpace（笔记空间）是一个“像 Typora 一样编辑、像浏览器一
 | `autoSaveMode`          | `manual`   | `manual` / `afterDelay`；关闭仍看 dirty                  |
 | `autoSaveDelaySeconds`  | 5 秒       | 1–300 秒；仅 `afterDelay` 生效                           |
 | `shortcuts`             | 默认格式键 | 平台 Mod、动作白名单、冲突检查、清除/恢复；详见 ADR-0017 |
+| `mobileAccess.port`     | `49920`    | 独立存储于移动访问偏好；1024–65535，下次启动服务生效     |
+
+### 3.4 移动阅读端
+
+```text
+┌──────────────────────────────────┐
+│ NoteSpace Mobile       电脑在线  │
+├──────────────────────────────────┤
+│  面包屑 / 当前目录                │
+│  文件夹与 Markdown 逐层列表       │
+│                                  │
+│  阅读页：标题 / 大纲 / 正文       │
+│  表格、代码横滚；图片/图表全屏    │
+├──────────────────────────────────┤
+│   浏览      搜索      收藏   最近 │
+└──────────────────────────────────┘
+```
+
+- 首页自动列出 mDNS 发现的同网电脑，也可手动输入主机或完整基址。手机只收到主机时自动补默认端口 `49920`；桌面采用非默认端口时输入显式 `host:port`。模拟器可使用 `10.0.2.2`。本阶段没有扫码、配对码或设备批准，界面不再显示占空间的 Debug/无认证常驻警告。
+- 桌面「移动访问」只允许勾选当前已打开工作区，至少选一项才能启动；面板显示服务地址、端口、发现状态和当前活跃请求数。端口默认 `49920`，可在 `1024`～`65535` 内持久修改并于下次启动服务生效。活跃请求数只统计尚未完成的 HTTP 请求，不代表在线或已配对手机，空闲阅读时可为零。停止、退出或重启立即关闭 listener、取消在途长任务并使本次链接与 ID 失效。
+- 手机目录采用逐层导航和面包屑，不复制桌面常驻树。手机阅读优先，首版没有编辑、保存、上传、删除或远端模板操作；平板可在宽度允许时显示目录/正文双栏。
+- 搜索、收藏和最近都保留阅读入口：在线搜索读取电脑磁盘正文；当前 host 的收藏暂返回空投影，不读桌面便利状态；最近与滚动位置是手机本机便利状态。未保存为离线的工作区断线后只保留当前已渲染页面，不伪装新导航可用。
+- 用户可逐工作区开启离线保存。手机把完整目录投影、Markdown 元数据与正文存入 IndexedDB；单工作区最多 `128 MiB`、`5,000` 个目录、`5,000` 篇文档。同步先完整构建候选，再以单事务原子替换；任何失败都保留上一份完整快照。界面显示占用空间和最近同步时间；离线浏览、快照正文搜索和最近阅读可用，重连后已标记工作区自动刷新，用户也可手动刷新或清除。
+- 图片、附件、已渲染 Mermaid 资产和其他资源不进入本轮离线包；Markdown 中的 Mermaid 源码仍随正文保存，但不另存渲染产物。联网后资源仍走所选根的既有只读授权链路。
+- Markdown 由 App 内白名单渲染器生成；原始 HTML 不执行。内部链接重新交给 opaque ID 路由，图片和 Mermaid 只消费授权资源及源码投影，不允许服务端注入脚本。
+- 手机更新器本轮不实现。后续 GitHub APK 分发采用固定 Release 检查、用户确认下载和 Android 系统安装器，要求稳定 application ID/发布签名，不做静默安装或 JavaScript 热更新；进入 Google Play 后切换 Play In-App Updates。
 
 ## 4. 编辑模型
 
@@ -242,6 +277,12 @@ NoteSpace（笔记空间）是一个“像 Typora 一样编辑、像浏览器一
 - 中文等 CJK 按 Unicode code point 逐字，其他连续字母数字计词，标点/emoji 不计词；链接地址和代码计入。字符数按 code point 分为含空白/不含空白，保留源码标记；CRLF 算一次换行，空文档为 0 行。点击字数展开详情与口径说明，不将其误称为排除语法后的可见字数。
 - 120 ms 防抖、32 Ki UTF-16 分片让出主线程；最多 32 个会话最新结果的弱引用缓存，正文/类型变化失效，缓存回收后可重算。无解析器、worker、统计数据库或正文持久化。
 - 侧栏原静态“离线”改为中性的“本地文件”，说明直接读写本地文件，不代表网络连接健康或保存成功；演示模式继续标识“演示”。
+
+### 4.9 数学分隔符与渲染投影
+
+- Markdown 接受 `$...$`、`$$...$$`、`\(...\)` 和 `\[...\]`。进入解析器前先由普通 Markdown AST 标记 code/inlineCode/HTML/link/image/definition/既有数学范围，再只规范化安全正文中的成对 TeX 分隔符；未闭合内容与受保护范围保持字面量。
+- 桌面 Crepe 的初始值、源码切回和外部干净更新使用同一规范化投影。投影不替换 session 权威正文，因此仅查看或切换模式仍为零差异；首次真实可视编辑后允许 serializer 输出语义等价的美元分隔符。
+- 移动阅读使用 remark-math AST 和固定 KaTeX；错误只回退当前公式。分享 HTML 使用 script-free MathML，不引用 CDN、字体或脚本；macOS PDF 继承同一结构化公式。详细边界见 [ADR-0026](decisions/0026-math-delimiter-compatibility.md)。
 
 ## 5. 状态模型与生命周期
 
@@ -421,7 +462,7 @@ interface WorkspaceHistoryState {
 
 Rust 负责原生 chooser、目录枚举、轻量文件监听/元数据检查、工作区内文件创建、系统文件管理器定位、受边界约束的系统废纸篓移动、文件预检/读取、局部预览、原子保存、截图写入和原生菜单。前端不使用浏览器文件系统 API，也不把图片或文件正文编码成巨型 Base64 IPC。
 
-当前只有 27 个命令（导出见 ADR-0017，模板见 ADR-0018，更新检查见 ADR-0019，文件关联见 ADR-0020）：
+桌面编辑器基础保留下列 27 个命令（导出见 ADR-0017，模板见 ADR-0018，更新检查见 ADR-0019，文件关联见 ADR-0020）：
 
 ```text
 pick_workspace() -> WorkspaceSelection | null
@@ -452,6 +493,8 @@ save_clipboard_image(documentPath, directoryPath?) -> SavedClipboardImage
 prepare_local_image(path) -> string
 set_native_menu_locale(locale) -> void
 ```
+
+ADR-0025 另为桌面 host 注册服务状态、启动和停止的窄命令，并为 Android client 注册 mDNS 发现命令；桌面文件写命令和移动只读 client 仍按目标分离。局域网共享/发现能力进入普通 Debug 与 Release 构建，后者也包含该 HTTP transport 所需的定向 CSP 和 Android 网络/多播能力；共享默认停止且空根不能启动。精确命令名称与数量由纵向实现的最终注册清单同步，不预生成占位接口。
 
 参数名按 Tauri `camelCase` 边界表示。`search_workspaces` 的 `useRegex` 只控制正文匹配，`fileFilter` 是独立、忽略大小写的工作区相对路径/文件名正则；两者继续由 Rust 在既有预算内扫描磁盘正文。搜索历史仅由前端保存条件，不新增扫描命令。`check_for_update` 只请求固定 GitHub latest release API，返回当前/最新版本、经过校验的发布页与 `available/upToDate/noPublishedRelease` 状态，不接收 URL、文档或路径。`take_opened_document_paths` 只清空读取原生有界路径队列，不传正文；关联文件仍由 `open_document` 完成预检。`save_clipboard_image` 由 Rust 直接读取系统剪贴板，只接收文档路径和可选图片目录，不传图片 bytes/Base64。`clipboard_has_image` 用于未命名粘贴的 Save As 前置检查；`prepare_local_image` 仅准备实际显示文件的 asset 访问。`set_native_menu_locale` 只接受 `zh-CN/en-US` 并重建菜单。新增功能时再新增类型和测试，不建设全仓库 schema 生成器。
 
@@ -622,6 +665,7 @@ src/
 │  ├─ workspace-search/    # 自绘范围、正文/路径正则、最近条件与磁盘结果
 │  ├─ viewer/              # Mermaid/图片 zoom、pan、Fit
 │  └─ workspace/           # 文件树、Outline、workspace history
+├─ mobile/                 # 独立移动入口、只读 transport、浏览/阅读状态与移动样式
 └─ infrastructure/tauri/   # 27 命令 adapter、原生菜单/文件路径事件 listener
 ```
 
@@ -629,7 +673,7 @@ Shell 当前是小型编排层；第二个真实消费者出现前不抽取通�
 
 ### 9.1 浏览器开发模式
 
-纯浏览器 `pnpm dev` 使用内存 demo adapter，便于组件测试；真实文件、原生菜单和系统剪贴板只在 Tauri 启用，界面明确标出演示状态。demo 测试不替代最终 macOS UI smoke。
+纯浏览器 `pnpm dev` 使用内存 demo adapter，便于组件测试；`pnpm mobile:dev` 使用移动内存 transport，验证手机布局与导航。真实文件、原生菜单和系统剪贴板只在桌面 Tauri 构建启用；真实无认证 HTTP/mDNS 属于桌面与 Android 普通构建能力，浏览器 demo 不监听局域网，也不替代 macOS/Android 原生 smoke。
 
 ## 10. Rust 架构
 
@@ -643,13 +687,14 @@ src-tauri/src/
 ├─ commands/update_check.rs # 固定 GitHub latest release 查询与版本比较
 ├─ commands/html_export.rs # 独立导出选择器、目标保护与原子写入
 ├─ commands/document_templates.rs # 当前应用用户数据目录下有界 Markdown 模板库
+├─ lan_share/            # 所选根注册表、有界只读数据与普通构建 HTTP host
 ├─ infrastructure/mod.rs # 当前空命名空间；不承载通用 adapter 框架
 ├─ native_menu.rs        # zh-CN/en-US 菜单、19 个 action ID、custom close/quit
 ├─ opened_documents.rs   # 启动参数/macOS Opened 文件路径有界队列
-└─ lib.rs                # 精确注册 27 个 invoke command 与原生事件
+└─ lib.rs                # 按 desktop/mobile cfg 注册各自最小入口与命令
 ```
 
-命令保持薄；文件预检、局部读取、原子保存和资产写入用临时目录单测。不要引入 Ruby、服务端或巨型 IPC schema。
+命令保持薄；文件预检、局部读取、原子保存、资产写入和局域网根边界用临时目录单测。桌面文件/菜单模块不进入 Android 构建，移动端不携带写文件命令。不要引入 Ruby、公共服务端或巨型 IPC schema。
 
 ## 11. 性能预算
 
@@ -665,6 +710,9 @@ src-tauri/src/
 | 大型 data-image            | Rust/前端预检阻止正文进入 EditorView                                             |
 | 局部预览                   | IPC 只返回 ±20/前 80 行；每行 600 字符上限                                       |
 | Mermaid                    | 迟到结果不覆盖新源码；单块失败不影响正文                                         |
+| 移动目录/正文              | 逐层返回且有硬预算；断线不销毁当前已渲染正文                                     |
+| 局域网传输                 | 默认端口 `49920`；mDNS 多地址逐一探测；I/O 无全局锁；停止可取消长任务            |
+| 移动离线工作区             | 单快照 128 MiB/5,000 目录/5,000 文档；完整后原子替换，失败保留旧快照             |
 
 优化顺序：测量 → 关闭昂贵投影 → 增量计算；不先写分块编辑器、虚拟文件系统或任意 pane framework。
 
@@ -673,7 +721,7 @@ src-tauri/src/
 ### 12.1 自动测试
 
 - reducer：同 session 多 Tab、独立 history/view、Save As 全历史迁移及保存期间继续编辑。
-- Markdown editor：CJK composition、Undo/Redo、未编辑零差异、可视 serializer、即时保存、语义位置映射、fence 补全、表格滚动/列宽/网格/行列、图片、Mermaid。
+- Markdown editor：CJK composition、Undo/Redo、未编辑零差异、可视 serializer、即时保存、语义位置映射、fence 补全、表格滚动/列宽/网格/行列、图片、Mermaid；四种数学分隔符在初始/源码切回/外部更新后渲染，代码和链接保持字面，首次可视编辑后公式语义无损。
 - 代码/文本：各组 Tab 编辑/dirty/保存，真实 gutter/target，只有浮层只读；右侧复用普通组而非额外辅助栏。各已注册语言有可见 token/selection 对比度，同语言路径替换仍重新装载语言支持。
 - 导航：Markdown route first、固定/临时策略、窗口跨 Tab/组前进后退、修饰键 disposition、nested workspace longest match、Outline、local-ref 浮层与编辑组去向；已有右组直接打开，临时替换/固定与 dirty 保留、最右来源保护和快速连续请求 latest-wins。同组切换标签（含离开再返回）或新建页使旧原位读取失效，单纯聚焦另一组仍允许来源组更新。
 - 外部网页：HTTP/HTTPS 正文/hover/源码入口、系统 opener 参数与协议验证、启动错误本地化；不改变正文/Tab/访问轨迹，图片后缀仍进入图片查看器。
@@ -692,6 +740,8 @@ src-tauri/src/
 - 外部文件：合成目录新增/修改/删除/重命名、隐藏与重目录过滤、独立文件原子替换；监听去重/限时批处理、聚焦/兜底重试及卸载清理。共享干净正文重载且位置/历史保持，dirty/missing/unreadable/blocked 保留缓冲区并暂停普通保存，重载/覆盖确认可取消；原版本恢复清提示不清草稿。
 - 外部变化竞态：正文/版本/引用守卫、原所有者关闭后同路径重开、迟到保存不误标新会话 dirty、closed clean 缓存刷新及源码锚点；新树刷新/隐藏偏好不被旧成功或失败覆盖。Rust 版本检查在写前/rename 前拒绝变化，读取正文与返回 revision 一致。
 - Rust：扩展枚举、预检分类、10 MiB 普通多行、blocked 无正文、±20/前 80 行预览、原子保存、Save As 冲突、工作区内 create-new、跨平台 reveal 参数、废纸篓成功/根与根外拒绝/失败保持、截图、原生菜单、磁盘正则搜索与固定 GitHub 更新检查。
+- 移动端：内存 transport 的演示回归，以及普通构建 HTTP transport 的默认 `49920`、host-only/显式端口地址归一化、mDNS 多候选逐一探测、超时、协议版本、错误映射、逐层浏览、搜索、阅读位置与断线保留；四种数学分隔符生成受限 KaTeX、无效公式局部回退且代码/HTML 不执行；Rust host 覆盖启停、HTTP/CORS、无全局 I/O 锁的多请求并发、`activeRequestCount` 和长任务取消，共享核心继续覆盖 opaque ID、根外/符号链接/隐藏/类型拒绝及读取/搜索预算。
+- 移动离线：逐工作区开启/清除、占用空间/同步时间、IndexedDB 恢复、目录/正文/搜索/最近离线读取、重连自动与手动刷新；完整候选单事务替换，电脑新增/修改/删除收敛，断线/取消/读取/配额/事务失败保留旧快照，并覆盖 128 MiB/5,000 目录/5,000 文档上限及图片/附件/Mermaid 渲染资产不落盘。
 
 ### 12.2 桌面 smoke
 
@@ -703,13 +753,22 @@ src-tauri/src/
 - 中文/英文原生菜单及 macOS 自动编辑/窗口项目、自定义结构/表格/工作区右键、整段历史 dirty 的应用内关闭/退出对话框；取消保持窗口/进程，确认后窗口与 macOS 进程都结束；文件/目录废纸篓取消、成功及失败保持；manual/afterDelay 保存；真实系统截图成功/失败路径。
 - 宽表格横向滚动、列宽拖动不 dirty、网格插入、行列增删、保存重开。
 - Mermaid/图片 viewer、外部 URL 和最终 production bundle。
+- 用含 `$...$`、`$$...$$`、`\(...\)`、`\[...\]`、无效公式及代码字面量的合成文档检查可视/源码往返；导出单文件 HTML 与 macOS PDF，确认公式可选择、离线可见且无外部脚本/字体请求。
 - 标签右键向右分屏移动原页、可保留空左组继续打开、物理拖放、双击固定、点击不同组后从树打开；共享文档关闭/放弃后的重读；无行号图片链接与失败回退；窄窗口内活动编辑组可见。
 - 当前页 `⌘F` / `Ctrl+F` 在可视/源码/代码中定位中文和普通文本、循环、Esc 返回且不 dirty；代码块转入正文后无旧活动选区，长链接可完整多行查看/编辑。
 - `Cmd/Ctrl+Shift+F` 的自绘范围在全部根/单根间切换，正文普通/正则和路径筛选结果正确，未保存编辑不出现；点击结果后重开恢复结果、滚动和最后点击项，历史数量设置可裁剪到 1–30；隐藏收藏分组后记录仍在，设置重新开启可恢复。
 - 联网时由 About 手动检查固定 GitHub 发布；检查前后和长状态文本不改变弹窗外框高度，启动开关、稍后提醒、只跳过当前版本和用户点击发布页符合预期。断网/失败不阻断本地编辑且不尝试自动下载或安装。
 - 使用合成工作区在外部新建/修改/删除文件，观察树刷新与干净正文重载；制造 dirty 冲突并取消/确认重载或覆盖，缺失文件保持可读缓冲区且只提供 Save As。检查独立文件、失去焦点后恢复及删除/重建目录，不使用真实用户文档作为写入测试数据。
 
-### 12.3 门禁
+### 12.3 Android smoke
+
+- `pnpm mobile:android:build:debug` 生成可安装 APK，并在 API 36 模拟器启动移动入口而非桌面编辑器。
+- 使用内存 transport 回归四个底部入口和阅读状态；使用 Android 真实 HTTP transport 验证 mDNS 自动发现、只填主机自动补 `49920`、自定义 `host:port` 回退、逐层目录、Markdown 阅读、搜索跳转、断线提示与返回后位置保持。
+- 用合成工作区完成桌面显式勾选/启动/停止，确认同一服务可被多个手机并发浏览，桌面只显示瞬时活跃请求数；停止后 listener 拒绝连接、在途长任务取消且旧 ID 失效，根外/符号链接/隐藏/超限目标仍拒绝。Android 模拟器使用 `10.0.2.2:<port>` 验证手动连接，真机用于 mDNS 多地址/同 Wi-Fi/多客户端验收。
+- 核对桌面与 Android 的 Debug/Release 均包含相应共享/发现能力，桌面共享默认关闭，手机和桌面无 Debug/无认证常驻提示。逐工作区保存后断网浏览/搜索/最近可用，重连完整刷新；图片/资源不进入离线存储。
+- 本轮不把移动更新列入 APK smoke。后续更新器另行验证固定 GitHub Release、用户确认、系统安装器、稳定发布签名，以及 Play 分发时改用 Play In-App Updates。
+
+### 12.4 门禁
 
 标准自动门禁为 `pnpm verify`，覆盖 Node repo check、Prettier、lint、typecheck、Vitest、Rust fmt/clippy/test、Web build 和 Tauri debug binary build。测试数量、桌面验收与构建结果随修订变化，不在设计文档复制历史结果。
 
@@ -724,13 +783,15 @@ src-tauri/src/
 | I18n/settings/context menu | 对应 app/feature 目录                            | locale/settings/menu contracts           |
 | Workspace UI/history       | `src/features/workspace/**`                      | tree/outline/history contracts           |
 | Assets/diagrams            | 对应 feature 目录                                | paste/viewer API                         |
+| Mobile reader              | `src/mobile/**`                                  | transport、reader state 与移动 UI        |
+| LAN share core             | `src-tauri/src/lan_share/**`                     | opaque IDs、读取边界与 pairing state     |
 | Integration                | shell、根清单、lockfile、状态文档                | 合并与端到端验证                         |
 
 不同代理不要同时编辑 Shell、根清单或 `PROJECT_STATE.md`。每个任务交付当前小接口和有价值的失败测试，不为未来功能先建框架。
 
 ## 14. 扩展路线
 
-1. P1：大目录性能、反向链接、数学、其他平台 PDF 与图像导出。当前页查找替换、工作区磁盘全文搜索/高亮/正则筛选/最近条件、可分享 HTML、macOS PDF、格式快捷键设置、收藏/专注/模板、Markdown 文件关联、固定 GitHub 更新提示与轻量外部变化属于本基线；不扩展持久索引、批量文件修改或自动更新器。
+1. P1：完成 ADR-0025 的普通构建局域网阅读、统一默认端口、逐工作区离线快照和 Android 真机验收。移动更新按当前决定继续暂缓；以后实现时使用固定 GitHub Release → 用户确认 → Android 系统安装器，不做静默/JavaScript 热更新，进入 Play 后改用 Play In-App Updates。数学四种分隔符及桌面/移动/分享一致渲染已由 ADR-0026 纳入基线；后续再处理大目录性能、反向链接、其他平台 PDF 与图像导出。当前页查找替换、工作区磁盘全文搜索/高亮/正则筛选/最近条件、可分享 HTML、macOS PDF、格式快捷键设置、收藏/专注/模板、Markdown 文件关联、固定 GitHub 更新提示与轻量外部变化属于桌面基线；不扩展持久索引、批量文件修改或移动编辑。
 2. P2：Git diff/history 等明确的本地增强。
 3. P3：知识图谱、AI 检索与引用；需单独隐私决策。
 
@@ -759,3 +820,8 @@ ADR-0011 接受扁平水平编辑分组；ADR-0013 将右侧引用统一为普�
 - [ADR-0019：搜索筛选、收藏显示与 GitHub 更新检查](decisions/0019-search-favorites-and-github-update-checks.md)
 - [ADR-0020：搜索历史、收藏关闭菜单与 Markdown 文件关联](decisions/0020-search-history-favorites-menu-and-markdown-associations.md)
 - [ADR-0021：全文搜索会话与桌面界面本地化收尾](decisions/0021-search-session-and-desktop-ui-localization.md)
+- [ADR-0022：局域网移动阅读器与可信配对](decisions/0022-mobile-lan-reader.md)
+- [ADR-0023：Debug 局域网无配对只读共享](decisions/0023-debug-lan-sharing-without-pairing.md)
+- [ADR-0024：Debug 局域网共享的运行时语义与 Release 隔离](decisions/0024-debug-lan-runtime-and-release-isolation.md)
+- [ADR-0025：普通构建的局域网阅读与移动离线快照](decisions/0025-lan-offline-reader.md)
+- [ADR-0026：数学分隔符兼容与跨表面一致渲染](decisions/0026-math-delimiter-compatibility.md)

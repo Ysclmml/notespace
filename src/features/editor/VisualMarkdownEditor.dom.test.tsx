@@ -711,6 +711,86 @@ describe("VisualMarkdownEditor DOM integration", () => {
     act(() => expect(undo(view.state, view.dispatch)).toBe(false));
   }, 15_000);
 
+  it("renders TeX bracket math without converting code literals or changing on mount", async () => {
+    const findView = captureVisualViews();
+    const onChange = vi.fn();
+    const source = [
+      String.raw`Inline \(a_t + b_t\), existing $c_t$.`,
+      "",
+      String.raw`\[`,
+      String.raw`q'_t = R_t q_t, \qquad k'_s = R_s k_s`,
+      String.raw`\]`,
+      "",
+      "$$",
+      "z = 1",
+      "$$",
+      "",
+      "Inline code: `\\(literal\\)`.",
+      "",
+      "```text",
+      String.raw`\[fenced\]`,
+      "```",
+      "",
+      String.raw`    \(indented\)`,
+      "",
+      String.raw`Unclosed \(not math`,
+      "",
+    ].join("\n");
+    const { container } = render(
+      <VisualMarkdownEditor
+        autofocus={false}
+        documentId="/tmp/bracket-math.md"
+        onChange={onChange}
+        value={source}
+      />,
+    );
+    const view = await findView(container);
+
+    await waitFor(() => {
+      const values = Array.from(
+        container.querySelectorAll<HTMLElement>('[data-type="math_inline"]'),
+      ).map((element) => element.dataset.value);
+      expect(values).toEqual(expect.arrayContaining(["a_t + b_t", "c_t"]));
+      expect(values).toHaveLength(2);
+      expect(container.querySelectorAll(".katex-display")).toHaveLength(2);
+    });
+
+    const codeSources = Array.from(container.querySelectorAll<HTMLElement>(".cm-editor"))
+      .map((element) => CodeMirrorView.findFromDOM(element)?.state.doc.toString())
+      .filter((value): value is string => value !== undefined);
+    expect(codeSources).toEqual(
+      expect.arrayContaining([String.raw`\[fenced\]`, String.raw`\(indented\)`]),
+    );
+    expect(container.querySelector("code")).toHaveTextContent(String.raw`\(literal\)`);
+    expect(container).toHaveTextContent("Unclosed (not math");
+    expect(onChange).not.toHaveBeenCalled();
+
+    act(() => {
+      view.dispatch(
+        view.state.tr.insertText("Changed ", visualTextPosition(view, "Inline")),
+      );
+    });
+
+    await waitFor(() => expect(onChange).toHaveBeenCalledOnce());
+    const serialized = onChange.mock.lastCall?.[0] as string;
+    expect(serialized).toContain("Changed Inline $a_t + b_t$, existing $c_t$.");
+    expect(serialized).toContain(
+      ["$$", String.raw`q'_t = R_t q_t, \qquad k'_s = R_s k_s`, "$$"].join("\n"),
+    );
+    expect(serialized).toContain(["$$", "z = 1", "$$"].join("\n"));
+    expect(serialized).toContain(String.raw`\(literal\)`);
+    expect(serialized).toContain(String.raw`\[fenced\]`);
+    expect(serialized).toContain(String.raw`\(indented\)`);
+    expect(serialized).not.toContain("$$fenced$$");
+    expect(serialized).not.toContain("$$indented$$");
+
+    act(() => expect(undo(view.state, view.dispatch)).toBe(true));
+    await waitFor(() => expect(onChange).toHaveBeenCalledTimes(2));
+    const undone = onChange.mock.lastCall?.[0] as string;
+    expect(undone).not.toContain("Changed Inline");
+    expect(undone).toContain("Inline $a_t + b_t$, existing $c_t$.");
+  }, 30_000);
+
   it("keeps an empty visual document free of Crepe's English placeholder", async () => {
     const { container } = render(
       <VisualMarkdownEditor

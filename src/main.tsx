@@ -1,7 +1,6 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 
-import { AppBootstrap } from "./app/bootstrap/AppBootstrap";
 import "./styles/tokens.css";
 import "./styles/base.css";
 
@@ -11,8 +10,17 @@ if (!rootElement) {
   throw new Error("Application root element is missing");
 }
 
-ReactDOM.createRoot(rootElement).render(
-  <React.StrictMode>
-    <AppBootstrap />
-  </React.StrictMode>,
-);
+async function renderApplication() {
+  const Application =
+    __APP_SURFACE__ === "mobile"
+      ? (await import("./mobile/MobileAppBootstrap")).MobileAppBootstrap
+      : (await import("./app/bootstrap/AppBootstrap")).AppBootstrap;
+
+  ReactDOM.createRoot(rootElement as HTMLElement).render(
+    <React.StrictMode>
+      <Application />
+    </React.StrictMode>,
+  );
+}
+
+void renderApplication();

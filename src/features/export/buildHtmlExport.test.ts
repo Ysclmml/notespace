@@ -11,6 +11,63 @@ function parseExport(markdown: string, documentPath?: string): Document {
 }
 
 describe("buildHtmlExport", () => {
+  it("renders dollar and TeX-delimited math as portable script-free MathML", () => {
+    const document = parseExport(
+      [
+        "行内 $a_1$ 与 \\(b_2\\)。",
+        "",
+        "$$",
+        "c^2 = a^2 + b^2",
+        "$$",
+        "",
+        "\\[",
+        "q'_t = R_t q_t, \\qquad k'_s = R_s k_s",
+        "\\]",
+      ].join("\n"),
+    );
+
+    expect(document.querySelectorAll("math")).toHaveLength(4);
+    expect(document.querySelectorAll(".math-inline math")).toHaveLength(2);
+    expect(document.querySelectorAll(".math-display math[display='block']")).toHaveLength(
+      2,
+    );
+    expect(document.querySelector(".math-display annotation")?.textContent).toBe(
+      "c^2 = a^2 + b^2",
+    );
+    expect(document.querySelector("script, link[rel='stylesheet']")).toBeNull();
+  });
+
+  it("keeps formula-looking code literal and falls back safely for invalid TeX", () => {
+    const document = parseExport(
+      [
+        "`\\(inline code\\)`",
+        "",
+        "```md",
+        "\\[fenced code\\]",
+        "```",
+        "",
+        "Invalid \\(\\sqrt{\\) formula.",
+      ].join("\n"),
+    );
+
+    expect(document.querySelectorAll("math")).toHaveLength(0);
+    expect(document.querySelector("p > code")?.textContent).toBe("\\(inline code\\)");
+    expect(document.querySelector("pre code.language-md")?.textContent).toContain(
+      "\\[fenced code\\]",
+    );
+    expect(document.querySelector(".math-error")?.textContent).toContain("$\\sqrt{$");
+    expect(document.querySelector("script, [onclick]")).toBeNull();
+  });
+
+  it("bounds individual formula rendering without failing the document export", () => {
+    const document = parseExport(`Before $${"x".repeat(16_385)}$ after`);
+
+    expect(document.querySelector("math")).toBeNull();
+    expect(document.querySelector(".math-error")?.textContent).toContain("xxxxx");
+    expect(document.querySelector("main")?.textContent).toContain("Before");
+    expect(document.querySelector("main")?.textContent).toContain("after");
+  });
+
   it("renders complete GFM content from a Markdown snapshot without editing it", () => {
     const content = [
       "# 中文 **标题**",

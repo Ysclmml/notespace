@@ -14,6 +14,20 @@ afterEach(() => {
 });
 
 describe("shareable HTML preparation", () => {
+  it("keeps portable MathML from both dollar and TeX delimiters", async () => {
+    const result = await prepareShareableHtml("行内 $a_1$。\n\n\\[\nb_2 = c^2\n\\]", {
+      title: "公式",
+    });
+    const document = new DOMParser().parseFromString(result.html, "text/html");
+
+    expect(document.querySelectorAll("math")).toHaveLength(2);
+    expect(document.querySelector(".math-display annotation")?.textContent).toBe(
+      "b_2 = c^2",
+    );
+    expect(document.querySelector("script, link[rel='stylesheet']")).toBeNull();
+    expect(result.images).toEqual([]);
+  });
+
   it("renders complete Mermaid SVG without scripts, preserves CJK and makes repeated IDs unique", async () => {
     vi.mocked(renderMermaidSvg).mockResolvedValue(svg);
     const body =

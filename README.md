@@ -4,21 +4,35 @@
 
 ## 安装
 
-macOS Apple Silicon 可通过 Homebrew 安装，也可在 [GitHub Releases](https://github.com/Ysclmml/notespace/releases) 下载 DMG。
+macOS Apple Silicon 可通过 [NoteSpace Homebrew Tap](https://github.com/Ysclmml/homebrew-tap) 安装，也可在 [GitHub Releases](https://github.com/Ysclmml/notespace/releases) 下载 DMG。首次安装先添加 Tap，再安装 NoteSpace：
 
 ```sh
+brew tap ysclmml/tap
 brew install --cask ysclmml/tap/notespace
 ```
 
 当前版本为预览版，尚未完成 Apple 公证。Homebrew 安装仅移除 NoteSpace 的下载隔离标记，不改变系统全局安全设置；请确认信任来源后安装。直接下载 DMG 仍需遵循 macOS 的启动检查。
 
+已有 Homebrew 版本时，保存文档并退出应用后升级：
+
+```sh
+brew update
+brew upgrade --cask ysclmml/tap/notespace
+```
+
 卸载前请保存文档并退出应用：
 
 ```sh
-brew uninstall ysclmml/tap/notespace
+brew uninstall --cask ysclmml/tap/notespace
 ```
 
 普通卸载会将应用设置、最近文件、浏览恢复记录与缓存移入废纸篓，不删除笔记、工作区或图片。升级和重装保留这些应用数据。
+
+确认不再通过这个 Tap 安装其他软件后，可移除 Tap：
+
+```sh
+brew untap ysclmml/tap
+```
 
 ## 软件截图
 
@@ -48,8 +62,17 @@ Mermaid 图表可放大查看，支持缩放、平移和适应窗口。
 - **像浏览器一样阅读文档**：点击本地 Markdown 链接继续阅读，前进与后退可跨标签、跨分屏返回原来的位置；可选择下次启动恢复上次浏览。
 - **临时标签与分屏对照**：单击文件临时预览，双击或编辑后保持打开；标签可在分屏之间拖动。文中代码引用可按行预览，或在右侧打开，与笔记并排阅读、编辑。
 - **截图与图表融入写作**：粘贴截图先保存为本地图片，再插入引用；每个工作区可指定图片目录。图片引用可直接修改，图片与 Mermaid 图表可放大查看。
+- **常见数学写法直接可用**：行内与块公式同时兼容 `$...$`、`$$...$$`、`\(...\)` 和 `\[...\]`，桌面可视编辑、手机阅读及分享 HTML/PDF 使用一致的公式语义。
 - **本地文件夹就是工作区**：多个笔记目录可同时打开，无需导入专有格式；Markdown 与图片仍是普通文件，方便继续使用 Git 或其他工具管理。
 - **系统直接打开 Markdown**：打包版可通过 Finder/系统「打开方式」接收 `.md` 与 `.markdown` 文件，并在前台标签中打开；是否设为默认应用由你在系统中决定。
+- **手机局域网阅读**：桌面明确开启并选择工作区后，NoteSpace Mobile 可在同一局域网浏览、搜索和阅读磁盘上的 Markdown；需要离开电脑时，可逐工作区保存离线副本并在重连后刷新。
+
+## 0.2.1 新增
+
+- **Android 局域网阅读**：手机 App 可自动发现同网电脑，也可输入 IP/主机名后使用默认端口连接；桌面明确选择共享工作区并启动后，多个手机可浏览目录、全文搜索和只读 Markdown。
+- **离线工作区**：手机可保存完整 Markdown 副本，断网后继续浏览、搜索和打开最近文档；重连同一电脑后自动刷新，失败不会破坏旧副本。
+- **四种公式分隔符**：桌面、手机及可分享 HTML/PDF 统一支持 `$...$`、`$$...$$`、`\(...\)` 与 `\[...\]`，无需先改写已有 LaTeX/MathJax 笔记。
+- **更小的测试 APK**：ARM64 可安装 Debug 包省略仅供 Rust 原生调试器使用的 DWARF 信息，保留日志、WebView 调试和局域网能力；需要原生调试时仍可使用完整符号入口。
 
 ## 0.2.0 新增
 
@@ -61,7 +84,7 @@ Mermaid 图表可放大查看，支持缩放、平移和适应窗口。
 - **版本更新提示**：「关于笔记空间」显示当前版本并可手动检查；启动检查默认开启，也可在设置中关闭。检查只读取 [NoteSpace GitHub Releases](https://github.com/Ysclmml/notespace/releases) 的最新稳定版本，发现新版后可稍后提醒或只跳过该版本；发布页仅在点击后打开，不自动下载或安装，也不上传文档或路径。
 - **恢复提示**：上次浏览的文件夹或文件暂不可用时显示路径，可重试、选择工作区或移除最近记录，不自动创建或删除文件。
 
-已有 Homebrew 用户保存文档并退出应用后，可执行 `brew update` 和 `brew upgrade --cask ysclmml/tap/notespace`。更新记录见 [CHANGELOG](CHANGELOG.md)。
+更新记录见 [CHANGELOG](CHANGELOG.md)。
 
 ## 技术栈
 
@@ -84,6 +107,30 @@ pnpm desktop:dev
 ```bash
 pnpm verify
 ```
+
+## Android 移动阅读
+
+安装 Android Studio、Android SDK/NDK 和 Rust Android targets 后，可构建独立的 NoteSpace Mobile 开发 APK：
+
+```bash
+pnpm mobile:android:build:debug
+```
+
+这个可安装测试包会省略仅供 Rust 原生调试器使用的 DWARF 信息，但仍保留 Android Debug 签名、应用/WebView 调试、日志与局域网能力。需要连接原生调试器时使用 `pnpm mobile:android:dev`，该入口继续保留完整符号。
+
+当前默认构建 ARM64 安装包，产物位于 `src-tauri/gen/android/app/build/outputs/apk/arm64/debug/app-arm64-debug.apk`。局域网阅读按 [ADR-0025](docs/decisions/0025-lan-offline-reader.md) 作为普通桌面与移动构建能力提供，`debug` 命令只是本地开发打包方式：
+
+1. 电脑和 Android 手机连入同一局域网，在桌面版打开需要浏览的工作区。
+2. 打开桌面「移动访问」，明确勾选至少一个已打开工作区并启动服务。
+3. 手机端会通过 mDNS 列出同网电脑，并依次探测该电脑发布的多个局域网地址。自动发现不可用时可只输入电脑 IP 或主机名，手机会补上默认端口 `49920`；桌面改过端口时输入完整 `host:port`。Android 模拟器可直接使用 `10.0.2.2`。
+4. 同一台电脑可供多个手机同时浏览目录、阅读 Markdown 和搜索；桌面停止共享或退出后，listener 与本次文档 ID 立即失效，在途长任务会取消。
+5. 在手机上为某个工作区开启离线保存后，会下载其完整 Markdown 快照，并显示占用空间与最近同步时间；电脑不在线时仍可浏览、搜索和从最近记录打开，重新连接后自动刷新，也可手动更新或清除。图片、附件和已渲染 Mermaid 资产暂不进入离线包。
+
+桌面面板显示的是当前尚未完成的 **活跃请求数**，不是在线手机数或已配对设备数；手机停留在已经打开的阅读页时，这个值可以是 `0`。
+
+当前局域网传输不使用 TLS 或设备配对；服务只在你明确启动期间开放，并且只读所选工作区内已保存的内容。根外路径、符号链接、隐藏/不支持文件和超限读取仍会被拒绝。
+
+手机应用更新本轮暂未接入。后续直接分发 APK 时采用「检查固定 GitHub Release → 用户确认下载 → Android 系统安装器」的方式，不做静默安装或 JavaScript 热更新；进入 Google Play 分发后再切换 Play In-App Updates。
 
 ## 构建 macOS 应用
 

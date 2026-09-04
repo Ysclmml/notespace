@@ -1,6 +1,6 @@
 [package]
 name = "notespace"
-version = "0.2.0"
+version = "0.2.1"
 description = "NoteSpace, a local-first Markdown and text editor"
 edition = "2021"
 license = "UNLICENSED"
@@ -15,19 +15,25 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "=2.6.3", features = [] }
 
 [dependencies]
-base64 = { version = "=0.22.1", default-features = false, features = ["std"] }
-image = { version = "=0.25.10", default-features = false, features = ["png", "jpeg", "gif", "webp", "bmp", "ico"] }
-quick-xml = { version = "=0.41.0", default-features = false }
-regex = "=1.13.1"
-ureq = { version = "=3.4.0", default-features = false, features = ["rustls"] }
-notify = "=8.2.0"
-arboard = { version = "=3.6.1", default-features = false, features = ["image-data"] }
-png = { version = "=0.18.1", default-features = false }
-rfd = { version = "=0.17.2", default-features = true }
+mdns-sd = { version = "=0.21.1", default-features = false }
 serde = { version = "=1.0.229", features = ["derive"] }
 serde_json = "=1.0.151"
 tauri = { version = "=2.11.5", features = ["protocol-asset"] }
+
+[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+arboard = { version = "=3.6.1", default-features = false, features = ["image-data"] }
+base64 = { version = "=0.22.1", default-features = false, features = ["std"] }
+cap-fs-ext = "=4.0.3"
+cap-std = "=4.0.3"
+if-addrs = "=0.15.0"
+image = { version = "=0.25.10", default-features = false, features = ["png", "jpeg", "gif", "webp", "bmp", "ico"] }
+notify = "=8.2.0"
+png = { version = "=0.18.1", default-features = false }
+quick-xml = { version = "=0.41.0", default-features = false }
+regex = "=1.13.1"
+rfd = { version = "=0.17.2", default-features = true }
 trash = "=5.2.6"
+ureq = { version = "=3.4.0", default-features = false, features = ["rustls"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = { version = "=0.6.4", default-features = false, features = ["std"] }

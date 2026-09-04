@@ -20,6 +20,21 @@ export interface DocumentSelection {
   readonly name: string;
 }
 
+export interface LanShareWorkspaceSelection {
+  readonly path: string;
+  readonly name: string;
+}
+
+export interface LanShareStatus {
+  readonly status: "stopped" | "running";
+  readonly serviceName: string | null;
+  readonly addresses: readonly string[];
+  readonly port: number | null;
+  readonly discoveryStatus: "active" | "unavailable";
+  readonly activeRequestCount: number;
+  readonly sharedWorkspacePaths: readonly string[];
+}
+
 export type NativeMenuActionId =
   | "file.new"
   | "file.open"
@@ -116,6 +131,12 @@ export interface DesktopAdapter {
   listWorkspace(rootPath: string, showHidden?: boolean): Promise<readonly WorkspaceNode[]>;
   searchWorkspaces?: WorkspaceSearch;
   checkForUpdate?(): Promise<UpdateCheckResult>;
+  getLanShareStatus?(): Promise<LanShareStatus>;
+  startLanShare?(
+    workspaces: readonly LanShareWorkspaceSelection[],
+    port: number,
+  ): Promise<LanShareStatus>;
+  stopLanShare?(): Promise<LanShareStatus>;
   listDocumentTemplates?(): Promise<DocumentTemplateLibrary>;
   readDocumentTemplate?(
     path: string,
@@ -184,6 +205,18 @@ export interface DesktopAdapter {
 }
 
 export class TauriDesktopAdapter implements DesktopAdapter {
+  getLanShareStatus() {
+    return invoke<LanShareStatus>("lan_share_status");
+  }
+
+  startLanShare(workspaces: readonly LanShareWorkspaceSelection[], port: number) {
+    return invoke<LanShareStatus>("start_lan_share", { workspaces, port });
+  }
+
+  stopLanShare() {
+    return invoke<LanShareStatus>("stop_lan_share");
+  }
+
   listDocumentTemplates(): Promise<DocumentTemplateLibrary> {
     return invoke("list_document_templates");
   }

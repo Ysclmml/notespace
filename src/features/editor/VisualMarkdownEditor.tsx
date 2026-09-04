@@ -79,6 +79,7 @@ import { codeFindDecorations } from "../find/codeMirrorFind";
 import { usePageFind } from "../find/usePageFind";
 import { visualFindPlugin, visualFindTarget } from "../find/visualFind";
 import { matchFormattingShortcut } from "../shortcuts/shortcuts";
+import { normalizeMathDelimiters } from "../markdown-math/normalizeMathDelimiters";
 import { formattingIsBlocked, useFormattingShortcuts } from "./useFormattingShortcuts";
 import { installWrappingLinkEditor } from "./linkEditorField";
 import { ImageReferenceDialog } from "../image-actions/ImageReferenceDialog";
@@ -1298,7 +1299,9 @@ function revealInEditor(
 }
 
 function applySharedVisualText(crepe: Crepe, view: EditorView, value: string): void {
-  const nextDocument = crepe.editor.action((ctx) => ctx.get(parserCtx)(value));
+  const nextDocument = crepe.editor.action((ctx) =>
+    ctx.get(parserCtx)(normalizeMathDelimiters(value)),
+  );
   const from = view.state.doc.content.findDiffStart(nextDocument.content);
   if (from === null) return;
   const end = view.state.doc.content.findDiffEnd(nextDocument.content);
@@ -1630,7 +1633,7 @@ function VisualMarkdownEditorInstance({
 
     const crepe = new Crepe({
       root: editorRoot,
-      defaultValue: initial.value,
+      defaultValue: normalizeMathDelimiters(initial.value),
       features: {
         [CrepeFeature.AI]: false,
         [CrepeFeature.ImageBlock]: false,

@@ -1,7 +1,7 @@
 {
   "name": "notespace",
   "private": true,
-  "version": "0.2.0",
+  "version": "0.2.1",
   "type": "module",
   "packageManager": "pnpm@10.32.1",
   "engines": {
@@ -10,7 +10,9 @@
   },
   "scripts": {
     "dev": "vite",
+    "mobile:dev": "vite --mode mobile",
     "build": "tsc -b && vite build",
+    "mobile:build": "tsc -b && vite build --mode mobile",
     "preview": "vite preview",
     "format": "prettier --write \"src/**/*.{ts,tsx,css}\" \"src-tauri/**/*.json\" \"*.{json,js,ts,html}\"",
     "format:check": "prettier --check \"src/**/*.{ts,tsx,css}\" \"src-tauri/**/*.json\" \"*.{json,js,ts,html}\"",
@@ -28,19 +30,25 @@
     "tauri": "tauri",
     "desktop:dev": "tauri dev",
     "desktop:build": "tauri build",
-    "desktop:build:debug": "tauri build --debug --no-bundle"
+    "desktop:build:debug": "tauri build --debug --no-bundle",
+    "mobile:android:init": "node scripts/run-android.mjs init",
+    "mobile:android:dev": "node scripts/run-android.mjs dev",
+    "mobile:android:build:debug": "node scripts/run-android.mjs build --debug --apk"
   },
   "dependencies": {
+    "@codemirror/language-data": "6.5.2",
     "@milkdown/crepe": "7.22.1",
     "@milkdown/kit": "7.22.1",
-    "@codemirror/language-data": "6.5.2",
     "@tauri-apps/api": "2.11.1",
+    "@tauri-apps/plugin-barcode-scanner": "2.4.6",
+    "katex": "0.18.4",
     "mermaid": "^11.17.2",
     "react": "19.1.0",
     "react-dom": "19.1.0",
-    "unified": "11.0.5",
+    "remark-gfm": "4.0.1",
+    "remark-math": "6.0.0",
     "remark-parse": "11.0.0",
-    "remark-gfm": "4.0.1"
+    "unified": "11.0.5"
   },
   "devDependencies": {
     "@codemirror/commands": "6.11.0",

@@ -1,9 +1,11 @@
 //! Opt-in macOS smoke: cargo run --example export_smoke -- /tmp/owned-output.pdf [synthetic.html]
 //! No chooser, installed application, real notes, preferences or clipboard access.
-#![allow(dead_code)]
+#![allow(dead_code, unused_imports)]
 
 #[path = "../src/commands/mod.rs"]
 mod commands;
+#[path = "../src/lan_share/mod.rs"]
+mod lan_share;
 #[path = "../src/native_menu.rs"]
 mod native_menu;
 

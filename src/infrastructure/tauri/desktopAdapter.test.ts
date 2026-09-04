@@ -223,6 +223,45 @@ describe("browser demo adapter", () => {
 });
 
 describe("Tauri desktop adapter", () => {
+  it("forwards the LAN sharing lifecycle, workspace paths, and selected port", async () => {
+    const adapter = new TauriDesktopAdapter();
+    const workspaces = [
+      { path: "/fixture/产品文档", name: "产品文档" },
+      { path: "/fixture/notes", name: "Notes" },
+    ];
+    const stopped = {
+      status: "stopped",
+      serviceName: null,
+      addresses: [],
+      port: null,
+      discoveryStatus: "unavailable",
+      activeRequestCount: 0,
+      sharedWorkspacePaths: [],
+    } as const;
+    const running = {
+      ...stopped,
+      status: "running",
+      serviceName: "NoteSpace",
+      addresses: ["http://192.168.1.20:43125"],
+      port: 43125,
+      discoveryStatus: "active",
+      sharedWorkspacePaths: workspaces.map(({ path }) => path),
+    } as const;
+    invokeMock
+      .mockResolvedValueOnce(stopped)
+      .mockResolvedValueOnce(running)
+      .mockResolvedValueOnce(stopped);
+
+    expect(await adapter.getLanShareStatus()).toBe(stopped);
+    expect(await adapter.startLanShare(workspaces, 49_920)).toBe(running);
+    expect(await adapter.stopLanShare()).toBe(stopped);
+    expect(invokeMock.mock.calls).toEqual([
+      ["lan_share_status"],
+      ["start_lan_share", { workspaces, port: 49_920 }],
+      ["stop_lan_share"],
+    ]);
+  });
+
   it("forwards the explicit template library commands and preserves metadata and Markdown exactly", async () => {
     const adapter = new TauriDesktopAdapter();
     const template = {

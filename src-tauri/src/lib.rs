@@ -1,16 +1,24 @@
 mod application;
+#[cfg(desktop)]
 mod commands;
 mod infrastructure;
+#[cfg(desktop)]
+pub mod lan_share;
+#[cfg(mobile)]
+mod mobile_discovery;
+#[cfg(desktop)]
 mod native_menu;
+#[cfg(desktop)]
 mod opened_documents;
 
+#[cfg(desktop)]
 fn should_exit_after_window_event(label: &str, event: &tauri::WindowEvent) -> bool {
     label == "main" && matches!(event, tauri::WindowEvent::Destroyed)
 }
 
-#[cfg_attr(mobile, tauri::mobile_entry_point)]
-pub fn run() {
-    let app = tauri::Builder::default()
+#[cfg(desktop)]
+fn run_platform() {
+    let builder = tauri::Builder::default()
         .manage(commands::filesystem::FileSystemWatchState::default())
         .manage(opened_documents::OpenedDocumentQueue::from_launch_arguments())
         .menu(native_menu::build_default_native_menu)
@@ -19,13 +27,19 @@ pub fn run() {
             if should_exit_after_window_event(window.label(), event) {
                 tauri::Manager::app_handle(window).exit(0);
             }
-        })
+        });
+
+    let builder = builder
+        .manage(commands::lan_share::LanShareState::default())
         .invoke_handler(tauri::generate_handler![
             commands::pick_workspace,
             commands::pick_document,
             commands::pick_image_directory,
             commands::list_workspace,
             commands::workspace_search::search_workspaces,
+            commands::lan_share::lan_share_status,
+            commands::lan_share::start_lan_share,
+            commands::lan_share::stop_lan_share,
             commands::update_check::check_for_update,
             commands::html_export::export_html,
             commands::pdf_export::export_pdf,
@@ -48,13 +62,30 @@ pub fn run() {
             commands::prepare_local_image,
             commands::set_native_menu_locale,
             opened_documents::take_opened_document_paths,
-        ])
+        ]);
+
+    let app = builder
         .build(tauri::generate_context!())
         .expect("failed to build NoteSpace");
     app.run(opened_documents::handle_run_event);
 }
 
-#[cfg(test)]
+#[cfg(mobile)]
+fn run_platform() {
+    tauri::Builder::default()
+        .invoke_handler(tauri::generate_handler![
+            mobile_discovery::discover_lan_services,
+        ])
+        .run(tauri::generate_context!())
+        .expect("failed to run NoteSpace Mobile");
+}
+
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
+pub fn run() {
+    run_platform();
+}
+
+#[cfg(all(test, desktop))]
 mod tests {
     use super::*;
 

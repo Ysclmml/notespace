@@ -7,6 +7,8 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import {
   DemoDesktopAdapter,
   type DesktopAdapter,
+  type LanShareStatus,
+  type LanShareWorkspaceSelection,
   type NativeMenuActionId,
   type OpenDocumentResult,
   type WorkspaceNode,
@@ -17,6 +19,10 @@ import {
 } from "../../features/editor/spike/domTestSupport";
 import { AppSettingsProvider } from "../settings";
 import type { AppSettings } from "../settings";
+import {
+  MOBILE_ACCESS_PORT_STORAGE_KEY,
+  loadMobileAccessPort,
+} from "../../features/mobile-access";
 import { WORKSPACE_HISTORY_STORAGE_KEY } from "../../features/workspace/workspaceHistory";
 import { SESSION_SNAPSHOT_STORAGE_KEY } from "../../features/session-restore/sessionSnapshot";
 import { AppShell } from "./AppShell";
@@ -56,6 +62,7 @@ beforeAll(() => {
 afterEach(() => {
   localStorage.removeItem(WORKSPACE_HISTORY_STORAGE_KEY);
   localStorage.removeItem(SESSION_SNAPSHOT_STORAGE_KEY);
+  localStorage.removeItem(MOBILE_ACCESS_PORT_STORAGE_KEY);
   nativeWindowTestState.closeListeners.length = 0;
   nativeWindowTestState.close.mockClear();
   nativeWindowTestState.destroy.mockClear();
@@ -292,6 +299,95 @@ class NativeAnchorDesktopAdapter extends AnchorDesktopAdapter {
 
   emitNativeMenuAction(actionId: NativeMenuActionId) {
     this.nativeMenuListener?.(actionId);
+  }
+}
+
+class LanShareDesktopAdapter extends AnchorDesktopAdapter {
+  readonly startCalls: Array<readonly LanShareWorkspaceSelection[]> = [];
+  readonly startPorts: number[] = [];
+  stopCalls = 0;
+  private status: LanShareStatus = {
+    status: "stopped",
+    serviceName: null,
+    addresses: [],
+    port: null,
+    discoveryStatus: "unavailable",
+    activeRequestCount: 0,
+    sharedWorkspacePaths: [],
+  };
+
+  async getLanShareStatus() {
+    return this.status;
+  }
+
+  async startLanShare(workspaces: readonly LanShareWorkspaceSelection[], port: number) {
+    this.startCalls.push(workspaces);
+    this.startPorts.push(port);
+    this.status = {
+      status: "running",
+      serviceName: "NoteSpace on Test Mac",
+      addresses: [`http://192.168.1.20:${port}`],
+      port,
+      discoveryStatus: "active",
+      activeRequestCount: 2,
+      sharedWorkspacePaths: workspaces.map(({ path }) => path),
+    };
+    return this.status;
+  }
+
+  async stopLanShare() {
+    this.stopCalls += 1;
+    this.status = {
+      status: "stopped",
+      serviceName: null,
+      addresses: [],
+      port: null,
+      discoveryStatus: "unavailable",
+      activeRequestCount: 0,
+      sharedWorkspacePaths: [],
+    };
+    return this.status;
+  }
+}
+
+class DelayedLanStatusAdapter extends LanShareDesktopAdapter {
+  private readonly statusResolvers: Array<(status: LanShareStatus) => void> = [];
+
+  override getLanShareStatus(): Promise<LanShareStatus> {
+    return new Promise((resolve) => this.statusResolvers.push(resolve));
+  }
+
+  resolveOldStoppedStatus() {
+    this.statusResolvers.shift()?.({
+      status: "stopped",
+      serviceName: null,
+      addresses: [],
+      port: null,
+      discoveryStatus: "unavailable",
+      activeRequestCount: 0,
+      sharedWorkspacePaths: [],
+    });
+  }
+}
+
+class FailingLanStopAdapter extends LanShareDesktopAdapter {
+  override async stopLanShare(): Promise<LanShareStatus> {
+    this.stopCalls += 1;
+    throw new Error("stop failed");
+  }
+}
+
+class OccupiedLanPortAdapter extends LanShareDesktopAdapter {
+  override async startLanShare(
+    workspaces: readonly LanShareWorkspaceSelection[],
+    port: number,
+  ): Promise<LanShareStatus> {
+    void workspaces;
+    void port;
+    throw {
+      code: "lanSharePortInUse",
+      message: "address already in use",
+    };
   }
 }
 
@@ -603,6 +699,121 @@ async function waitForEditorView(element: HTMLElement): Promise<EditorView> {
 }
 
 describe("AppShell", () => {
+  it("does not expose LAN sharing when the adapter has no sharing capability", () => {
+    renderShell(<AppShell adapter={new DemoDesktopAdapter()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "更多操作" }));
+    expect(screen.queryByRole("menuitem", { name: "移动访问…" })).not.toBeInTheDocument();
+  });
+
+  it("starts and stops the LAN reader on the persisted default port", async () => {
+    const adapter = new LanShareDesktopAdapter();
+    renderShell(<AppShell adapter={adapter} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "打开演示工作区" }));
+    await screen.findByRole("button", { name: /main\.md/ });
+    const moreActions = screen.getByRole("button", { name: "更多操作" });
+    fireEvent.click(moreActions);
+    fireEvent.click(screen.getByRole("menuitem", { name: "移动访问…" }));
+
+    const dialog = await screen.findByRole("dialog", { name: "移动访问" });
+    expect(within(dialog).queryByRole("note")).not.toBeInTheDocument();
+    expect(within(dialog).getByRole("spinbutton", { name: "端口" })).toHaveValue(49_920);
+    expect(within(dialog).getByRole("checkbox", { name: /Anchor fixtures/ })).toBeChecked();
+    fireEvent.click(within(dialog).getByRole("button", { name: "开启移动访问" }));
+
+    expect(await within(dialog).findByText("http://192.168.1.20:49920")).toBeVisible();
+    expect(adapter.startCalls).toEqual([[{ path: "/workspace", name: "Anchor fixtures" }]]);
+    expect(adapter.startPorts).toEqual([49_920]);
+    fireEvent.click(within(dialog).getByRole("button", { name: "停止移动访问" }));
+    await waitFor(() => expect(adapter.stopCalls).toBe(1));
+    expect(within(dialog).getByText("未开启")).toBeVisible();
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(moreActions).toHaveFocus();
+  });
+
+  it("ignores an old LAN status response after starting the service", async () => {
+    const adapter = new DelayedLanStatusAdapter();
+    renderShell(<AppShell adapter={adapter} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "打开演示工作区" }));
+    await screen.findByRole("button", { name: /main\.md/ });
+    fireEvent.click(screen.getByRole("button", { name: "更多操作" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "移动访问…" }));
+    const dialog = await screen.findByRole("dialog", { name: "移动访问" });
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "开启移动访问" }));
+    expect(await within(dialog).findByText("已开启")).toBeVisible();
+    await act(async () => adapter.resolveOldStoppedStatus());
+    expect(within(dialog).getByText("已开启")).toBeVisible();
+  });
+
+  it("keeps Stop available when stopping LAN sharing fails", async () => {
+    const adapter = new FailingLanStopAdapter();
+    renderShell(<AppShell adapter={adapter} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "打开演示工作区" }));
+    await screen.findByRole("button", { name: /main\.md/ });
+    fireEvent.click(screen.getByRole("button", { name: "更多操作" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "移动访问…" }));
+    const dialog = await screen.findByRole("dialog", { name: "移动访问" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "开启移动访问" }));
+    await within(dialog).findByText("已开启");
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "停止移动访问" }));
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent(
+      "无法停止移动访问：stop failed",
+    );
+    expect(within(dialog).getByText("已开启")).toBeVisible();
+    expect(within(dialog).getByRole("button", { name: "停止移动访问" })).toBeEnabled();
+  });
+
+  it("only attempts one automatic stop when a shared workspace closes and stopping fails", async () => {
+    const adapter = new FailingLanStopAdapter();
+    renderShell(<AppShell adapter={adapter} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "打开演示工作区" }));
+    await screen.findByRole("button", { name: /main\.md/ });
+    const workspaceRoot = screen.getByRole("button", {
+      name: "折叠工作区 · Anchor fixtures",
+    });
+    fireEvent.click(screen.getByRole("button", { name: "更多操作" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "移动访问…" }));
+    const dialog = await screen.findByRole("dialog", { name: "移动访问" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "开启移动访问" }));
+    await within(dialog).findByText("已开启");
+    fireEvent.keyDown(window, { key: "Escape" });
+
+    fireEvent.contextMenu(workspaceRoot);
+    fireEvent.click(screen.getByRole("menuitem", { name: "关闭工作区" }));
+    await waitFor(() => expect(adapter.stopCalls).toBe(1));
+    await act(async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, 50));
+    });
+    expect(adapter.stopCalls).toBe(1);
+  });
+
+  it("persists a changed port and localizes an occupied-port failure", async () => {
+    const adapter = new OccupiedLanPortAdapter();
+    renderShell(<AppShell adapter={adapter} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "打开演示工作区" }));
+    await screen.findByRole("button", { name: /main\.md/ });
+    fireEvent.click(screen.getByRole("button", { name: "更多操作" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "移动访问…" }));
+    const dialog = await screen.findByRole("dialog", { name: "移动访问" });
+    fireEvent.change(within(dialog).getByRole("spinbutton", { name: "端口" }), {
+      target: { value: "50020" },
+    });
+    expect(loadMobileAccessPort()).toBe(50_020);
+    fireEvent.click(within(dialog).getByRole("button", { name: "开启移动访问" }));
+
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent(
+      "端口 50020 已被其他应用占用",
+    );
+    expect(within(dialog).getByRole("button", { name: "开启移动访问" })).toBeEnabled();
+  });
+
   it("renders an actionable local-first welcome screen", () => {
     renderShell(<AppShell adapter={new DemoDesktopAdapter()} />);
 

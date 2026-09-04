@@ -1,8 +1,11 @@
+import katex from "katex";
 import { unified } from "unified";
 import remarkParse from "remark-parse";
 import remarkGfm from "remark-gfm";
 import { markdownImagePath } from "../editor/imageSource";
+import { normalizeMathDelimiters } from "../markdown-math/normalizeMathDelimiters";
 import { markdownHeadingSlug } from "../workspace/outlineModel";
+import remarkMath from "remark-math";
 
 export interface HtmlExportOptions {
   title: string;
@@ -31,8 +34,9 @@ interface MarkdownNode {
   align?: readonly ("left" | "right" | "center" | null)[] | null;
 }
 
-const parser = unified().use(remarkParse).use(remarkGfm);
+const parser = unified().use(remarkParse).use(remarkMath).use(remarkGfm);
 export const MAX_HTML_EXPORT_SOURCE_BYTES = 8 * 1024 * 1024;
+const MAX_MATH_SOURCE_LENGTH = 16_384;
 const SCHEME = /^[a-z][a-z\d+.-]*:/iu;
 const WINDOWS_PATH = /^[a-z]:[\\/]/iu;
 const ABSOLUTE_DOCUMENT_PATH = /^(?:\/|[a-z]:[\\/]|file:)/iu;
@@ -61,6 +65,12 @@ ul, ol { padding-left: 1.7em; } li { padding-left: .15em; } li > p { margin: .4e
 .mermaid-diagram > svg { max-width: 100%; height: auto; }
 .mermaid-diagram foreignObject p { margin: 0; padding: 0; line-height: inherit; }
 .mermaid-diagram foreignObject code { font-size: inherit; padding: 0; }
+.math-inline { white-space: nowrap; }
+.math-display { margin: 1.2em 0; overflow-x: auto; text-align: center; }
+.math-display > .katex { display: inline-block; max-width: 100%; }
+.math-error { color: #8b2c2c; border: 1px dashed #d8a5a5; border-radius: 5px; background: #fff7f7; }
+.math-error.math-inline { padding: .08em .28em; }
+.math-error.math-display { padding: .7em 1em; text-align: left; white-space: pre-wrap; }
 .raw-html { white-space: pre-wrap; } .footnotes { font-size: .9em; border-top: 1px solid #dce1e9; margin-top: 2em; }
 @media (max-width: 600px) { body { padding: 20px 16px 40px; } h1 { font-size: 1.8em; } }
 @page { size: A4; margin: 18mm; }
@@ -148,7 +158,7 @@ export function buildHtmlExport(content: string, options: HtmlExportOptions): st
       code: "htmlExportSourceTooLarge",
     });
   }
-  const root: MarkdownNode = parser.parse(content);
+  const root: MarkdownNode = parser.parse(normalizeMathDelimiters(content));
   const definitions = new Map<string, MarkdownNode>();
   const footnotes = new Map<string, MarkdownNode>();
   const headingIds = new WeakMap<MarkdownNode, string>();
@@ -211,6 +221,34 @@ export function buildHtmlExport(content: string, options: HtmlExportOptions): st
     return `<img src="${escapeHtml(source)}" alt="${alt}"${title} loading="eager" referrerpolicy="no-referrer">`;
   }
 
+  function math(node: MarkdownNode, displayMode: boolean): string {
+    const source = node.value ?? "";
+    try {
+      if (source.length > MAX_MATH_SOURCE_LENGTH) {
+        throw new Error("math source is too long");
+      }
+      // MathML keeps the exported HTML single-file and script-free: unlike the
+      // HTML output it does not require KaTeX CSS or external font assets.
+      const markup = katex.renderToString(source, {
+        displayMode,
+        maxExpand: 1_000,
+        maxSize: 20,
+        output: "mathml",
+        strict: "error",
+        throwOnError: true,
+        trust: false,
+      });
+      return displayMode
+        ? `<div class="math-display" role="math">${markup}</div>\n`
+        : `<span class="math-inline" role="math">${markup}</span>`;
+    } catch {
+      const fallback = escapeHtml(displayMode ? `$$\n${source}\n$$` : `$${source}$`);
+      return displayMode
+        ? `<pre class="math-error math-display"><code>${fallback}</code></pre>\n`
+        : `<code class="math-error math-inline">${fallback}</code>`;
+    }
+  }
+
   function render(node: MarkdownNode): string {
     switch (node.type) {
       case "root":
@@ -233,6 +271,10 @@ export function buildHtmlExport(content: string, options: HtmlExportOptions): st
         return `<del>${children(node)}</del>`;
       case "inlineCode":
         return `<code>${escapeHtml(node.value ?? "")}</code>`;
+      case "inlineMath":
+        return math(node, false);
+      case "math":
+        return math(node, true);
       case "break":
         return "<br>\n";
       case "thematicBreak":

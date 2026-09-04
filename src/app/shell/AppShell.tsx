@@ -62,6 +62,15 @@ import type {
 import { DocumentStatisticsStatus } from "./DocumentStatisticsStatus";
 import { AboutDialog } from "../../features/about/AboutDialog";
 import { HelpDialog } from "../../features/help/HelpDialog";
+import {
+  MobileAccessDialog,
+  loadMobileAccessPort,
+  parseMobileAccessPort,
+  saveMobileAccessPort,
+  type MobileAccessLabels,
+  type MobileAccessServerInfo,
+  type MobileAccessStatus,
+} from "../../features/mobile-access";
 import { UpdateDialog } from "../../features/update/UpdateDialog";
 import { isAvailableUpdate, type AvailableUpdate } from "../../features/update/types";
 import {
@@ -151,6 +160,7 @@ import {
 import {
   createDesktopAdapter,
   type DesktopAdapter,
+  type LanShareStatus,
   type LocalFilePreview,
   type WorkspaceNode,
   type WorkspaceSelection,
@@ -372,6 +382,22 @@ function readableError(error: unknown): string {
     return String(error.message);
   }
   return String(error);
+}
+
+function mobileAccessStartError(
+  error: unknown,
+  port: number,
+  t: ReturnType<typeof useI18n>["t"],
+): string {
+  const code =
+    typeof error === "object" && error !== null && "code" in error
+      ? String(error.code)
+      : "";
+  if (code === "lanSharePortInUse") {
+    return t("mobileAccess.portInUse", { port });
+  }
+  if (code === "invalidLanSharePort") return t("mobileAccess.portInvalid");
+  return t("mobileAccess.startFailed", { error: readableError(error) });
 }
 
 function clipboardImageError(error: unknown, t: ReturnType<typeof useI18n>["t"]): string {
@@ -706,9 +732,7 @@ function WorkspaceDeleteDialog({
 
 export function AppShell({
   adapter: providedAdapter,
-}: {
-  readonly adapter?: DesktopAdapter;
-} = {}) {
+}: { readonly adapter?: DesktopAdapter } = {}) {
   const { locale, t } = useI18n();
   const { settings, updateSettings } = useAppSettings();
   const { contextMenu, onContextMenu, onPointerDownCapture, closeContextMenu } =
@@ -846,6 +870,65 @@ export function AppShell({
     trimSearchHistory(settings.searchHistoryLimit);
   }, [settings.searchHistoryLimit]);
   const [helpVisible, setHelpVisible] = useState(false);
+  const mobileAccessAvailable = Boolean(
+    adapter.getLanShareStatus && adapter.startLanShare && adapter.stopLanShare,
+  );
+  const [mobileAccessVisible, setMobileAccessVisible] = useState(false);
+  const [mobileAccessStatus, setMobileAccessStatus] =
+    useState<MobileAccessStatus>("stopped");
+  const [mobileAccessSelection, setMobileAccessSelection] = useState<readonly string[]>([]);
+  const [mobileAccessPort, setMobileAccessPort] = useState(() =>
+    String(loadMobileAccessPort()),
+  );
+  const [mobileAccessServerInfo, setMobileAccessServerInfo] =
+    useState<MobileAccessServerInfo | null>(null);
+  const [mobileAccessError, setMobileAccessError] = useState<string | null>(null);
+  const mobileAccessOperationRef = useRef(0);
+  const mobileAccessTransitionRef = useRef<"start" | "stop" | null>(null);
+  const mobileAccessAutoStopAttemptRef = useRef(false);
+  const moreActionsButtonRef = useRef<HTMLButtonElement>(null);
+  const mobileAccessLabels = useMemo<MobileAccessLabels>(
+    () => ({
+      title: t("mobileAccess.title"),
+      description: t("mobileAccess.description"),
+      close: t("common.close"),
+      statusTitle: t("mobileAccess.statusTitle"),
+      status: {
+        stopped: t("mobileAccess.statusStopped"),
+        starting: t("mobileAccess.statusStarting"),
+        running: t("mobileAccess.statusRunning"),
+        stopping: t("mobileAccess.statusStopping"),
+        failed: t("mobileAccess.statusFailed"),
+      },
+      workspacesTitle: t("mobileAccess.workspacesTitle"),
+      workspacesDescription: t("mobileAccess.workspacesDescription"),
+      noWorkspaces: t("mobileAccess.noWorkspaces"),
+      selectionLocked: t("mobileAccess.selectionLocked"),
+      portDescription: t("mobileAccess.portDescription"),
+      portInvalid: t("mobileAccess.portInvalid"),
+      start: t("mobileAccess.start"),
+      stop: t("mobileAccess.stop"),
+      serviceTitle: t("mobileAccess.serviceTitle"),
+      addressTitle: t("mobileAccess.addressTitle"),
+      addressUnavailable: t("mobileAccess.addressUnavailable"),
+      portTitle: t("mobileAccess.portTitle"),
+      discoveryTitle: t("mobileAccess.discoveryTitle"),
+      discovery: {
+        starting: t("mobileAccess.discoveryStarting"),
+        active: t("mobileAccess.discoveryActive"),
+        unavailable: t("mobileAccess.discoveryUnavailable"),
+      },
+      activeRequestsTitle: t("mobileAccess.activeRequestsTitle"),
+      activeRequestCount: (count) => t("mobileAccess.activeRequestCount", { count }),
+      copyAddress: t("mobileAccess.copyAddress"),
+      copyingAddress: t("mobileAccess.copyingAddress"),
+      copiedAddress: t("mobileAccess.copiedAddress"),
+      copyFailed: t("mobileAccess.copyFailed"),
+      refresh: t("mobileAccess.refresh"),
+      refreshing: t("mobileAccess.refreshing"),
+    }),
+    [t],
+  );
   const [favorites, setFavorites] = useState<readonly string[]>(() =>
     adapter.kind === "tauri" ? loadFavorites() : [],
   );
@@ -1005,6 +1088,7 @@ export function AppShell({
       imageSettingsWorkspace ||
       aboutVisible ||
       helpVisible ||
+      mobileAccessVisible ||
       availableUpdate,
     ),
   );
@@ -1045,6 +1129,168 @@ export function AppShell({
     closeLocalPreview();
     setHelpVisible(true);
   }, [closeContextMenu, closeLocalPreview]);
+  const updateMobileAccessPort = useCallback((port: string) => {
+    setMobileAccessPort(port);
+    const parsed = parseMobileAccessPort(port);
+    if (parsed !== null) saveMobileAccessPort(parsed);
+  }, []);
+  const applyMobileAccessResult = useCallback(
+    (result: LanShareStatus) => {
+      setMobileAccessError(null);
+      setMobileAccessStatus(result.status === "running" ? "running" : "stopped");
+      setMobileAccessServerInfo(
+        result.status === "running"
+          ? {
+              addresses: result.addresses,
+              port: result.port,
+              discoveryStatus: result.discoveryStatus,
+              activeRequestCount: result.activeRequestCount,
+            }
+          : null,
+      );
+      if (result.status === "running") {
+        setMobileAccessSelection(result.sharedWorkspacePaths);
+        if (result.port !== null) updateMobileAccessPort(String(result.port));
+      }
+    },
+    [updateMobileAccessPort],
+  );
+  const refreshMobileAccess = useCallback(async () => {
+    if (!adapter.getLanShareStatus || mobileAccessTransitionRef.current) return;
+    const operation = ++mobileAccessOperationRef.current;
+    try {
+      const result = await adapter.getLanShareStatus();
+      if (operation !== mobileAccessOperationRef.current) return;
+      applyMobileAccessResult(result);
+    } catch (error) {
+      if (operation !== mobileAccessOperationRef.current) return;
+      setMobileAccessStatus((current) => (current === "running" ? current : "failed"));
+      setMobileAccessError(
+        t("mobileAccess.refreshFailed", { error: readableError(error) }),
+      );
+      throw error;
+    }
+  }, [adapter, applyMobileAccessResult, t]);
+  const openMobileAccess = useCallback(() => {
+    if (!mobileAccessAvailable) return;
+    setMoreMenuVisible(false);
+    setWorkspaceMenuVisible(false);
+    setQuickOpenVisible(false);
+    setWorkspaceSearchVisible(false);
+    setSettingsVisible(false);
+    setHelpVisible(false);
+    setAboutVisible(false);
+    closeContextMenu();
+    closeLocalPreview();
+    const openPaths = workspacesRef.current.map(({ selection }) => selection.path);
+    setMobileAccessPort((current) =>
+      parseMobileAccessPort(current) === null ? String(loadMobileAccessPort()) : current,
+    );
+    setMobileAccessSelection((current) => {
+      const available = new Set(openPaths);
+      const retained = current.filter((path) => available.has(path));
+      return retained.length > 0 ? retained : openPaths;
+    });
+    setMobileAccessVisible(true);
+    void refreshMobileAccess().catch(() => undefined);
+  }, [closeContextMenu, closeLocalPreview, mobileAccessAvailable, refreshMobileAccess]);
+  const startMobileAccess = useCallback(
+    async (port: number) => {
+      if (!adapter.startLanShare || mobileAccessTransitionRef.current) return;
+      const selected = new Set(mobileAccessSelection);
+      const shared = workspacesRef.current
+        .map(({ selection }) => selection)
+        .filter(({ path }) => selected.has(path));
+      if (shared.length === 0) return;
+      const operation = ++mobileAccessOperationRef.current;
+      mobileAccessTransitionRef.current = "start";
+      setMobileAccessError(null);
+      setMobileAccessStatus("starting");
+      setMobileAccessServerInfo({
+        addresses: [],
+        port: null,
+        discoveryStatus: "starting",
+        activeRequestCount: 0,
+      });
+      try {
+        const result = await adapter.startLanShare(shared, port);
+        if (operation !== mobileAccessOperationRef.current) return;
+        applyMobileAccessResult(result);
+      } catch (error) {
+        if (operation !== mobileAccessOperationRef.current) return;
+        const message = mobileAccessStartError(error, port, t);
+        setMobileAccessStatus("failed");
+        setMobileAccessServerInfo(null);
+        setMobileAccessError(message);
+        if (adapter.getLanShareStatus) {
+          try {
+            const result = await adapter.getLanShareStatus();
+            if (operation !== mobileAccessOperationRef.current) return;
+            applyMobileAccessResult(result);
+            setMobileAccessError(message);
+          } catch {
+            // Keep the actionable start error and allow another explicit attempt.
+          }
+        }
+      } finally {
+        if (mobileAccessTransitionRef.current === "start") {
+          mobileAccessTransitionRef.current = null;
+        }
+      }
+    },
+    [adapter, applyMobileAccessResult, mobileAccessSelection, t],
+  );
+  const stopMobileAccess = useCallback(async () => {
+    if (!adapter.stopLanShare || mobileAccessTransitionRef.current) return;
+    const operation = ++mobileAccessOperationRef.current;
+    mobileAccessTransitionRef.current = "stop";
+    setMobileAccessError(null);
+    setMobileAccessStatus("stopping");
+    try {
+      const result = await adapter.stopLanShare();
+      if (operation !== mobileAccessOperationRef.current) return;
+      applyMobileAccessResult(result);
+    } catch (error) {
+      if (operation !== mobileAccessOperationRef.current) return;
+      const message = t("mobileAccess.stopFailed", { error: readableError(error) });
+      setMobileAccessStatus("running");
+      setMobileAccessError(message);
+      if (adapter.getLanShareStatus) {
+        try {
+          const result = await adapter.getLanShareStatus();
+          if (operation !== mobileAccessOperationRef.current) return;
+          applyMobileAccessResult(result);
+          setMobileAccessError(message);
+        } catch {
+          // Keep the last known running state so Stop remains directly retryable.
+        }
+      }
+    } finally {
+      if (mobileAccessTransitionRef.current === "stop") {
+        mobileAccessTransitionRef.current = null;
+      }
+    }
+  }, [adapter, applyMobileAccessResult, t]);
+  const closeMobileAccess = useCallback(() => {
+    setMobileAccessVisible(false);
+    moreActionsButtonRef.current?.focus();
+  }, []);
+
+  useEffect(() => {
+    if (mobileAccessStatus === "stopped") {
+      mobileAccessAutoStopAttemptRef.current = false;
+      return;
+    }
+    if (mobileAccessStatus !== "running") return;
+    const openPaths = new Set(workspaces.map(({ selection }) => selection.path));
+    if (mobileAccessSelection.every((path) => openPaths.has(path))) {
+      mobileAccessAutoStopAttemptRef.current = false;
+      return;
+    }
+    if (mobileAccessAutoStopAttemptRef.current) return;
+    mobileAccessAutoStopAttemptRef.current = true;
+    void stopMobileAccess().catch(() => undefined);
+  }, [mobileAccessSelection, mobileAccessStatus, stopMobileAccess, workspaces]);
   const [findRequests, setFindRequests] = useState<Readonly<Record<string, number>>>({});
   const findRequestCounter = useRef(1);
   const findInActivePage = useCallback(() => {
@@ -1052,6 +1298,7 @@ export function AppShell({
       settingsVisible ||
       aboutVisible ||
       helpVisible ||
+      mobileAccessVisible ||
       imageSettingsWorkspace ||
       quickOpenVisible ||
       visual ||
@@ -1068,6 +1315,7 @@ export function AppShell({
     settingsVisible,
     aboutVisible,
     helpVisible,
+    mobileAccessVisible,
     imageSettingsWorkspace,
     quickOpenVisible,
     visual,
@@ -1096,6 +1344,7 @@ export function AppShell({
       imageSettingsWorkspace ||
       aboutVisible ||
       helpVisible ||
+      mobileAccessVisible ||
       availableUpdate,
     );
   }, [
@@ -1104,6 +1353,7 @@ export function AppShell({
     imageSettingsWorkspace,
     aboutVisible,
     helpVisible,
+    mobileAccessVisible,
     availableUpdate,
   ]);
 
@@ -3926,6 +4176,7 @@ export function AppShell({
               aria-label={t("toolbar.moreActions")}
               className="icon-button"
               onClick={() => setMoreMenuVisible((visible) => !visible)}
+              ref={moreActionsButtonRef}
               type="button"
             >
               <MoreIcon />
@@ -4014,6 +4265,11 @@ export function AppShell({
                   <span>{t("search.workspace")}</span>
                   <kbd>{formatShortcut("Mod+Shift+F")}</kbd>
                 </button>
+                {mobileAccessAvailable ? (
+                  <button onClick={openMobileAccess} role="menuitem" type="button">
+                    <span>{t("mobileAccess.menu")}</span>
+                  </button>
+                ) : null}
                 <ExportMenu
                   locale={locale}
                   disabled={
@@ -4612,6 +4868,29 @@ export function AppShell({
           }}
         />
       )}
+      {mobileAccessAvailable ? (
+        <MobileAccessDialog
+          errorMessage={mobileAccessError}
+          labels={mobileAccessLabels}
+          onClose={closeMobileAccess}
+          onCopyAddress={copyText}
+          onPortChange={updateMobileAccessPort}
+          onRefresh={refreshMobileAccess}
+          onSelectionChange={setMobileAccessSelection}
+          onStart={startMobileAccess}
+          onStop={stopMobileAccess}
+          open={mobileAccessVisible}
+          port={mobileAccessPort}
+          selectedWorkspaceIds={mobileAccessSelection}
+          serverInfo={mobileAccessServerInfo}
+          status={mobileAccessStatus}
+          workspaces={workspaces.map(({ selection }) => ({
+            id: selection.path,
+            name: selection.name,
+            detail: selection.path,
+          }))}
+        />
+      ) : null}
       <SettingsDialog open={settingsVisible} onClose={() => setSettingsVisible(false)} />
       {helpVisible && <HelpDialog onClose={() => setHelpVisible(false)} />}
       {aboutVisible && (
@@ -4629,6 +4908,7 @@ export function AppShell({
         !settingsVisible &&
         !aboutVisible &&
         !helpVisible &&
+        !mobileAccessVisible &&
         !templateVisible &&
         !workspaceSearchVisible &&
         !exportFormat &&
