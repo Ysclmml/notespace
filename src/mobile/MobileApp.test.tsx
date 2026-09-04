@@ -4,7 +4,10 @@ import { describe, expect, it, vi } from "vitest";
 import { createDemoMobileTransport } from "./demoTransport";
 import { MobileApp } from "./MobileApp";
 import { MockMobileTransport } from "./mockTransport";
-import { createMemoryMobileOfflineStore } from "./offlineWorkspace";
+import {
+  createMemoryMobileOfflineStore,
+  type MobileOfflineWorkspaceSnapshot,
+} from "./offlineWorkspace";
 import { createMemoryMobileStore } from "./storage";
 import type { MobileComputer, MobileDocument } from "./types";
 
@@ -14,6 +17,40 @@ async function connectDemo(transport = createDemoMobileTransport()) {
   fireEvent.click(await screen.findByRole("button", { name: /NoteSpace 内置示例/ }));
   await screen.findByRole("heading", { level: 1, name: "共享工作区" });
   return { storage, transport };
+}
+
+function offlineSnapshot(
+  computer: MobileComputer,
+  workspaceId: string,
+  workspaceName: string,
+): MobileOfflineWorkspaceSnapshot {
+  return {
+    schemaVersion: 1,
+    key: `${computer.id}:${workspaceId}`,
+    computer,
+    workspace: { id: workspaceId, name: workspaceName, documentCount: 1 },
+    directories: [
+      {
+        workspaceId,
+        directoryId: null,
+        name: workspaceName,
+        breadcrumbs: [{ id: null, name: workspaceName }],
+        entries: [{ id: `${workspaceId}-document`, name: "离线笔记.md", kind: "document" }],
+      },
+    ],
+    documents: [
+      {
+        id: `${workspaceId}-document`,
+        workspaceId,
+        workspaceName,
+        title: "离线笔记",
+        relativePath: "离线笔记.md",
+        markdown: "# 离线笔记",
+      },
+    ],
+    syncedAt: "2026-09-04T08:00:00.000Z",
+    totalBytes: 15,
+  };
 }
 
 describe("MobileApp", () => {
@@ -42,6 +79,11 @@ describe("MobileApp", () => {
 
     transport.simulateDisconnect("Wi-Fi 已断开", true);
     expect(await screen.findByText("正在使用离线内容")).toBeVisible();
+    const shell = globalThis.document.querySelector(".mobile-shell");
+    const shellChrome = shell?.querySelector(".mobile-shell__chrome");
+    expect(shell?.children).toHaveLength(3);
+    expect(shellChrome?.querySelector(".mobile-offline-banner")).toBeVisible();
+    expect(shellChrome?.querySelector(".mobile-notice")).toBeVisible();
     fireEvent.click(screen.getByRole("button", { name: /产品笔记.*可离线阅读/ }));
     fireEvent.click(await screen.findByRole("button", { name: /设计.*2 篇文档/ }));
     fireEvent.click(screen.getByRole("button", { name: "产品笔记" }));
@@ -57,6 +99,115 @@ describe("MobileApp", () => {
     expect((await offlineStorage.list("demo-computer"))[0]?.documents).toHaveLength(3);
   });
 
+  it("briefly announces offline reading without returning on navigation", async () => {
+    const computerA = {
+      id: "offline-computer-a",
+      name: "离线电脑 A",
+      address: "192.168.1.20:49920",
+    };
+    const computerB = {
+      id: "offline-computer-b",
+      name: "离线电脑 B",
+      address: "192.168.1.21:49920",
+    };
+    const offlineStorage = createMemoryMobileOfflineStore([
+      offlineSnapshot(computerA, "workspace-a", "工作区 A"),
+      offlineSnapshot(computerB, "workspace-b", "工作区 B"),
+    ]);
+    const transport = new MockMobileTransport({ computers: [computerA, computerB] });
+    render(<MobileApp offlineStorage={offlineStorage} transport={transport} />);
+
+    await screen.findByText("离线电脑 A");
+    const computerACard = screen
+      .getByText("离线电脑 A")
+      .closest(".mobile-connect__computer-card");
+    expect(computerACard).not.toBeNull();
+
+    vi.useFakeTimers();
+    try {
+      await act(async () => {
+        fireEvent.click(
+          within(computerACard as HTMLElement).getByRole("button", {
+            name: "离线阅读",
+          }),
+        );
+        await Promise.resolve();
+      });
+      expect(screen.getByText("正在使用离线内容")).toBeVisible();
+      expect(
+        screen.getByText("正在使用离线内容").closest(".mobile-offline-banner"),
+      ).toHaveClass("mobile-offline-banner--transient");
+
+      act(() => vi.advanceTimersByTime(1_000));
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: "断开并切换电脑" }));
+        await Promise.resolve();
+      });
+      const reopenedComputerACard = screen
+        .getByText("离线电脑 A")
+        .closest(".mobile-connect__computer-card");
+      expect(reopenedComputerACard).not.toBeNull();
+      await act(async () => {
+        fireEvent.click(
+          within(reopenedComputerACard as HTMLElement).getByRole("button", {
+            name: "离线阅读",
+          }),
+        );
+        await Promise.resolve();
+      });
+      act(() => vi.advanceTimersByTime(2_500));
+      expect(screen.getByText("正在使用离线内容")).toBeVisible();
+
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: /工作区 A.*可离线阅读/ }));
+        await Promise.resolve();
+      });
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: /离线笔记\.md/ }));
+        await Promise.resolve();
+      });
+      expect(screen.getByRole("heading", { level: 1, name: "离线笔记" })).toBeVisible();
+      expect(screen.getByText("正在使用离线内容")).toBeVisible();
+
+      act(() => vi.advanceTimersByTime(501));
+      expect(screen.queryByText("正在使用离线内容")).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "离线，重新连接电脑" })).toBeVisible();
+
+      fireEvent.click(screen.getByRole("button", { name: "返回" }));
+      fireEvent.click(screen.getByRole("button", { name: "搜索" }));
+      fireEvent.click(screen.getByRole("button", { name: "浏览" }));
+      expect(screen.queryByText("正在使用离线内容")).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "离线，重新连接电脑" })).toBeVisible();
+
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: "断开并切换电脑" }));
+        await Promise.resolve();
+      });
+      const computerBCard = screen
+        .getByText("离线电脑 B")
+        .closest(".mobile-connect__computer-card");
+      expect(computerBCard).not.toBeNull();
+      await act(async () => {
+        fireEvent.click(
+          within(computerBCard as HTMLElement).getByRole("button", {
+            name: "离线阅读",
+          }),
+        );
+        await Promise.resolve();
+      });
+      expect(screen.getByText("正在使用离线内容")).toBeVisible();
+
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: "离线，重新连接电脑" }));
+        await Promise.resolve();
+      });
+      expect(screen.queryByText("正在使用离线内容")).not.toBeInTheDocument();
+      expect(transport.getConnectionState().kind).toBe("connected");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("keeps the LAN connection screen compact and explains the default port", async () => {
     render(<MobileApp insecureDebugMode transport={new MockMobileTransport()} />);
 
@@ -67,6 +218,33 @@ describe("MobileApp", () => {
     expect(
       screen.getByText("电脑和手机连接同一个局域网，并在桌面端开启“移动访问”。"),
     ).toBeVisible();
+  });
+
+  it("briefly reports an uncached shell disconnect without changing the three-row layout", async () => {
+    const transport = createDemoMobileTransport();
+    await connectDemo(transport);
+    const shell = globalThis.document.querySelector(".mobile-shell");
+    expect(shell?.children).toHaveLength(3);
+    expect(shell?.children[0]).toHaveClass("mobile-shell__chrome");
+    expect(shell?.children[1]).toHaveClass("mobile-shell__content");
+    expect(shell?.children[2]).toHaveClass("mobile-bottom-nav");
+
+    vi.useFakeTimers();
+    try {
+      act(() => transport.simulateDisconnect("Wi-Fi 已断开", true));
+      const offlineBanner = screen
+        .getByText("与电脑的连接已断开")
+        .closest(".mobile-offline-banner");
+      expect(offlineBanner).toHaveClass("mobile-offline-banner--transient");
+      expect(offlineBanner?.parentElement).toHaveClass("mobile-shell__chrome");
+
+      act(() => vi.advanceTimersByTime(3_001));
+      expect(screen.queryByText("与电脑的连接已断开")).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "离线，重新连接电脑" })).toBeVisible();
+      expect(shell?.children).toHaveLength(3);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("connects to a saved computer and browses directories into a read-only document", async () => {
@@ -122,12 +300,23 @@ describe("MobileApp", () => {
     fireEvent.click(await screen.findByRole("button", { name: /移动阅读说明\.md/ }));
     await screen.findByRole("heading", { level: 1, name: "欢迎使用移动阅读" });
 
-    transport.simulateDisconnect("Wi-Fi 已断开", false);
-    expect(await screen.findByText("连接已断开，当前页面仍可阅读")).toBeVisible();
-    expect(
-      screen.getByRole("heading", { level: 1, name: "欢迎使用移动阅读" }),
-    ).toBeVisible();
-    expect(screen.getByRole("button", { name: "重连" })).toBeVisible();
+    vi.useFakeTimers();
+    try {
+      act(() => transport.simulateDisconnect("Wi-Fi 已断开", false));
+      expect(screen.getByText("连接已断开，当前页面仍可阅读")).toBeVisible();
+      expect(
+        screen.getByText("连接已断开，当前页面仍可阅读").closest(".mobile-offline-banner"),
+      ).toHaveClass("mobile-offline-banner--transient");
+
+      act(() => vi.advanceTimersByTime(3_001));
+      expect(screen.queryByText("连接已断开，当前页面仍可阅读")).not.toBeInTheDocument();
+      expect(
+        screen.getByRole("heading", { level: 1, name: "欢迎使用移动阅读" }),
+      ).toBeVisible();
+      expect(screen.getByRole("button", { name: "离线，重新连接电脑" })).toBeVisible();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("shows link feedback inside the reader instead of deferring it until back", async () => {

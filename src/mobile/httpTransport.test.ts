@@ -399,7 +399,7 @@ describe("DebugHttpMobileTransport", () => {
       if (String(input).endsWith("/status")) return Promise.resolve(statusResponse());
       return new Promise<Response>((_, reject) => {
         init?.signal?.addEventListener("abort", () =>
-          reject(new DOMException("aborted at /Users/alice/private.md", "AbortError")),
+          reject(new DOMException("aborted at /fixture/private.md", "AbortError")),
         );
       });
     });
@@ -435,7 +435,7 @@ describe("DebugHttpMobileTransport", () => {
       code: "not-connected",
       message: "连接已断开",
     });
-    expect(String(abortedError)).not.toContain("/Users/alice/private.md");
+    expect(String(abortedError)).not.toContain("/fixture/private.md");
   });
 
   it("marks only the current connection offline after a network failure", async () => {
@@ -490,7 +490,7 @@ describe("DebugHttpMobileTransport", () => {
         return new Response(
           JSON.stringify({
             protocolVersion: 1,
-            error: { code: "internal", message: "failed at /Users/alice/private.md" },
+            error: { code: "internal", message: "failed at /fixture/private.md" },
           }),
           { status: 500 },
         );
@@ -500,7 +500,7 @@ describe("DebugHttpMobileTransport", () => {
         workspaceId: "workspace-1",
         workspaceName: "产品笔记",
         title: "私密路径",
-        relativePath: "/Users/alice/private.md",
+        relativePath: "/fixture/private.md",
         markdown: "# 内容",
         sizeBytes: 8,
       });
@@ -512,14 +512,14 @@ describe("DebugHttpMobileTransport", () => {
       .readDocument("document-1")
       .catch((error: unknown) => error);
     expect(invalidPath).toMatchObject({ code: "unavailable" });
-    expect(String(invalidPath)).not.toContain("/Users/alice/private.md");
+    expect(String(invalidPath)).not.toContain("/fixture/private.md");
 
     mode = "server";
     const serverFailure = await transport
       .readDocument("document-1")
       .catch((error: unknown) => error);
     expect(serverFailure).toMatchObject({ code: "unavailable" });
-    expect(String(serverFailure)).not.toContain("/Users/alice/private.md");
+    expect(String(serverFailure)).not.toContain("/fixture/private.md");
   });
 
   it("rejects an incompatible response envelope without exposing its payload", async () => {
@@ -528,7 +528,7 @@ describe("DebugHttpMobileTransport", () => {
       return new Response(
         JSON.stringify({
           protocolVersion: 2,
-          data: { absolutePath: "/Users/alice/private.md" },
+          data: { absolutePath: "/fixture/private.md" },
         }),
       );
     });
@@ -540,6 +540,6 @@ describe("DebugHttpMobileTransport", () => {
       code: "unavailable",
       message: "电脑返回了不兼容的数据，请更新 NoteSpace 后重试",
     });
-    expect(String(error)).not.toContain("/Users/alice/private.md");
+    expect(String(error)).not.toContain("/fixture/private.md");
   });
 });

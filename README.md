@@ -13,6 +13,8 @@ brew install --cask ysclmml/tap/notespace
 
 当前版本为预览版，尚未完成 Apple 公证。Homebrew 安装仅移除 NoteSpace 的下载隔离标记，不改变系统全局安全设置；请确认信任来源后安装。直接下载 DMG 仍需遵循 macOS 的启动检查。
 
+Android ARM64 用户可在同一个 [GitHub Releases](https://github.com/Ysclmml/notespace/releases) 页面下载 `NoteSpace-Mobile` APK。本版移动端使用现有测试签名，适合局域网阅读预览和从此前测试包直接覆盖安装；它还不是 Google Play 或长期正式签名版本。
+
 已有 Homebrew 版本时，保存文档并退出应用后升级：
 
 ```sh
@@ -56,6 +58,12 @@ Mermaid 图表可放大查看，支持缩放、平移和适应窗口。
 
 ![NoteSpace Mermaid 图表预览](docs/screenshots/notespace-diagram.jpg)
 
+### 手机局域网阅读
+
+在 Android App 中浏览桌面端共享的工作区、逐层打开目录，并以只读模式阅读 Markdown。
+
+![NoteSpace Mobile 工作区与阅读界面](docs/screenshots/notespace-mobile.jpg)
+
 ## 核心特色
 
 - **直接编辑排版后的 Markdown**：标题、列表和表格保持可视形态，光标进入时不自动展开源码；需要精确调整标记时，再主动切换源码模式。
@@ -66,6 +74,12 @@ Mermaid 图表可放大查看，支持缩放、平移和适应窗口。
 - **本地文件夹就是工作区**：多个笔记目录可同时打开，无需导入专有格式；Markdown 与图片仍是普通文件，方便继续使用 Git 或其他工具管理。
 - **系统直接打开 Markdown**：打包版可通过 Finder/系统「打开方式」接收 `.md` 与 `.markdown` 文件，并在前台标签中打开；是否设为默认应用由你在系统中决定。
 - **手机局域网阅读**：桌面明确开启并选择工作区后，NoteSpace Mobile 可在同一局域网浏览、搜索和阅读磁盘上的 Markdown；需要离开电脑时，可逐工作区保存离线副本并在重连后刷新。
+
+## 0.2.2 新增
+
+- **更安静的离线提示**：进入离线阅读、切换离线电脑或当前连接断开时，大提示只显示约 3 秒；目录和正文随后只保留紧凑的离线/重连入口，普通导航不会反复弹出。
+- **稳定的移动布局**：断线、错误与普通通知不再挤压正文或底部导航；重新进入同一离线电脑仍会获得一次完整提示。
+- **发布与说明完善**：Android 构建固定输出 ARM64 预览 APK，README 补充移动端安装说明、真实构建路径和合成数据示意图。
 
 ## 0.2.1 新增
 
@@ -118,13 +132,13 @@ pnpm mobile:android:build:debug
 
 这个可安装测试包会省略仅供 Rust 原生调试器使用的 DWARF 信息，但仍保留 Android Debug 签名、应用/WebView 调试、日志与局域网能力。需要连接原生调试器时使用 `pnpm mobile:android:dev`，该入口继续保留完整符号。
 
-当前默认构建 ARM64 安装包，产物位于 `src-tauri/gen/android/app/build/outputs/apk/arm64/debug/app-arm64-debug.apk`。局域网阅读按 [ADR-0025](docs/decisions/0025-lan-offline-reader.md) 作为普通桌面与移动构建能力提供，`debug` 命令只是本地开发打包方式：
+当前默认只构建 Android ARM64 安装包；Tauri 的输出目录仍沿用 `universal` 名称，实际 APK 位于 `src-tauri/gen/android/app/build/outputs/apk/universal/debug/app-universal-debug.apk`。局域网阅读按 [ADR-0025](docs/decisions/0025-lan-offline-reader.md) 作为普通桌面与移动构建能力提供，`debug` 命令只是本地开发打包方式：
 
 1. 电脑和 Android 手机连入同一局域网，在桌面版打开需要浏览的工作区。
 2. 打开桌面「移动访问」，明确勾选至少一个已打开工作区并启动服务。
 3. 手机端会通过 mDNS 列出同网电脑，并依次探测该电脑发布的多个局域网地址。自动发现不可用时可只输入电脑 IP 或主机名，手机会补上默认端口 `49920`；桌面改过端口时输入完整 `host:port`。Android 模拟器可直接使用 `10.0.2.2`。
 4. 同一台电脑可供多个手机同时浏览目录、阅读 Markdown 和搜索；桌面停止共享或退出后，listener 与本次文档 ID 立即失效，在途长任务会取消。
-5. 在手机上为某个工作区开启离线保存后，会下载其完整 Markdown 快照，并显示占用空间与最近同步时间；电脑不在线时仍可浏览、搜索和从最近记录打开，重新连接后自动刷新，也可手动更新或清除。图片、附件和已渲染 Mermaid 资产暂不进入离线包。
+5. 在手机上为某个工作区开启离线保存后，会下载其完整 Markdown 快照，并显示占用空间与最近同步时间；电脑不在线时仍可浏览、搜索和从最近记录打开。进入离线阅读、切换离线电脑或当前连接中断时只短暂提示一次，之后由紧凑状态标识表示离线，不持续占用正文空间。重新连接后自动刷新，也可手动更新或清除。图片、附件和已渲染 Mermaid 资产暂不进入离线包。
 
 桌面面板显示的是当前尚未完成的 **活跃请求数**，不是在线手机数或已配对设备数；手机停留在已经打开的阅读页时，这个值可以是 `0`。
 

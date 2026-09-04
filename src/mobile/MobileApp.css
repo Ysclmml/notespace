@@ -398,10 +398,17 @@
 }
 
 .mobile-shell {
+  position: relative;
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  grid-template-rows: auto minmax(0, 1fr) auto;
   height: 100%;
   background: #f7f8fa;
+}
+
+.mobile-shell__chrome {
+  position: relative;
+  z-index: 5;
+  min-width: 0;
 }
 
 .mobile-app-header {
@@ -497,6 +504,17 @@
   border-radius: 7px;
   background: rgba(255, 255, 255, 0.7);
   font-size: 12px;
+}
+
+.mobile-offline-banner--transient {
+  position: absolute;
+  z-index: 12;
+  top: calc(100% + 8px);
+  right: max(12px, env(safe-area-inset-right));
+  left: max(12px, env(safe-area-inset-left));
+  border: 1px solid #ead8ab;
+  border-radius: 12px;
+  box-shadow: 0 10px 24px rgba(44, 38, 25, 0.14);
 }
 
 .mobile-error-banner {
@@ -804,6 +822,7 @@
 }
 
 .mobile-reader__chrome {
+  position: relative;
   z-index: 4;
   min-width: 0;
 }
@@ -876,28 +895,34 @@
   box-shadow: 0 8px 18px rgba(26, 32, 43, 0.08);
 }
 
-.mobile-reader__offline {
-  display: flex;
+.mobile-app-header__offline-status,
+.mobile-reader__offline-status {
+  display: inline-flex;
+  flex: 0 0 auto;
   align-items: center;
-  gap: 8px;
-  padding: 8px max(12px, env(safe-area-inset-right)) 8px
-    max(12px, env(safe-area-inset-left));
+  gap: 4px;
+  min-height: 30px;
+  padding: 0 7px;
   color: #766544;
-  border-bottom: 1px solid #ead8ab;
+  border: 1px solid #ead8ab;
+  border-radius: 999px;
   background: #fff8e8;
-  font-size: 12px;
+  font-size: 11px;
+  font-weight: 700;
 }
 
-.mobile-reader__offline span {
-  flex: 1;
+.mobile-app-header__offline-status:active:not(:disabled),
+.mobile-reader__offline-status:active:not(:disabled) {
+  background: #f7eccd;
 }
 
-.mobile-reader__offline button {
-  padding: 4px 7px;
-  color: inherit;
-  border: 0;
-  border-radius: 6px;
-  background: rgba(255, 255, 255, 0.72);
+.mobile-app-header__offline-status:disabled,
+.mobile-reader__offline-status:disabled {
+  opacity: 0.75;
+}
+
+.mobile-app-header__offline-status {
+  white-space: nowrap;
 }
 
 .mobile-reader__font-controls,

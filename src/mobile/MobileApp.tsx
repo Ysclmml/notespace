@@ -55,6 +55,13 @@ export interface MobileAppProps {
   readonly insecureDebugMode?: boolean;
 }
 
+const OFFLINE_NOTICE_DURATION_MS = 3_000;
+
+interface OfflineNoticeState {
+  readonly generation: number;
+  readonly visible: boolean;
+}
+
 interface EmptyStateProps {
   readonly icon: "book" | "clock" | "search" | "star";
   readonly title: string;
@@ -147,7 +154,7 @@ function ConnectionScreen({
         <h1>在手机上阅读电脑里的笔记</h1>
         <p>
           {demoMode
-            ? "这是第一阶段界面预览；点开内置示例可体验浏览、搜索和阅读。"
+            ? "这是浏览器内置演示；点开合成示例可体验浏览、搜索、离线保存和阅读。"
             : "电脑和手机连接同一个局域网，并在桌面端开启“移动访问”。"}
         </p>
       </section>
@@ -202,9 +209,9 @@ function ConnectionScreen({
       )}
 
       {demoMode ? (
-        <section className="mobile-demo-card" aria-label="真实连接开发状态">
-          <strong>真实局域网连接尚未启用</strong>
-          <p>当前安装包不会监听、连接或读取电脑；配对入口将在可信传输完成后开放。</p>
+        <section className="mobile-demo-card" aria-label="浏览器演示说明">
+          <strong>浏览器预览只使用合成内容</strong>
+          <p>Android App 可连接桌面端的“移动访问”；当前网页不会连接或读取真实电脑。</p>
         </section>
       ) : (
         <section className="mobile-connect__section" aria-labelledby="new-connection-title">
@@ -299,10 +306,12 @@ function AppHeader({
   computer,
   online,
   onDisconnect,
+  onReconnect,
 }: {
   readonly computer: MobileComputer;
   readonly online: boolean;
   readonly onDisconnect: () => void;
+  readonly onReconnect?: () => void;
 }) {
   return (
     <header className="mobile-app-header">
@@ -316,6 +325,18 @@ function AppHeader({
           {computer.name}
         </span>
       </div>
+      {!online && (
+        <button
+          aria-label={onReconnect ? "离线，重新连接电脑" : "正在重新连接电脑"}
+          className="mobile-app-header__offline-status"
+          disabled={!onReconnect}
+          onClick={onReconnect}
+          type="button"
+        >
+          <MobileIcon name="disconnect" size={14} />
+          <span>{onReconnect ? "离线 · 重连" : "连接中"}</span>
+        </button>
+      )}
       <button
         aria-label="断开并切换电脑"
         className="mobile-icon-button"
@@ -835,6 +856,10 @@ export function MobileApp({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [offlineNoticeState, setOfflineNoticeState] = useState<OfflineNoticeState>({
+    generation: 0,
+    visible: false,
+  });
   const [searchQuery, setSearchQuery] = useState("");
   const [searchWorkspaceId, setSearchWorkspaceId] = useState("");
   const [searchResults, setSearchResults] = useState<readonly MobileSearchResult[]>([]);
@@ -919,10 +944,36 @@ export function MobileApp({
     if (busyRequestRef.current === requestId) setBusy(false);
   }, []);
 
+  const announceOfflineNotice = useCallback(() => {
+    setOfflineNoticeState((current) => ({
+      generation: current.generation + 1,
+      visible: true,
+    }));
+  }, []);
+
+  const hideOfflineNotice = useCallback(() => {
+    setOfflineNoticeState((current) =>
+      current.visible ? { ...current, visible: false } : current,
+    );
+  }, []);
+
   useEffect(() => {
     globalThis.document.body.classList.add("notespace-mobile-body");
     return () => globalThis.document.body.classList.remove("notespace-mobile-body");
   }, []);
+
+  useEffect(() => {
+    if (!offlineNoticeState.visible) return;
+    const generation = offlineNoticeState.generation;
+    const timeout = globalThis.setTimeout(
+      () =>
+        setOfflineNoticeState((current) =>
+          current.generation === generation ? { ...current, visible: false } : current,
+        ),
+      OFFLINE_NOTICE_DURATION_MS,
+    );
+    return () => globalThis.clearTimeout(timeout);
+  }, [offlineNoticeState.generation, offlineNoticeState.visible]);
 
   useEffect(() => {
     let active = true;
@@ -958,12 +1009,23 @@ export function MobileApp({
         if (identityChanged || connectionLost) invalidateRemoteRequests();
         if (identityChanged) clearRemoteProjection();
         else if (connectionLost) clearRemoteProjection(true);
+        if (connectionLost && state.kind === "disconnected") {
+          announceOfflineNotice();
+        } else if (state.kind === "connected") {
+          hideOfflineNotice();
+        }
         if (nextComputerId !== undefined) lastComputerIdRef.current = nextComputerId;
         lastConnectionKindRef.current = state.kind;
         setConnection(state);
         if (state.computer) setActiveComputer(state.computer);
       }),
-    [clearRemoteProjection, invalidateRemoteRequests, transport],
+    [
+      announceOfflineNotice,
+      clearRemoteProjection,
+      hideOfflineNotice,
+      invalidateRemoteRequests,
+      transport,
+    ],
   );
 
   useEffect(() => {
@@ -1162,6 +1224,7 @@ export function MobileApp({
     });
     setActiveComputer(computer);
     setShowConnections(false);
+    announceOfflineNotice();
     setError(null);
   };
 
@@ -1184,7 +1247,7 @@ export function MobileApp({
 
   const pair = async (request: MobilePairingRequest) => {
     if (demoMode) {
-      setError("当前是界面演示，真实电脑配对尚未启用");
+      setError("当前是浏览器内置演示，不会连接真实电脑");
       return;
     }
     const actionId = connectionActionRef.current + 1;
@@ -1426,6 +1489,7 @@ export function MobileApp({
 
   const online = connection.kind === "connected";
   const offlineAvailable = activeOfflineSnapshots.length > 0;
+  const showOfflineNotice = offlineNoticeState.visible;
   const cachedOnlyWorkspaces = activeOfflineSnapshots
     .filter(
       (snapshot) =>
@@ -1452,6 +1516,20 @@ export function MobileApp({
           key={documentStorageKey ?? document.id}
           notice={notice}
           offline={!online}
+          offlineNotice={
+            showOfflineNotice
+              ? {
+                  title: offlineAvailable
+                    ? "正在使用离线内容"
+                    : "连接已断开，当前页面仍可阅读",
+                  detail:
+                    connection.message ??
+                    (offlineAvailable
+                      ? "重新连接后会自动更新已保存的工作区"
+                      : "当前页面仍可阅读"),
+                }
+              : undefined
+          }
           onBack={() => setDocument(null)}
           onDismissNotice={() => setNotice(null)}
           onOpenLink={() => setNotice("链接导航将在真实局域网连接完成后开放。")}
@@ -1464,52 +1542,62 @@ export function MobileApp({
         />
       ) : (
         <div className="mobile-shell">
-          <AppHeader
-            computer={activeComputer}
-            online={online}
-            onDisconnect={() => void disconnect()}
-          />
-          {!online && (
-            <div className="mobile-offline-banner" role="status">
-              <MobileIcon name="disconnect" size={18} />
-              <span>
-                <strong>
-                  {offlineAvailable ? "正在使用离线内容" : "与电脑的连接已断开"}
-                </strong>
-                <small>
-                  {connection.message ??
-                    (offlineAvailable
-                      ? "重新连接后会自动更新已保存的工作区"
-                      : "重新连接后才能打开其他文档")}
-                </small>
-              </span>
-              <button
-                disabled={
-                  connection.kind === "connecting" || connection.kind === "reconnecting"
-                }
-                onClick={retry}
-                type="button"
+          <div className="mobile-shell__chrome">
+            <AppHeader
+              computer={activeComputer}
+              online={online}
+              onDisconnect={() => void disconnect()}
+              onReconnect={
+                connection.kind === "connecting" || connection.kind === "reconnecting"
+                  ? undefined
+                  : retry
+              }
+            />
+            {!online && showOfflineNotice && (
+              <div
+                className="mobile-offline-banner mobile-offline-banner--transient"
+                role="status"
               >
-                重连
-              </button>
-            </div>
-          )}
-          {error && (
-            <div className="mobile-error-banner" role="alert">
-              <span>{error}</span>
-              <button onClick={() => setError(null)} type="button">
-                关闭
-              </button>
-            </div>
-          )}
-          {notice && (
-            <div className="mobile-notice" role="status">
-              <span>{notice}</span>
-              <button onClick={() => setNotice(null)} type="button">
-                知道了
-              </button>
-            </div>
-          )}
+                <MobileIcon name="disconnect" size={18} />
+                <span>
+                  <strong>
+                    {offlineAvailable ? "正在使用离线内容" : "与电脑的连接已断开"}
+                  </strong>
+                  <small>
+                    {connection.message ??
+                      (offlineAvailable
+                        ? "重新连接后会自动更新已保存的工作区"
+                        : "重新连接后才能打开其他文档")}
+                  </small>
+                </span>
+                <button
+                  disabled={
+                    connection.kind === "connecting" || connection.kind === "reconnecting"
+                  }
+                  onClick={retry}
+                  type="button"
+                >
+                  重连
+                </button>
+              </div>
+            )}
+            {error && (
+              <div className="mobile-error-banner" role="alert">
+                <span>{error}</span>
+                <button onClick={() => setError(null)} type="button">
+                  关闭
+                </button>
+              </div>
+            )}
+            {notice && (
+              <div className="mobile-notice" role="status">
+                <span>{notice}</span>
+                <button onClick={() => setNotice(null)} type="button">
+                  知道了
+                </button>
+              </div>
+            )}
+          </div>
           <main className="mobile-shell__content" aria-busy={busy}>
             {section === "browse" && (
               <BrowseSection

@@ -3,7 +3,7 @@ import { undo as undoCode } from "@codemirror/commands";
 import { EditorView as CodeView } from "@codemirror/view";
 import { undo as undoVisual } from "@milkdown/kit/prose/history";
 import { EditorView as VisualView } from "@milkdown/kit/prose/view";
-import { beforeAll, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { CodeFilePreview } from "../code-preview/CodeFilePreview";
 import { MarkdownEditor } from "../editor/MarkdownEditor";
@@ -17,6 +17,13 @@ import { codeFindDecorations } from "./codeMirrorFind";
 beforeAll(() => {
   installCodeMirrorDomMeasurementStubs();
   installImmediateIntersectionObserverStub();
+});
+
+afterAll(async () => {
+  // Milkdown's resolved context timers retain their fixed three-second timeout.
+  // Let those callbacks drain while jsdom still provides the global event target;
+  // otherwise they can run after this file's environment has been torn down.
+  await new Promise((resolve) => window.setTimeout(resolve, 3_100));
 });
 
 function expectReservedFindRow(container: HTMLElement) {

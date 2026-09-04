@@ -9,6 +9,10 @@ export interface MobileReaderProps {
   readonly document: MobileDocument;
   readonly initialPosition?: MobileReadPosition;
   readonly offline?: boolean;
+  readonly offlineNotice?: {
+    readonly title: string;
+    readonly detail: string;
+  };
   readonly notice?: string | null;
   readonly onBack: () => void;
   readonly onDismissNotice?: () => void;
@@ -25,6 +29,7 @@ export function MobileReader({
   document,
   initialPosition,
   offline = false,
+  offlineNotice,
   notice,
   onBack,
   onDismissNotice,
@@ -126,6 +131,18 @@ export function MobileReader({
             <strong>{document.title}</strong>
             <span>{document.workspaceName}</span>
           </div>
+          {offline && (
+            <button
+              aria-label={onReconnect ? "离线，重新连接电脑" : "离线"}
+              className="mobile-reader__offline-status"
+              disabled={!onReconnect}
+              onClick={onReconnect}
+              type="button"
+            >
+              <MobileIcon name="disconnect" size={14} />
+              <span>离线</span>
+            </button>
+          )}
           <button
             aria-expanded={outlineOpen}
             aria-label="文档大纲"
@@ -196,15 +213,16 @@ export function MobileReader({
           </div>
         )}
 
-        {offline && (
-          <div className="mobile-reader__offline" role="status">
+        {offline && offlineNotice && (
+          <div
+            className="mobile-offline-banner mobile-offline-banner--transient"
+            role="status"
+          >
             <MobileIcon name="disconnect" size={17} />
-            <span>连接已断开，当前页面仍可阅读</span>
-            {onReconnect && (
-              <button onClick={onReconnect} type="button">
-                重连
-              </button>
-            )}
+            <span>
+              <strong>{offlineNotice.title}</strong>
+              <small>{offlineNotice.detail}</small>
+            </span>
           </div>
         )}
         {notice && (
