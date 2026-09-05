@@ -295,7 +295,7 @@ function normalizeDirectory(value: unknown): MobileDirectory {
     invalidResponse();
   }
   nonNegativeInteger(record.scannedEntries);
-  booleanValue(record.truncated);
+  const truncated = booleanValue(record.truncated);
 
   const breadcrumbs = record.breadcrumbs.map((item) => {
     const breadcrumb = asRecord(item);
@@ -321,6 +321,7 @@ function normalizeDirectory(value: unknown): MobileDirectory {
     name: displayName(record.name),
     breadcrumbs,
     entries,
+    truncated,
   };
 }
 

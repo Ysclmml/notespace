@@ -187,4 +187,59 @@ describe("external disk reconciliation", () => {
     };
     expect(referencedFilePaths(f.state)).toEqual([PATH]);
   });
+
+  it("inspects every genuinely open document in bounded native batches", async () => {
+    const f = fixture();
+    const paths = Array.from({ length: 2050 }, (_, index) => `/synthetic/open-${index}.md`);
+    const tabIds = paths.map((_, index) => `tab-${index}`);
+    const originalSession = f.state.sessions[PATH]!;
+    const originalTab = f.state.tabs.tab!;
+    f.state = {
+      ...createInitialAppState(),
+      sessions: Object.fromEntries(
+        paths.map((path) => [path, { ...originalSession, id: path, path }]),
+      ),
+      tabs: Object.fromEntries(
+        paths.map((path, index) => [
+          `tab-${index}`,
+          {
+            ...originalTab,
+            id: `tab-${index}`,
+            current: { ...originalTab.current, documentId: path, path },
+          },
+        ]),
+      ),
+      tabOrder: tabIds,
+      activeTabId: tabIds[0]!,
+      editorGroups: [
+        { ...createInitialAppState().editorGroups[0]!, tabIds, activeTabId: tabIds[0]! },
+      ],
+    };
+    const lastPath = paths.at(-1)!;
+    const inspectionBatches: string[][] = [];
+    const adapter = {
+      inspectDocuments: vi.fn(async (batch: string[]) => {
+        expect(batch.length).toBeLessThanOrEqual(1024);
+        inspectionBatches.push(batch);
+        return batch.map((path) => ({
+          path,
+          status: "present" as const,
+          revision: path === lastPath ? "two" : "one",
+        }));
+      }),
+      openDocument: vi.fn(async (path: string) => ({ ...(await f.openDocument()), path })),
+    } as unknown as DesktopAdapter;
+    await synchronizeDocuments({
+      adapter,
+      getState: () => f.state,
+      commit: f.commit,
+      isSaving: () => false,
+      onNotice: f.onNotice,
+    });
+    expect(inspectionBatches.map((batch) => batch.length)).toEqual([1024, 1024, 2]);
+    expect(inspectionBatches.flat()).toEqual(paths);
+    expect(adapter.openDocument).toHaveBeenCalledExactlyOnceWith(lastPath);
+    expect(f.state.sessions[lastPath]).toMatchObject({ text: "new", diskRevision: "two" });
+    expect(f.state.sessions[paths[0]!]!.text).toBe("old");
+  });
 });

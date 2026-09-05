@@ -44,40 +44,51 @@ describe("workspace result highlighting", () => {
     expect(container.querySelector("script")).toBeNull();
   });
 
-  it("uses the native UTF-16 match length for a variable-length regex result", () => {
-    expect(findRegexHighlightRange("before a123z after", "a.+?z", true, 5)).toEqual([
-      [7, 12],
-    ]);
-    expect(findRegexHighlightRange("😀😀 rest", "😀+", true, 4)).toEqual([[0, 4]]);
-    expect(
-      findRegexHighlightRange("prefix text suffix", "(?P<native>text)", true, 4, 8),
-    ).toEqual([[7, 11]]);
+  it("uses native UTF-16 offsets for variable-length and native-only regex results", () => {
+    expect(findRegexHighlightRange("before a123z after", 7, 12)).toEqual([[7, 12]]);
+    expect(findRegexHighlightRange("😀😀 rest", 0, 4)).toEqual([[0, 4]]);
     const { container } = render(
       <HighlightMatches
         text="prefix item-2048 suffix"
-        query={"item-\\d+"}
+        query={"(?P<native>item-\\d+)"}
         caseSensitive={true}
-        regexMatchLength={9}
+        regexMatchRange={[7, 16]}
       />,
     );
     expect(container.querySelector("mark")).toHaveTextContent("item-2048");
   });
 
   it("renders plain text for invalid, zero-length, or out-of-bounds regex metadata", () => {
-    expect(findRegexHighlightRange("text", "(", false, 2)).toEqual([]);
-    expect(findRegexHighlightRange("text", ".*?", false, 0)).toEqual([]);
-    expect(findRegexHighlightRange("text", "text", false, 99)).toEqual([]);
+    expect(findRegexHighlightRange("text", NaN, 2)).toEqual([]);
+    expect(findRegexHighlightRange("text", 0, 0)).toEqual([]);
+    expect(findRegexHighlightRange("text", 0, 99)).toEqual([]);
+    expect(findRegexHighlightRange("text", -1, 2)).toEqual([]);
+    expect(findRegexHighlightRange("text", 0.5, 2)).toEqual([]);
     const text = "<script>still text</script> $&";
     const { container } = render(
       <HighlightMatches
         text={text}
         query="(?P<native>text)"
         caseSensitive={false}
-        regexMatchLength={4}
+        regexMatchRange={[NaN, NaN]}
       />,
     );
     expect(container.textContent).toBe(text);
     expect(container.querySelector("script")).toBeNull();
     expect(container.querySelector("mark")).toBeNull();
+  });
+
+  it("draws truncated results for a backtracking regex without executing it", () => {
+    const text = `…${"a".repeat(59)} MATCH`;
+    const { container } = render(
+      <HighlightMatches
+        text={text}
+        query="(a+)+b|MATCH"
+        caseSensitive
+        regexMatchRange={[61, 66]}
+      />,
+    );
+    expect(container.textContent).toBe(text);
+    expect(container.querySelector("mark")?.textContent).toBe("MATCH");
   });
 });

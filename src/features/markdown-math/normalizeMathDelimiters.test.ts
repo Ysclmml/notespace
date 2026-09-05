@@ -1,7 +1,43 @@
 import { describe, expect, it } from "vitest";
 import { normalizeMathDelimiters } from "./normalizeMathDelimiters";
+import { unified } from "unified";
+import remarkParse from "remark-parse";
+import remarkMath from "remark-math";
 
 describe("normalizeMathDelimiters", () => {
+  it.each([
+    ["> \\[\n> x^2\n> \\]", "> $$\n> x^2\n> $$", "blockquote"],
+    ["- \\[\n  x^2\n  \\]", "- $$\n  x^2\n  $$", "list"],
+    [String.raw`> \[x^2\]`, "> $$\n> x^2\n> $$", "blockquote"],
+    [String.raw`- \[x^2\]`, "- $$\n  x^2\n  $$", "list"],
+    [
+      String.raw`> - Formula \[x^2\] tail`,
+      "> - Formula \n>   $$\n>   x^2\n>   $$\n>    tail",
+      "blockquote",
+    ],
+    [
+      String.raw`12. Formula \[x^2\] tail`,
+      "12. Formula \n    $$\n    x^2\n    $$\n     tail",
+      "list",
+    ],
+  ])("keeps display math in its Markdown container: %s", (source, expected, container) => {
+    const result = normalizeMathDelimiters(source!);
+    expect(result).toBe(expected);
+    const tree = unified().use(remarkParse).use(remarkMath).parse(result);
+    expect(tree.children).toHaveLength(1);
+    expect(tree.children[0]?.type).toBe(container);
+    const math: string[] = [];
+    const visit = (node: {
+      type: string;
+      value?: string;
+      children?: readonly unknown[];
+    }) => {
+      if (node.type === "math") math.push(node.value ?? "");
+      for (const child of node.children ?? []) visit(child as typeof node);
+    };
+    visit(tree);
+    expect(math).toEqual(["x^2"]);
+  });
   it("maps paired TeX inline and display delimiters without changing dollar math", () => {
     const source = [
       "行内 \\(a_t + b_t\\) 与 $c_t$。",

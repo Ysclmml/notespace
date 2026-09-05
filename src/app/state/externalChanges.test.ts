@@ -218,8 +218,7 @@ describe("guarded disk reload", () => {
     const closed = appStateReducer(before, closeTab("left"));
     expect(appStateReducer(closed, action)).toBe(closed);
     expect(Object.keys(closed.tabs)).toEqual([]);
-    if (dirty) expect(closed.sessions[PATH]).toBeUndefined();
-    else expect(closed.sessions[PATH]!.text).toBe(document().text);
+    expect(closed.sessions[PATH]).toBeUndefined();
   });
 
   it("rejects mismatching paths, session identities and results arriving after Save As", () => {
@@ -302,16 +301,16 @@ describe("guarded disk reload", () => {
   );
 });
 
-describe("closed caches and save baselines", () => {
+describe("released documents and save baselines", () => {
   it.each(["new", "current", "preview", "right"] as const)(
-    "uses the fresh disk body when reopening a clean closed cache via %s",
+    "uses the fresh disk body after releasing a closed document via %s",
     (target) => {
       let before = reduce(
         initial(),
         markDocumentExternalChange(PATH, { status: "modified", revision: "revision-2" }),
         closeTab("left"),
       );
-      expect(before.sessions[PATH]!.text).toBe(document().text);
+      expect(before.sessions[PATH]).toBeUndefined();
       let action: AppStateAction;
       if (target === "current" || target === "right") {
         before = appStateReducer(

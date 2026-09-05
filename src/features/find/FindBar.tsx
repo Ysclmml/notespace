@@ -7,17 +7,24 @@ import "./FindBar.css";
 export function FindBar({
   find,
   locale = "zh-CN",
+  readOnly = false,
 }: {
   readonly find: ReturnType<typeof usePageFind>;
   readonly locale?: "zh-CN" | "en-US";
+  readonly readOnly?: boolean;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const canReplace = find.canReplace && !readOnly;
+  const { replaceOpen, toggleReplace } = find;
   const t = (key: Parameters<typeof translate>[1]) => translate(locale, key);
   useEffect(() => {
     if (!find.open) return;
     inputRef.current?.focus({ preventScroll: true });
     inputRef.current?.select();
   }, [find.open, find.request]);
+  useEffect(() => {
+    if (readOnly && replaceOpen) toggleReplace();
+  }, [readOnly, replaceOpen, toggleReplace]);
   if (!find.open) return null;
 
   return (
@@ -36,13 +43,13 @@ export function FindBar({
             event.preventDefault();
             event.stopPropagation();
             if ((event.target as HTMLElement).dataset.replaceInput === "true") {
-              find.replace(event.shiftKey);
+              if (canReplace) find.replace(event.shiftKey);
             } else find.move(event.shiftKey ? -1 : 1);
           }
         }}
       >
         <div className="page-find__row">
-          {find.canReplace && (
+          {canReplace && (
             <button
               aria-label={t(find.replaceOpen ? "find.hideReplace" : "find.showReplace")}
               aria-expanded={find.replaceOpen}
@@ -99,7 +106,7 @@ export function FindBar({
             ×
           </button>
         </div>
-        {find.canReplace && find.replaceOpen && (
+        {canReplace && find.replaceOpen && (
           <div className="page-find__row">
             <input
               aria-label={t("find.replaceWith")}
@@ -129,7 +136,7 @@ export function FindBar({
             </button>
           </div>
         )}
-        {find.replaceError && (
+        {canReplace && find.replaceError && (
           <p className="page-find__error" role="alert">
             {t(
               find.replaceError === "composing"

@@ -13,6 +13,7 @@ const DEBOUNCE: Duration = Duration::from_millis(150);
 const MAX_PENDING_PATHS: usize = 256;
 const MAX_WORKSPACE_ROOTS: usize = 32;
 const MAX_DOCUMENT_PATHS: usize = 1024;
+const MAX_WATCH_TARGETS: usize = 1024;
 
 pub(super) fn metadata_revision(metadata: &Metadata) -> String {
     let modified = metadata
@@ -127,7 +128,7 @@ struct WatchScope {
 
 impl WatchScope {
     fn new(roots: Vec<String>, documents: Vec<String>) -> BackendResult<Self> {
-        if roots.len() > MAX_WORKSPACE_ROOTS || documents.len() > MAX_DOCUMENT_PATHS {
+        if roots.len() > MAX_WORKSPACE_ROOTS {
             return Err(BackendError::new("invalidPaths", "too many watch paths"));
         }
         let normalize = |paths: Vec<String>| -> BackendResult<Vec<PathBuf>> {
@@ -209,6 +210,10 @@ impl WatchScope {
                 .into_iter()
                 .map(|parent| (parent, RecursiveMode::NonRecursive)),
         );
+        // Bound native subscriptions after coalescing all root/file scopes.
+        // Excess independent directories still participate in the frontend's
+        // focus/30-second metadata fallback; never reject every open file.
+        targets.truncate(MAX_WATCH_TARGETS);
         targets
     }
 }
@@ -414,6 +419,40 @@ mod tests {
 
     fn scope(root: &Path, documents: Vec<String>) -> WatchScope {
         WatchScope::new(vec![display_path(root)], documents).unwrap()
+    }
+
+    #[test]
+    fn more_than_one_metadata_batch_of_documents_keeps_coalesced_watch_scopes() {
+        let temp = TestDirectory::new("many-watched-documents");
+        let documents: Vec<_> = (0..MAX_DOCUMENT_PATHS + 25)
+            .map(|index| display_path(&temp.path().join(format!("{index}.md"))))
+            .collect();
+        let independent = WatchScope::new(vec![], documents.clone()).unwrap();
+        assert_eq!(independent.documents.len(), MAX_DOCUMENT_PATHS + 25);
+        assert_eq!(
+            independent.watch_targets(),
+            vec![(temp.path().to_path_buf(), RecursiveMode::NonRecursive)]
+        );
+        let rooted = scope(temp.path(), documents);
+        assert_eq!(
+            rooted.watch_targets(),
+            vec![(temp.path().to_path_buf(), RecursiveMode::Recursive)]
+        );
+        assert!(rooted.accepts(&temp.path().join("1025.md")));
+    }
+
+    #[test]
+    fn native_target_budget_preserves_roots_and_fallback_paths() {
+        let temp = TestDirectory::new("many-watch-parents");
+        let root = temp.path().join("workspace");
+        let documents: Vec<_> = (0..MAX_WATCH_TARGETS + 10)
+            .map(|index| display_path(&temp.path().join(format!("parent-{index}/note.md"))))
+            .collect();
+        let scope = WatchScope::new(vec![display_path(&root)], documents).unwrap();
+        let targets = scope.watch_targets();
+        assert_eq!(targets.len(), MAX_WATCH_TARGETS);
+        assert_eq!(targets[0], (root, RecursiveMode::Recursive));
+        assert_eq!(scope.refresh_paths().len(), MAX_WATCH_TARGETS + 11);
     }
 
     #[test]

@@ -248,7 +248,7 @@ describe("P1-STATE-01 navigation state", () => {
     state = reduce(state, closeTab("tab-3"), closeTab("tab-2"));
     expect(state.tabOrder).toEqual([]);
     expect(state.activeTabId).toBeNull();
-    expect(state.sessions["/workspace/a.md"]).toBeDefined();
+    expect(state.sessions).toEqual({});
   });
 
   it("discards deleted documents from current and history without leaving stale tabs", () => {

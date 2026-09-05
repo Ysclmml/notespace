@@ -39,7 +39,7 @@ function supportsEditorContextMenu(target: EventTarget | null): boolean {
   const element = targetElement(target);
   return Boolean(
     element?.closest(
-      'a[href], input, textarea, [contenteditable="true"], [contenteditable=""], .cm-content, .code-file-preview',
+      'a[href], input, textarea, [contenteditable="true"], [contenteditable=""], .ProseMirror, .cm-content, .code-file-preview',
     ),
   );
 }
@@ -59,7 +59,7 @@ function captureEditorSelection(target: EventTarget | null): RestoreSelection | 
   }
 
   const surface = element?.closest<HTMLElement>(
-    '[contenteditable="true"], [contenteditable=""], .cm-content',
+    '[contenteditable="true"], [contenteditable=""], .ProseMirror, .cm-content',
   );
   const selection = window.getSelection();
   if (!surface || !selection || selection.rangeCount === 0) return null;
@@ -75,7 +75,20 @@ function captureEditorSelection(target: EventTarget | null): RestoreSelection | 
   };
 }
 
-export function useEditorContextMenu() {
+function isDocumentTarget(target: EventTarget | null): boolean {
+  return Boolean(
+    resolveImageActionTarget(target) ||
+    targetElement(target)?.closest(
+      "a[href], .ProseMirror, .cm-content, .code-file-preview",
+    ),
+  );
+}
+
+export function useEditorContextMenu({
+  readOnly = false,
+}: {
+  readonly readOnly?: boolean;
+} = {}) {
   const [contextMenu, setContextMenu] =
     useState<EditorContextMenuState>(CLOSED_CONTEXT_MENU);
   const secondaryPointerTargetRef = useRef<EventTarget | null>(null);
@@ -125,7 +138,11 @@ export function useEditorContextMenu() {
   }, []);
 
   return {
-    contextMenu,
+    contextMenu: {
+      ...contextMenu,
+      // Reading mode applies to document surfaces; find/settings inputs stay editable.
+      readOnly: readOnly && isDocumentTarget(contextMenu.target),
+    },
     onContextMenu,
     onPointerDownCapture,
     closeContextMenu,

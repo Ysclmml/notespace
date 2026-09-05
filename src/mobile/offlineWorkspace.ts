@@ -88,11 +88,17 @@ export function findOfflineDocumentByPath(
   snapshots: readonly MobileOfflineWorkspaceSnapshot[],
   workspaceName: string,
   relativePath: string,
+  workspaceSyncKey?: string,
 ) {
-  return snapshots
-    .filter((snapshot) => snapshot.workspace.name === workspaceName)
-    .flatMap((snapshot) => snapshot.documents)
-    .find((document) => document.relativePath === relativePath);
+  const candidates = snapshots.filter((snapshot) =>
+    workspaceSyncKey
+      ? snapshot.workspace.syncKey === workspaceSyncKey
+      : snapshot.workspace.name === workspaceName,
+  );
+  if (candidates.length !== 1) return undefined;
+  return candidates[0]?.documents.find(
+    (document) => document.relativePath === relativePath,
+  );
 }
 
 function offlineLimitError(message: string) {
@@ -140,6 +146,11 @@ export async function downloadOfflineWorkspace({
     const directory = await transport.listDirectory(workspace.id, directoryId);
     if (directory.workspaceId !== workspace.id) {
       throw new Error("电脑返回了不属于当前工作区的目录");
+    }
+    if (directory.truncated) {
+      throw offlineLimitError(
+        "电脑未能完整读取工作区目录，请检查文件访问权限或目录大小后重试",
+      );
     }
     directories.push(directory);
     for (const entry of directory.entries) {

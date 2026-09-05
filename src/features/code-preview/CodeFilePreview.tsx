@@ -22,7 +22,7 @@ import {
   lineNumbers,
 } from "@codemirror/view";
 import { tags } from "@lezer/highlight";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import { mergeCompositionChange, sharedTextChange } from "../editor/sharedTextChange";
 import { FindBar } from "../find/FindBar";
@@ -55,6 +55,8 @@ export interface CodeFilePreviewProps {
   readonly onFindRequestConsumed?: (request: number) => void;
   /** Code previews are read-only unless a caller explicitly enables editing. */
   readonly editable?: boolean;
+  /** Reading mode also locks an otherwise editable code tab. */
+  readonly readOnly?: boolean;
   readonly initialView?: CodeFileViewSnapshot;
   readonly onChange?: (content: string) => void;
   readonly onViewChange?: (view: CodeFileViewSnapshot) => void;
@@ -231,9 +233,7 @@ function editableExtensions(editable: boolean): Extension {
   return [
     EditorState.readOnly.of(!editable),
     EditorView.editable.of(editable),
-    ...(editable
-      ? [history(), keymap.of([...defaultKeymap, ...historyKeymap])]
-      : [keymap.of(defaultKeymap)]),
+    EditorView.contentAttributes.of({ tabindex: "0", "aria-readonly": String(!editable) }),
   ];
 }
 
@@ -275,7 +275,8 @@ export function CodeFilePreview({
   locale = "zh-CN",
   findRequest,
   onFindRequestConsumed,
-  editable = false,
+  editable: requestedEditable = false,
+  readOnly = false,
   initialView,
   onChange,
   onViewChange,
@@ -283,11 +284,13 @@ export function CodeFilePreview({
   onOpenSide,
   onClose,
 }: CodeFilePreviewProps) {
+  const editable = requestedEditable && !readOnly;
   const variant = requestedVariant ?? (compact ? "popover" : "tab");
   const hostRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const syncContentRef = useRef<(nextContent: string) => void>(() => {});
   const findCompositionRef = useRef<() => boolean>(() => false);
+  const finishCompositionRef = useRef<() => void>(() => {});
   const livePropsRef = useRef<LivePreviewProps>({ editable, onChange, onViewChange });
   const currentConfigRef = useRef<InitialPreviewConfig>({
     codeWrap,
@@ -312,11 +315,11 @@ export function CodeFilePreview({
     [],
   );
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     livePropsRef.current = { editable, onChange, onViewChange };
   }, [editable, onChange, onViewChange]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     currentConfigRef.current = {
       codeWrap,
       content,
@@ -369,6 +372,10 @@ export function CodeFilePreview({
       ),
       extensions: [
         compartments.editable.of(editableExtensions(initial.editable)),
+        // History must stay installed when reading is toggled so returning to
+        // editing retains the same Undo/Redo stack.
+        history(),
+        keymap.of([...defaultKeymap, ...historyKeymap]),
         compartments.lineNumbers.of(
           lineNumberExtensions(initial.showLineNumbers, initial.startLine),
         ),
@@ -390,7 +397,19 @@ export function CodeFilePreview({
         }),
       ],
     });
-    const view = new EditorView({ state, parent: host });
+    const view = new EditorView({
+      state,
+      parent: host,
+      dispatchTransactions(transactions, currentView) {
+        if (
+          !applyingExternalContent &&
+          !livePropsRef.current.editable &&
+          transactions.some((transaction) => transaction.docChanged)
+        )
+          return;
+        currentView.update(transactions);
+      },
+    });
     viewRef.current = view;
     findTargetRef.current = codeMirrorFindTarget(view, () => findCompositionRef.current());
     refreshFind();
@@ -422,7 +441,7 @@ export function CodeFilePreview({
         return;
       }
       if (nextContent === current) return;
-      if (composing || view.composing) {
+      if (livePropsRef.current.editable && (composing || view.composing)) {
         pendingExternalContent = {
           base: current,
           value: nextContent,
@@ -432,26 +451,41 @@ export function CodeFilePreview({
       applyExternalContent(nextContent);
     };
     const onCompositionStart = () => {
+      if (!livePropsRef.current.editable) return;
       composing = true;
       window.cancelAnimationFrame(compositionFrame);
     };
+    const finishComposition = () => {
+      window.cancelAnimationFrame(compositionFrame);
+      const pending = pendingExternalContent;
+      pendingExternalContent = null;
+      composing = false;
+      if (!pending) return;
+      const merged = mergeCompositionChange(
+        pending.base,
+        view.state.doc.toString(),
+        pending.value,
+      );
+      applyExternalContent(merged);
+      if (merged !== pending.value) livePropsRef.current.onChange?.(merged);
+    };
+    finishCompositionRef.current = finishComposition;
     const onCompositionEnd = () => {
       composing = false;
       compositionFrame = window.requestAnimationFrame(() => {
-        const pending = pendingExternalContent;
-        if (!pending || composing) return;
-        pendingExternalContent = null;
-        const merged = mergeCompositionChange(
-          pending.base,
-          view.state.doc.toString(),
-          pending.value,
-        );
-        applyExternalContent(merged);
-        const live = livePropsRef.current;
-        if (merged !== pending.value && live.editable) live.onChange?.(merged);
+        if (!composing) finishComposition();
       });
     };
     const onScroll = () => reportView(view);
+    const preventReadOnlyInput = (event: Event) => {
+      if (livePropsRef.current.editable) return;
+      event.preventDefault();
+      // The enclosing group still owns internal tab drops.
+      if (event.type !== "drop") event.stopImmediatePropagation();
+    };
+    for (const type of ["beforeinput", "paste", "cut", "drop"]) {
+      host.addEventListener(type, preventReadOnlyInput, true);
+    }
     host.addEventListener("compositionstart", onCompositionStart, true);
     host.addEventListener("compositionend", onCompositionEnd);
     view.scrollDOM.addEventListener("scroll", onScroll, { passive: true });
@@ -471,7 +505,11 @@ export function CodeFilePreview({
       host.removeEventListener("compositionstart", onCompositionStart, true);
       host.removeEventListener("compositionend", onCompositionEnd);
       view.scrollDOM.removeEventListener("scroll", onScroll);
+      for (const type of ["beforeinput", "paste", "cut", "drop"]) {
+        host.removeEventListener(type, preventReadOnlyInput, true);
+      }
       syncContentRef.current = () => {};
+      finishCompositionRef.current = () => {};
       if (viewRef.current === view) viewRef.current = null;
       findTargetRef.current = null;
       view.destroy();
@@ -483,9 +521,10 @@ export function CodeFilePreview({
     syncContentRef.current(content);
   }, [content]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const view = viewRef.current;
     if (!view) return;
+    if (!editable && !view.state.readOnly) finishCompositionRef.current();
     view.dispatch({
       effects: compartments.editable.reconfigure(editableExtensions(editable)),
     });
@@ -572,6 +611,7 @@ export function CodeFilePreview({
     <section
       className={className}
       data-editable={editable ? "true" : "false"}
+      data-read-only={String(!editable)}
       data-language={language.trim().toLowerCase() || "text"}
       data-testid="code-file-preview"
       data-variant={variant}
@@ -627,7 +667,7 @@ export function CodeFilePreview({
         </div>
       </header>
       <div className="code-file-preview__find">
-        <FindBar find={find} locale={locale} />
+        <FindBar find={find} locale={locale} readOnly={!editable} />
       </div>
       <div
         aria-label={

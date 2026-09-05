@@ -14,7 +14,7 @@ class MainActivity : TauriActivity() {
 
   override fun onStart() {
     super.onStart()
-    if (!BuildConfig.DEBUG || multicastLock?.isHeld == true) return
+    if (multicastLock?.isHeld == true) return
     val wifiManager = applicationContext.getSystemService(WIFI_SERVICE) as? WifiManager
     multicastLock = wifiManager?.createMulticastLock("notespace-mdns")?.apply {
       setReferenceCounted(false)

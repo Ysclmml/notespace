@@ -49,36 +49,22 @@ export function findHighlightRanges(
 }
 
 /**
- * Regex matching remains native. The browser only locates the first visible match
- * in the returned snippet; its end always comes from the native UTF-16 length.
+ * Regex matching remains native. Only validate and draw its visible UTF-16 range;
+ * JavaScript's backtracking regex engine must not execute user queries here.
  */
 export function findRegexHighlightRange(
   text: string,
-  query: string,
-  caseSensitive: boolean,
-  matchLength: number,
-  matchColumn?: number,
+  start: number,
+  end: number,
 ): ReadonlyArray<readonly [number, number]> {
-  if (!query || !Number.isSafeInteger(matchLength) || matchLength <= 0) return [];
-  const columnStart = (matchColumn ?? 0) - 1;
   if (
-    !text.startsWith("…") &&
-    typeof matchColumn === "number" &&
-    Number.isSafeInteger(matchColumn) &&
-    columnStart >= 0 &&
-    columnStart + matchLength <= text.length
+    !Number.isSafeInteger(start) ||
+    !Number.isSafeInteger(end) ||
+    start < 0 ||
+    end <= start ||
+    end > text.length
   ) {
-    return [[columnStart, columnStart + matchLength]];
-  }
-  try {
-    const match = new RegExp(query, caseSensitive ? "u" : "iu").exec(text);
-    if (!match || match.index < 0) return [];
-    const end = match.index + matchLength;
-    if (end > text.length) return [];
-    return [[match.index, end]];
-  } catch {
-    // The native regex dialect is authoritative and can accept syntax that the
-    // browser does not understand. In that uncommon case, render plain text.
     return [];
   }
+  return [[start, end]];
 }

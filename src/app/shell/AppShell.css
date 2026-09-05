@@ -27,11 +27,16 @@
 .app-shell--focus .editor-groups {
   grid-template-rows: 0 minmax(0, 1fr);
 }
-.focus-mode-exit {
+.focus-mode-actions {
   position: fixed;
   right: 18px;
   bottom: 16px;
   z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.focus-mode-exit {
   display: flex;
   align-items: center;
   gap: 12px;
@@ -47,6 +52,9 @@
 .focus-mode-exit kbd {
   font: inherit;
   color: var(--ink-500);
+}
+.reading-mode-switch {
+  flex-shrink: 0;
 }
 .favorite-current {
   font-size: 23px;
@@ -1087,7 +1095,7 @@
 
   .workspace-identity__app,
   .workspace-identity__separator,
-  .editor-mode-switch,
+  .editor-mode-switch:not(.reading-mode-switch),
   .command-button span {
     display: none;
   }

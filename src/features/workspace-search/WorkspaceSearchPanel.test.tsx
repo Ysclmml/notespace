@@ -16,6 +16,8 @@ const match = {
   column: 4,
   matchLength: 8,
   snippet: "A matching paragraph",
+  snippetMatchStart: 2,
+  snippetMatchEnd: 10,
 };
 
 const result: WorkspaceSearchResponse = {
@@ -178,6 +180,8 @@ describe("WorkspaceSearchPanel", () => {
       snippet: "before item-2048 after",
       column: 8,
       matchLength: 9,
+      snippetMatchStart: 7,
+      snippetMatchEnd: 16,
     };
     const { container, props } = mount({
       search: vi.fn().mockResolvedValue({ ...result, matches: [regexMatch] }),

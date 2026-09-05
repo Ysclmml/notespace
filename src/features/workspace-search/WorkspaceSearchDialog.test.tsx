@@ -24,6 +24,8 @@ const match = {
   column: 1,
   matchLength: 7,
   snippet: "中文 keyword content",
+  snippetMatchStart: 3,
+  snippetMatchEnd: 10,
 };
 const response: WorkspaceSearchResponse = {
   matches: [match],

@@ -5,25 +5,17 @@ export function HighlightMatches({
   text,
   query,
   caseSensitive,
-  regexMatchLength,
-  regexMatchColumn,
+  regexMatchRange,
 }: {
   readonly text: string;
   readonly query: string;
   readonly caseSensitive: boolean;
-  readonly regexMatchLength?: number;
-  readonly regexMatchColumn?: number;
+  readonly regexMatchRange?: readonly [number, number];
 }) {
   const ranges =
-    regexMatchLength === undefined
+    regexMatchRange === undefined
       ? findHighlightRanges(text, query, caseSensitive)
-      : findRegexHighlightRange(
-          text,
-          query,
-          caseSensitive,
-          regexMatchLength,
-          regexMatchColumn,
-        );
+      : findRegexHighlightRange(text, regexMatchRange[0], regexMatchRange[1]);
   return (
     <>
       {ranges.map(([from, to], index) => (

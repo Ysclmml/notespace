@@ -7,18 +7,27 @@ import {
 } from "../../app/state";
 import type { DesktopAdapter } from "../../infrastructure/tauri/desktopAdapter";
 
+// Match the native command's bounded metadata batch, without limiting open tabs.
+const INSPECTION_BATCH_SIZE = 1024;
+
+function tabReferencesDocument(tab: AppState["tabs"][string], id: string): boolean {
+  return [tab.current, ...tab.back, ...tab.forward].some(
+    (entry) => entry.documentId === id,
+  );
+}
+
 /** Bind pending I/O to its original references, never a later same-path reopen. */
 export function captureDocumentOwnership(
   state: AppState,
   id: string,
 ): (state: AppState) => boolean {
-  const references = (tab: AppState["tabs"][string]) =>
-    [tab.current, ...tab.back, ...tab.forward].some((entry) => entry.documentId === id);
   const owners = Object.values(state.tabs)
-    .filter(references)
+    .filter((tab) => tabReferencesDocument(tab, id))
     .map((tab) => tab.id);
   return (latest) =>
-    owners.some((tabId) => latest.tabs[tabId] && references(latest.tabs[tabId]!));
+    owners.some(
+      (tabId) => latest.tabs[tabId] && tabReferencesDocument(latest.tabs[tabId]!, id),
+    );
 }
 
 export function referencedFilePaths(state: AppState): string[] {
@@ -53,17 +62,36 @@ export async function synchronizeDocuments({
   const paths = referencedFilePaths(state).filter((path) => !isSaving(path));
   if (!paths.length) return;
   const snapshots = new Map(paths.map((path) => [path, state.sessions[path]!]));
-  const entries = await adapter.inspectDocuments(paths);
+  const owners = new Map<string, string[]>();
+  for (const tab of Object.values(state.tabs)) {
+    for (const id of new Set(
+      [tab.current, ...tab.back, ...tab.forward].map((entry) => entry.documentId),
+    )) {
+      const tabIds = owners.get(id) ?? [];
+      tabIds.push(tab.id);
+      owners.set(id, tabIds);
+    }
+  }
+  const entries = [];
+  for (let offset = 0; offset < paths.length; offset += INSPECTION_BATCH_SIZE) {
+    entries.push(
+      ...(await adapter.inspectDocuments(
+        paths.slice(offset, offset + INSPECTION_BATCH_SIZE),
+      )),
+    );
+  }
   for (const entry of entries) {
     const before = snapshots.get(entry.path);
     if (!before) continue;
-    const stillOwned = captureDocumentOwnership(state, before.id);
+    const originalOwners = owners.get(before.id) ?? [];
     const current = () => {
       const latest = getState();
       const session = latest.sessions[before.id];
       return session &&
-        stillOwned(latest) &&
-        referencedFilePaths(latest).includes(before.path) &&
+        originalOwners.some(
+          (tabId) =>
+            latest.tabs[tabId] && tabReferencesDocument(latest.tabs[tabId]!, before.id),
+        ) &&
         session.path === before.path &&
         session.diskRevision === before.diskRevision &&
         !isSaving(before.id)

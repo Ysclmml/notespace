@@ -1,11 +1,46 @@
 import { describe, expect, it } from "vitest";
 
-import { normalizeMobileLocalState, updateRecentDocument } from "./storage";
+import {
+  findRecentDocument,
+  normalizeMobileLocalState,
+  updateRecentDocument,
+} from "./storage";
 import type { MobileLocalState } from "./types";
 
 const position = { progress: 0.4, scrollTop: 320, updatedAt: "2026-09-04T10:00:00Z" };
 
 describe("mobile local reader state", () => {
+  it("migrates a restarted document and its position without duplicating a stable recent entry", () => {
+    const previous = {
+      computerId: "computer-a",
+      documentId: "old-document",
+      title: "说明",
+      relativePath: "设计/说明.md",
+      workspaceName: "工作区",
+      workspaceSyncKey: "stable-key",
+      position,
+    };
+    const state = updateRecentDocument({ positions: {}, recentDocuments: [] }, previous);
+    const document = {
+      id: "new-document",
+      workspaceId: "new-workspace",
+      workspaceName: "工作区",
+      title: "说明",
+      relativePath: "设计/说明.md",
+      markdown: "# 说明",
+    };
+    expect(findRecentDocument(state, "computer-a", document, "stable-key", false)).toEqual(
+      previous,
+    );
+    expect(
+      findRecentDocument(state, "computer-a", document, "other-key", false),
+    ).toBeUndefined();
+    const migrated = updateRecentDocument(state, { ...previous, documentId: document.id });
+    expect(migrated.recentDocuments).toHaveLength(1);
+    expect(migrated.positions["computer-a:new-document"]).toEqual(position);
+    expect(migrated.positions["computer-a:old-document"]).toBeUndefined();
+    expect(normalizeMobileLocalState(migrated)).toEqual(migrated);
+  });
   it("moves a reopened document to the front and keeps the list bounded", () => {
     let state: MobileLocalState = { positions: {}, recentDocuments: [] };
     for (let index = 0; index < 35; index += 1) {

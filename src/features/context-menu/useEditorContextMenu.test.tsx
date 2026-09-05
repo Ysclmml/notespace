@@ -3,8 +3,10 @@ import { describe, expect, it } from "vitest";
 
 import { useEditorContextMenu } from "./useEditorContextMenu";
 
-function ContextMenuHarness() {
-  const { contextMenu, onContextMenu, onPointerDownCapture } = useEditorContextMenu();
+function ContextMenuHarness({ readOnly = false }: { readonly readOnly?: boolean }) {
+  const { contextMenu, onContextMenu, onPointerDownCapture } = useEditorContextMenu({
+    readOnly,
+  });
   return (
     <div
       data-testid="surface"
@@ -15,6 +17,17 @@ function ContextMenuHarness() {
         code
       </span>
       <span data-testid="non-editor">chrome</span>
+      <div
+        className="ProseMirror"
+        contentEditable={!readOnly}
+        data-testid="document"
+        suppressContentEditableWarning
+      >
+        <p>readable text</p>
+      </div>
+      <input aria-label="Find query" />
+      <a href="./guide.md">Linked document</a>
+      <output data-testid="read-only">{String(contextMenu.readOnly)}</output>
       <output data-testid="state">
         {contextMenu.open
           ? `${contextMenu.position.x},${contextMenu.position.y}`
@@ -91,5 +104,36 @@ describe("useEditorContextMenu", () => {
       }),
     ).toBe(true);
     expect(screen.getByTestId("state")).toHaveTextContent("closed");
+  });
+
+  it("opens a reading menu for a noneditable document and preserves its selection", () => {
+    render(<ContextMenuHarness readOnly />);
+    const paragraph = screen.getByTestId("document").querySelector("p")!;
+    const range = document.createRange();
+    range.selectNodeContents(paragraph);
+    window.getSelection()?.removeAllRanges();
+    window.getSelection()?.addRange(range);
+
+    secondaryPointerDown(paragraph);
+    window.getSelection()?.collapse(paragraph.firstChild, 0);
+    expect(fireEvent.contextMenu(paragraph, { clientX: 40, clientY: 55 })).toBe(false);
+
+    expect(screen.getByTestId("state")).toHaveTextContent("40,55");
+    expect(screen.getByTestId("read-only")).toHaveTextContent("true");
+    expect(window.getSelection()?.toString()).toBe("readable text");
+  });
+
+  it("updates an open document menu when reading mode changes and exempts ordinary inputs", () => {
+    const { rerender } = render(<ContextMenuHarness />);
+    fireEvent.contextMenu(screen.getByTestId("document"));
+    expect(screen.getByTestId("read-only")).toHaveTextContent("false");
+
+    rerender(<ContextMenuHarness readOnly />);
+    expect(screen.getByTestId("read-only")).toHaveTextContent("true");
+    fireEvent.contextMenu(screen.getByRole("textbox", { name: "Find query" }));
+    expect(screen.getByTestId("read-only")).toHaveTextContent("false");
+    expect(screen.getByTestId("state")).not.toHaveTextContent("closed");
+    fireEvent.contextMenu(screen.getByRole("link", { name: "Linked document" }));
+    expect(screen.getByTestId("read-only")).toHaveTextContent("true");
   });
 });

@@ -2,17 +2,21 @@
 
 | 字段     | 值                                                                               |
 | -------- | -------------------------------------------------------------------------------- |
-| 状态     | Approved baseline 2.3（ADR-0026；NoteSpace 0.2.2，跨表面数学分隔符兼容）         |
-| 日期     | 2026-09-04                                                                       |
+| 状态     | Approved baseline 2.5（ADR-0028；手动阅读模式，版本 0.2.3）                      |
+| 日期     | 2026-09-05                                                                       |
 | 首发平台 | macOS 桌面端；Android 移动阅读端优先                                             |
 | 技术栈   | React 19 + TypeScript + Milkdown/ProseMirror + CodeMirror 6 + Tauri 2 + Rust     |
 | 数据原则 | 本地 Markdown、文本与图片资源文件是唯一持久化真相；UI 投影和本机便利状态均可重建 |
 
 本文是实现、评审和上下文压缩后的首要产品规范。若历史设计与本文冲突，以 [ADR-0005](decisions/0005-lean-local-editor-boundary.md)、[ADR-0006](decisions/0006-visual-editor-explicit-source-mode.md)、[ADR-0007](decisions/0007-local-files-multiple-workspaces-and-split-preview.md)、[ADR-0008](decisions/0008-save-workspace-files-and-visual-tables.md)、[ADR-0009](decisions/0009-recoverable-workspace-delete-and-dirty-close.md)、[ADR-0010](decisions/0010-workspace-context-actions-and-folder-creation.md)、[ADR-0011](decisions/0011-editor-groups-preview-tabs-and-image-links.md) 和本文为准。
 
-导航规则由 [ADR-0012](decisions/0012-markdown-link-policy-and-window-navigation.md) 更新：普通 Markdown 链接按当前标签是否固定选择新页/原位，工具栏前进/后退使用窗口级跨标签访问轨迹。[ADR-0013](decisions/0013-browsing-restore-and-unified-editor-panes.md) 进一步取代旧的独立右侧只读栏、分屏复制标签和不恢复浏览元数据边界。[ADR-0014](decisions/0014-external-filesystem-changes.md) 接受轻量外部文件监听、重载与版本检查，取代“外部修改后置”。[ADR-0015](decisions/0015-workspace-clipboard-images.md) 接受每工作区截图位置、剪贴板兼容和本地图片单文件授权；冲突时以最新适用 ADR 和当前 baseline 2.3 为准。
+导航规则由 [ADR-0012](decisions/0012-markdown-link-policy-and-window-navigation.md) 更新：普通 Markdown 链接按当前标签是否固定选择新页/原位，工具栏前进/后退使用窗口级跨标签访问轨迹。[ADR-0013](decisions/0013-browsing-restore-and-unified-editor-panes.md) 进一步取代旧的独立右侧只读栏、分屏复制标签和不恢复浏览元数据边界。[ADR-0014](decisions/0014-external-filesystem-changes.md) 接受轻量外部文件监听、重载与版本检查，取代“外部修改后置”。[ADR-0015](decisions/0015-workspace-clipboard-images.md) 接受每工作区截图位置、剪贴板兼容和本地图片单文件授权；冲突时以最新适用 ADR 和当前 baseline 2.4 为准。
 
 ## 1. 产品定义
+
+[ADR-0028](decisions/0028-manual-reading-mode.md) 增加桌面手动阅读模式：默认编辑，顶部常驻“阅读 / 编辑”，专注时也可直接切换；窗口内所有现有和新打开标签一同只读。保留当前可视/源码表面、位置、已有修改和 Undo；隐藏正文编辑工具、源码切换和查找替换，只保留选择、复制、查找、链接/图表查看等阅读动作。普通查找/设置输入框不受影响，不清除 dirty 或绕过保存/关闭保护，不持久化阅读开关。冲突时以 baseline 2.5 和最新适用 ADR 为准。
+
+[ADR-0027](decisions/0027-editor-stability-and-rendering-work.md) 移除可视正文左侧鼠标跟随加号/块选择入口，保留右键结构编辑；同文档已访问表面保留内存 Undo，隐藏时暂停同步与视图事件。它同时固定公式容器语义、规范文件身份、有界 clean 历史/正文回收、分批外部检查、原生搜索片段高亮范围、大纲投影复用，以及移动离线完整性与稳定最近身份。冲突时以 baseline 2.4 和最新适用 ADR 为准；具体生命周期及上限见该决策。
 
 [ADR-0016](decisions/0016-workspace-search-html-export-and-restore-notice.md) 增加工作区全文搜索、静态 HTML 导出及失效浏览恢复提示。[ADR-0017](decisions/0017-writing-tools-and-shareable-exports.md) 将导出升级为含图片和静态 Mermaid 的可分享 HTML 与 macOS PDF，并增加可配置格式快捷键、当前页替换、收藏、专注和模板；冲突时优先于早期基线，其他编辑与数据边界保持不变。
 
@@ -248,6 +252,8 @@ NoteSpace（笔记空间）是一个“像 Typora 一样编辑、像浏览器一
 ### 4.5 代码块、fence 补全与列表
 
 - 可视 fenced code 使用浅色 CodeMirror，正常 gutter、active line 和 selection 不出现深色整块；选区背景与前景保持足够对比，选中后 token 仍可辨认。
+- 已展开的代码块、块公式和 Mermaid 离屏回收编辑实例时，占位保留最后一次实际高度；同一内容重新加载预览期间也保留该高度，避免后台回收推移阅读中的正文。高度仅属于当前视图，正文或语言改变后失效，不写 Markdown、不进 Undo。保持按需挂载与离屏回收，不通过滚动轮询或反复回写位置来校准页面；显式导航、查找和正常编辑定位保持原有行为。
+- 可视正文使用原生输入光标，关闭 Crepe 在文首插入的虚拟光标装饰；保留块间光标和拖放指示。IME 组合选区的展开/折叠不得切换首正文块的边距或推动整篇内容，正常光标可见性、查找和导航定位仍由既有编辑流程处理。
 - 焦点移到代码块外的正文输入后，不再显示代码块旧的活动选区或匹配选区；不修改代码正文，也不以失焦制造 Undo 记录。
 - 语言选择器和 Copy 常显；语言菜单可搜索/滚动且不被代码块裁切。
 - 光标在普通 paragraph 空选择中，且全段匹配 `/^```([a-z]{0,32})$/` 时，从本地语言表按 ID/alias 前缀返回最多 8 个候选。

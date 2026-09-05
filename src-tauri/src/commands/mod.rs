@@ -455,6 +455,10 @@ fn save_document_guarded_with_hook(
     expected_revision: Option<&str>,
     before_commit: impl FnOnce(),
 ) -> BackendResult<SaveDocumentResult> {
+    // Existing aliases must replace their real file, never the symlink itself.
+    // New Save As targets use the canonical parent and keep their chosen name.
+    let normalized_path = comparable_path(path);
+    let path = normalized_path.as_path();
     filesystem::check_expected_revision(path, expected_revision)?;
     let mut conflict = None;
     let result = atomic_write_with_hook(path, content.as_bytes(), |_| {
@@ -1018,6 +1022,12 @@ fn open_document_with_hook(
     path: &Path,
     after_preflight: impl FnOnce(),
 ) -> BackendResult<OpenDocumentResult> {
+    // The returned path is the shared session identity, including case aliases
+    // on case-insensitive volumes and explicitly opened symbolic links.
+    let normalized_path = path
+        .canonicalize()
+        .map_err(|error| BackendError::io("document could not be opened", error))?;
+    let path = normalized_path.as_path();
     let mut file = File::open(path)
         .map_err(|error| BackendError::io("document could not be opened", error))?;
     let metadata = file
@@ -1459,7 +1469,7 @@ mod tests {
                 std::process::id()
             ));
             fs::create_dir(&path).expect("create isolated test directory");
-            Self(path)
+            Self(path.canonicalize().expect("canonical test directory"))
         }
 
         pub(super) fn path(&self) -> &Path {
@@ -2015,6 +2025,77 @@ mod tests {
             }
             OpenDocumentResult::Blocked { .. } => panic!("ordinary Markdown was blocked"),
         }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn opening_and_saving_aliases_uses_one_real_document_without_replacing_the_link() {
+        let temp = TestDirectory::new("document-alias");
+        let target = temp.path().join("target.md");
+        let alias = temp.path().join("alias.md");
+        fs::write(&target, "original").unwrap();
+        std::os::unix::fs::symlink(&target, &alias).unwrap();
+        let OpenDocumentResult::Editable {
+            path,
+            disk_revision,
+            ..
+        } = open_document_path(&alias).unwrap()
+        else {
+            panic!("editable alias");
+        };
+        assert_eq!(path, display_path(&target));
+        let saved =
+            save_document_guarded(&alias, "saved through alias", Some(&disk_revision)).unwrap();
+        assert_eq!(saved.path, path);
+        assert!(fs::symlink_metadata(&alias)
+            .unwrap()
+            .file_type()
+            .is_symlink());
+        assert_eq!(fs::read_to_string(&target).unwrap(), "saved through alias");
+
+        let saved_as = save_document_as_path(&alias, "save as through alias", &[]).unwrap();
+        assert_eq!(saved_as.path, path);
+        assert!(fs::symlink_metadata(&alias)
+            .unwrap()
+            .file_type()
+            .is_symlink());
+        assert_eq!(
+            fs::read_to_string(&target).unwrap(),
+            "save as through alias"
+        );
+        assert_eq!(
+            save_document_as_path(&alias, "do not overwrite", &[path])
+                .unwrap_err()
+                .code,
+            "saveTargetAlreadyOpen"
+        );
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn case_insensitive_open_returns_the_same_document_identity() {
+        let temp = TestDirectory::new("document-case-alias");
+        let target = temp.path().join("Example.md");
+        let alternate = temp.path().join("example.md");
+        fs::write(&target, "same file").unwrap();
+        if !alternate.exists() {
+            // A case-sensitive volume legitimately treats these as different paths.
+            return;
+        }
+        let OpenDocumentResult::Editable { path: first, .. } = open_document_path(&target).unwrap()
+        else {
+            panic!("editable original");
+        };
+        let OpenDocumentResult::Editable { path: second, .. } =
+            open_document_path(&alternate).unwrap()
+        else {
+            panic!("editable alternate");
+        };
+        assert_eq!(first, second);
+        assert_eq!(
+            save_document_path(&alternate, "changed").unwrap().path,
+            first
+        );
     }
 
     #[test]

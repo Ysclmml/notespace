@@ -49,6 +49,8 @@ export interface MobileDirectory {
   readonly name: string;
   readonly breadcrumbs: readonly MobileBreadcrumb[];
   readonly entries: readonly MobileDirectoryEntry[];
+  /** True when the host could not return every readable entry. */
+  readonly truncated?: boolean;
 }
 
 export interface MobileDocument {
@@ -99,6 +101,8 @@ export interface MobileRecentDocument {
   readonly title: string;
   readonly relativePath: string;
   readonly workspaceName: string;
+  /** Stable across desktop sharing restarts; absent in older reader records. */
+  readonly workspaceSyncKey?: string;
   readonly position: MobileReadPosition;
 }
 

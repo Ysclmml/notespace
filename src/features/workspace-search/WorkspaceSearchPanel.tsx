@@ -539,10 +539,11 @@ export function WorkspaceSearchPanel({
                                   text={match.snippet}
                                   query={query}
                                   caseSensitive={caseSensitive}
-                                  regexMatchLength={
-                                    useRegex ? match.matchLength : undefined
+                                  regexMatchRange={
+                                    useRegex
+                                      ? [match.snippetMatchStart, match.snippetMatchEnd]
+                                      : undefined
                                   }
-                                  regexMatchColumn={useRegex ? match.column : undefined}
                                 />
                               </code>
                             </button>

@@ -5,10 +5,19 @@ import {
   syntaxHighlighting,
 } from "@codemirror/language";
 import { markdown } from "@codemirror/lang-markdown";
-import { EditorSelection, EditorState, Transaction } from "@codemirror/state";
+import { Compartment, EditorSelection, EditorState, Transaction } from "@codemirror/state";
 import { drawSelection, EditorView, highlightActiveLine, keymap } from "@codemirror/view";
 import { tags } from "@lezer/highlight";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { createPortal } from "react-dom";
 
 import {
   linkDispositionFromPointer,
@@ -66,10 +75,13 @@ export interface MarkdownEditorProps {
   readonly value: string;
   readonly mode: "normal" | "sourceOnly";
   readonly presentationMode?: "visual" | "source";
+  readonly readOnly?: boolean;
   readonly autofocus?: boolean;
   /** Controls wrapping inside fenced code blocks on the visual surface. */
   readonly codeWrap?: boolean;
   readonly initialView?: EditorViewSnapshot;
+  /** Internal view restoration when a retained surface is attached again. */
+  readonly surfaceActivation?: number;
   readonly locale?: MarkdownEditorLocale;
   readonly findRequest?: number;
   readonly onFindRequestConsumed?: (request: number) => void;
@@ -244,6 +256,10 @@ function editorExtensions(
         return event.button === 1 ? openMarkdownLink(event, view) : false;
       },
       paste(event, view) {
+        if (view.state.readOnly) {
+          event.preventDefault();
+          return true;
+        }
         const text = event.clipboardData?.getData("text/plain") ?? "";
         if (
           isOversizedInlineImagePaste(text) ||
@@ -297,6 +313,7 @@ function SourceMarkdownEditorInstance({
   documentId,
   value,
   mode,
+  readOnly = false,
   autofocus = true,
   locale = "zh-CN",
   findRequest,
@@ -311,6 +328,7 @@ function SourceMarkdownEditorInstance({
   onRevealConsumed,
   onViewChange,
   initialView,
+  surfaceActivation,
   reveal,
 }: MarkdownEditorProps) {
   const shortcuts = useFormattingShortcuts();
@@ -319,8 +337,12 @@ function SourceMarkdownEditorInstance({
     shortcutsRef.current = shortcuts;
   }, [shortcuts]);
   const hostRef = useRef<HTMLDivElement>(null);
+  const readingCompartment = useMemo(() => new Compartment(), []);
   const viewRef = useRef<EditorView | null>(null);
   const syncValueRef = useRef<(nextValue: string) => void>(() => {});
+  const resetCompositionRef = useRef<() => void>(() => {});
+  const finishCompositionRef = useRef<() => void>(() => {});
+  const findCompositionRef = useRef<() => boolean>(() => false);
   const onChangeRef = useRef(onChange);
   const onImagePasteRef = useRef(onImagePaste);
   const onInternalLinkRef = useRef(onInternalLink);
@@ -328,6 +350,7 @@ function SourceMarkdownEditorInstance({
   const onPasteErrorRef = useRef(onPasteError);
   const onRevealConsumedRef = useRef(onRevealConsumed);
   const onViewChangeRef = useRef(onViewChange);
+  const latestAutofocusRef = useRef(autofocus);
   const consumedRevealRef = useRef<number | null>(null);
   const consumedImageInsertRef = useRef<number | null>(null);
   const initialViewRestoredRef = useRef(false);
@@ -338,12 +361,14 @@ function SourceMarkdownEditorInstance({
     initialView,
     locale,
     mode,
+    readOnly,
     value,
   });
   const find = usePageFind(findRequest, onFindRequestConsumed);
   const { targetRef: findTargetRef, refresh: refreshFind } = find;
 
-  useEffect(() => {
+  useLayoutEffect(() => {
+    latestAutofocusRef.current = autofocus;
     onChangeRef.current = onChange;
     onImagePasteRef.current = onImagePaste;
     onInternalLinkRef.current = onInternalLink;
@@ -352,6 +377,7 @@ function SourceMarkdownEditorInstance({
     onRevealConsumedRef.current = onRevealConsumed;
     onViewChangeRef.current = onViewChange;
   }, [
+    autofocus,
     onChange,
     onImagePaste,
     onInternalLink,
@@ -370,6 +396,7 @@ function SourceMarkdownEditorInstance({
     let composing = false;
     let compositionFrame = 0;
     let pendingExternalValue: { base: string; value: string } | null = null;
+    findCompositionRef.current = () => composing || Boolean(pendingExternalValue);
     const semanticSelection = initial.initialView?.semanticPosition
       ? markdownPositionFromSemantic(initial.value, initial.initialView.semanticPosition)
       : undefined;
@@ -389,7 +416,7 @@ function SourceMarkdownEditorInstance({
     );
 
     const reportView = (view: EditorView, preferViewport = false) => {
-      if (!initialViewRestoredRef.current) return;
+      if (!initialViewRestoredRef.current || !host.isConnected) return;
       const selection = view.state.selection.main;
       const semanticPosition = preferViewport
         ? sourceViewportPosition(view)
@@ -408,23 +435,49 @@ function SourceMarkdownEditorInstance({
     const state = EditorState.create({
       doc: initial.value,
       selection: EditorSelection.range(selectionFrom, selectionTo),
-      extensions: editorExtensions(
-        (nextValue) => {
-          refreshFind();
-          if (!applyingExternalValue && !pendingExternalValue) {
-            onChangeRef.current(nextValue);
-          }
-        },
-        () => onImagePasteRef.current,
-        (target, disposition) => onInternalLinkRef.current?.(target, disposition),
-        (message) => onPasteRejectedRef.current?.(message),
-        (message) => onPasteErrorRef.current?.(message),
-        reportView,
-        (candidate) => viewRef.current === candidate,
-        initial.locale,
-      ),
+      extensions: [
+        readingCompartment.of([
+          EditorState.readOnly.of(initial.readOnly),
+          EditorView.editable.of(!initial.readOnly),
+          EditorView.contentAttributes.of({
+            tabindex: "0",
+            "aria-readonly": String(initial.readOnly),
+          }),
+        ]),
+        ...editorExtensions(
+          (nextValue) => {
+            refreshFind();
+            if (host.isConnected && !applyingExternalValue && !pendingExternalValue) {
+              onChangeRef.current(nextValue);
+            }
+          },
+          () => onImagePasteRef.current,
+          (target, disposition) => onInternalLinkRef.current?.(target, disposition),
+          (message) => onPasteRejectedRef.current?.(message),
+          (message) => onPasteErrorRef.current?.(message),
+          reportView,
+          (candidate) =>
+            viewRef.current === candidate && host.isConnected && !candidate.state.readOnly,
+          initial.locale,
+        ),
+      ],
     });
-    const view = new EditorView({ state, parent: host });
+    const view = new EditorView({
+      state,
+      parent: host,
+      dispatchTransactions(transactions, currentView) {
+        // Commands such as Undo may dispatch with filter:false. Enforce the
+        // reading boundary before applying any transaction, while allowing the
+        // existing passive synchronization path to refresh shared text.
+        if (
+          !applyingExternalValue &&
+          currentView.state.readOnly &&
+          transactions.some((transaction) => transaction.docChanged)
+        )
+          return;
+        currentView.update(transactions);
+      },
+    });
     viewRef.current = view;
     findTargetRef.current = codeMirrorFindTarget(
       view,
@@ -432,7 +485,8 @@ function SourceMarkdownEditorInstance({
     );
     refreshFind();
     const onFormattingKeyDown = (event: KeyboardEvent) => {
-      if (!view.hasFocus || composing || formattingIsBlocked(event)) return;
+      if (view.state.readOnly || !view.hasFocus || composing || formattingIsBlocked(event))
+        return;
       const action = matchFormattingShortcut(event, shortcutsRef.current);
       if (!action) return;
       event.preventDefault();
@@ -440,6 +494,15 @@ function SourceMarkdownEditorInstance({
       runSourceFormatting(view, action);
     };
     host.addEventListener("keydown", onFormattingKeyDown, true);
+    const preventReadOnlyInput = (event: Event) => {
+      if (!view.state.readOnly) return;
+      event.preventDefault();
+      // The enclosing group still owns internal tab drops.
+      if (event.type !== "drop") event.stopImmediatePropagation();
+    };
+    for (const type of ["beforeinput", "paste", "cut", "drop"]) {
+      host.addEventListener(type, preventReadOnlyInput, true);
+    }
     const applyExternalValue = (nextValue: string) => {
       const change = sharedTextChange(view.state.doc.toString(), nextValue);
       if (!change) return;
@@ -463,7 +526,7 @@ function SourceMarkdownEditorInstance({
         return;
       }
       if (nextValue === current) return;
-      if (composing || view.composing) {
+      if (!view.state.readOnly && (composing || view.composing)) {
         pendingExternalValue = {
           base: current,
           value: nextValue,
@@ -473,24 +536,36 @@ function SourceMarkdownEditorInstance({
       applyExternalValue(nextValue);
     };
     const onCompositionStart = () => {
+      if (view.state.readOnly) return;
       composing = true;
       window.cancelAnimationFrame(compositionFrame);
     };
+    const finishComposition = () => {
+      window.cancelAnimationFrame(compositionFrame);
+      const pending = pendingExternalValue;
+      pendingExternalValue = null;
+      composing = false;
+      if (!pending || !host.isConnected) return;
+      const merged = mergeCompositionChange(
+        pending.base,
+        view.state.doc.toString(),
+        pending.value,
+      );
+      applyExternalValue(merged);
+      if (merged !== pending.value) onChangeRef.current(merged);
+    };
+    finishCompositionRef.current = finishComposition;
     const onCompositionEnd = () => {
       composing = false;
       // Let the editor finish the compositionend/input transaction first.
       compositionFrame = window.requestAnimationFrame(() => {
-        const pending = pendingExternalValue;
-        if (!pending || composing) return;
-        pendingExternalValue = null;
-        const merged = mergeCompositionChange(
-          pending.base,
-          view.state.doc.toString(),
-          pending.value,
-        );
-        applyExternalValue(merged);
-        if (merged !== pending.value) onChangeRef.current(merged);
+        if (!composing) finishComposition();
       });
+    };
+    resetCompositionRef.current = () => {
+      composing = false;
+      pendingExternalValue = null;
+      window.cancelAnimationFrame(compositionFrame);
     };
     host.addEventListener("compositionstart", onCompositionStart, true);
     host.addEventListener("compositionend", onCompositionEnd);
@@ -509,10 +584,10 @@ function SourceMarkdownEditorInstance({
         });
       }
       initialViewRestoredRef.current = true;
+      if (latestAutofocusRef.current && host.isConnected) view.focus();
       reportView(view);
       applyImageInsertRequestRef.current();
     });
-    if (initial.autofocus) view.focus();
 
     return () => {
       window.cancelAnimationFrame(restoreFrame);
@@ -522,16 +597,84 @@ function SourceMarkdownEditorInstance({
       host.removeEventListener("compositionend", onCompositionEnd);
       view.scrollDOM.removeEventListener("scroll", onScroll);
       syncValueRef.current = () => {};
+      resetCompositionRef.current = () => {};
+      finishCompositionRef.current = () => {};
       viewRef.current = null;
       findTargetRef.current = null;
       host.removeEventListener("keydown", onFormattingKeyDown, true);
+      for (const type of ["beforeinput", "paste", "cut", "drop"]) {
+        host.removeEventListener(type, preventReadOnlyInput, true);
+      }
       view.destroy();
     };
-  }, [findTargetRef, refreshFind]);
+  }, [findTargetRef, readingCompartment, refreshFind]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
+    const view = viewRef.current;
+    if (!view) return;
+    // Preserve text already entered before locking, including a deferred IME
+    // merge; reading mode must not silently discard an existing draft.
+    if (readOnly && !view.state.readOnly) finishCompositionRef.current();
+    view.dispatch({
+      effects: readingCompartment.reconfigure([
+        EditorState.readOnly.of(readOnly),
+        EditorView.editable.of(!readOnly),
+        EditorView.contentAttributes.of({
+          tabindex: "0",
+          "aria-readonly": String(readOnly),
+        }),
+      ]),
+    });
+    findTargetRef.current = codeMirrorFindTarget(view, () => findCompositionRef.current());
+    refreshFind();
+  }, [findTargetRef, readOnly, readingCompartment, refreshFind]);
+
+  useLayoutEffect(() => {
+    resetCompositionRef.current();
+    syncValueRef.current(value);
+    // A newly reattached surface must discard an old IME merge and consume the
+    // current authority even if the prop text equals its pre-detachment value.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [surfaceActivation]);
+
+  useLayoutEffect(() => {
     syncValueRef.current(value);
   }, [value]);
+
+  useEffect(() => {
+    if (surfaceActivation === undefined) return;
+    const view = viewRef.current;
+    if (!view || !initialViewRestoredRef.current) return;
+    const semantic = initialView?.semanticPosition;
+    const from = Math.min(
+      view.state.doc.length,
+      semantic
+        ? markdownPositionFromSemantic(view.state.doc.toString(), semantic)
+        : (initialView?.selectionFrom ?? view.state.selection.main.from),
+    );
+    const to = semantic
+      ? from
+      : Math.min(view.state.doc.length, initialView?.selectionTo ?? from);
+    view.dispatch({ selection: EditorSelection.range(from, to) });
+    if (semantic)
+      view.dispatch({
+        effects: EditorView.scrollIntoView(from, { y: "start", yMargin: 40 }),
+      });
+    else if (initialView) view.scrollDOM.scrollTop = initialView.scrollTop;
+    view.requestMeasure();
+    if (autofocus) view.focus();
+    onViewChangeRef.current?.({
+      scrollTop: view.scrollDOM.scrollTop,
+      selectionFrom: view.state.selection.main.from,
+      selectionTo: view.state.selection.main.to,
+      semanticPosition: semanticPositionFromMarkdown(
+        view.state.doc.toString(),
+        view.state.selection.main.from,
+      ),
+    });
+    // Snapshot and focus are captured for this activation, not every scroll.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [surfaceActivation]);
 
   useEffect(() => {
     applyImageInsertRequestRef.current = () => {
@@ -540,6 +683,7 @@ function SourceMarkdownEditorInstance({
       if (
         !request ||
         !view ||
+        !view.dom.isConnected ||
         !initialViewRestoredRef.current ||
         consumedImageInsertRef.current === request.id
       )
@@ -547,6 +691,7 @@ function SourceMarkdownEditorInstance({
       consumedImageInsertRef.current = request.id;
       try {
         if (
+          view.state.readOnly ||
           request.documentId !== documentId ||
           request.editorMode !== "source" ||
           request.expectedText !== view.state.doc.toString() ||
@@ -595,8 +740,9 @@ function SourceMarkdownEditorInstance({
       aria-label="Markdown 编辑器"
       className={`markdown-editor markdown-editor--source markdown-editor--${mode}`}
       data-document-id={documentId}
+      data-read-only={String(readOnly)}
     >
-      <FindBar find={find} locale={locale} />
+      <FindBar find={find} locale={locale} readOnly={readOnly} />
       <div className="markdown-editor__source-host" ref={hostRef} />
     </div>
   );
@@ -604,6 +750,8 @@ function SourceMarkdownEditorInstance({
 
 interface SurfaceCoordinatorState {
   readonly activeMode: "visual" | "source";
+  readonly activation: number;
+  readonly activationView?: EditorViewSnapshot;
   readonly snapshots: Partial<
     Record<
       "visual" | "source",
@@ -618,12 +766,13 @@ function CoordinatedMarkdownEditor(props: MarkdownEditorProps) {
   const notifyViewChange = props.onViewChange;
   const [coordinator, setCoordinator] = useState<SurfaceCoordinatorState>(() => ({
     activeMode: presentationMode,
+    activation: 0,
     snapshots: {},
   }));
   const switchedSurface = coordinator.activeMode !== presentationMode;
   const previousSnapshot = coordinator.snapshots[coordinator.activeMode]?.view;
   const savedTarget = coordinator.snapshots[presentationMode];
-  let initialView = props.initialView;
+  let initialView = coordinator.activationView ?? props.initialView;
   if (!props.reveal) {
     if (savedTarget?.value === props.value) {
       // Offsets and pixels only have meaning in their original surface. A
@@ -635,10 +784,19 @@ function CoordinatedMarkdownEditor(props: MarkdownEditorProps) {
       initialView = viewForSemanticModeSwitch(previousSnapshot);
     }
   }
+  if (switchedSurface) {
+    setCoordinator({
+      ...coordinator,
+      activeMode: presentationMode,
+      activation: coordinator.activation + 1,
+      activationView: initialView,
+    });
+  }
 
   const onViewChange = useCallback(
     (view: EditorViewSnapshot) => {
       setCoordinator((current) => ({
+        ...current,
         activeMode: presentationMode,
         snapshots: {
           ...current.snapshots,
@@ -650,17 +808,87 @@ function CoordinatedMarkdownEditor(props: MarkdownEditorProps) {
     [notifyViewChange, presentationMode, props.value],
   );
 
-  const surfaceProps = { ...props, initialView, onViewChange };
-
-  if (presentationMode === "visual") {
-    return <VisualMarkdownEditor {...surfaceProps} />;
-  }
+  const surfaceProps = {
+    ...props,
+    initialView,
+    onViewChange,
+    surfaceActivation: coordinator.activation,
+  };
 
   return (
-    <SourceMarkdownEditorInstance
-      {...surfaceProps}
-      key={`${props.instanceId ?? props.documentId}:${props.documentId}:source`}
-    />
+    <>
+      <RetainedSurface
+        active={presentationMode === "visual"}
+        surface="visual"
+        editorProps={surfaceProps}
+      />
+      <RetainedSurface
+        active={presentationMode === "source"}
+        surface="source"
+        editorProps={surfaceProps}
+      />
+    </>
+  );
+}
+
+const FrozenEditorSurface = memo(
+  function FrozenEditorSurface({
+    surface,
+    editorProps,
+  }: {
+    active: boolean;
+    surface: "visual" | "source";
+    editorProps: MarkdownEditorProps;
+  }) {
+    return surface === "visual" ? (
+      <VisualMarkdownEditor {...editorProps} />
+    ) : (
+      <SourceMarkdownEditorInstance {...editorProps} />
+    );
+  },
+  (previous, next) =>
+    !next.active ||
+    (previous.active === next.active && previous.editorProps === next.editorProps),
+);
+
+function RetainedSurface({
+  active,
+  surface,
+  editorProps,
+}: {
+  active: boolean;
+  surface: "visual" | "source";
+  editorProps: MarkdownEditorProps;
+}) {
+  const [host] = useState(() => {
+    const element = document.createElement("div");
+    element.className = "markdown-editor__retained-host";
+    return element;
+  });
+  const [visited, setVisited] = useState(active);
+  const mountRef = useRef<HTMLDivElement>(null);
+  if (active && !visited) setVisited(true);
+  useLayoutEffect(() => {
+    if (!active) return;
+    const mount = mountRef.current;
+    if (!mount) return;
+    mount.append(host);
+    return () => host.remove();
+  }, [active, host]);
+  // Keep the real history in its EditorView, but detach inactive DOM and freeze
+  // its inputs: no hidden Markdown parsing, search refresh or layout on typing.
+  return (
+    <div className="markdown-editor__surface-slot" hidden={!active} ref={mountRef}>
+      {visited &&
+        createPortal(
+          <FrozenEditorSurface
+            active={active}
+            surface={surface}
+            editorProps={editorProps}
+          />,
+          host,
+        )}
+    </div>
   );
 }
 

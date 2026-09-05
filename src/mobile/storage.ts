@@ -1,4 +1,9 @@
-import type { MobileLocalState, MobileReadPosition, MobileRecentDocument } from "./types";
+import type {
+  MobileDocument,
+  MobileLocalState,
+  MobileReadPosition,
+  MobileRecentDocument,
+} from "./types";
 
 const STORAGE_KEY = "notespace.mobile.reader.v2";
 const MAX_RECENT_DOCUMENTS = 30;
@@ -49,7 +54,11 @@ export function normalizeMobileLocalState(value: unknown): MobileLocalState {
         recent.documentId.length > 256 ||
         typeof recent.title !== "string" ||
         typeof recent.relativePath !== "string" ||
+        recent.relativePath.length > 4_096 ||
         typeof recent.workspaceName !== "string" ||
+        (recent.workspaceSyncKey !== undefined &&
+          (typeof recent.workspaceSyncKey !== "string" ||
+            !/^[A-Za-z0-9._~-]{1,256}$/.test(recent.workspaceSyncKey))) ||
         !validPosition(recent.position) ||
         recentDocuments.some(
           ({ computerId, documentId }) =>
@@ -62,8 +71,9 @@ export function normalizeMobileLocalState(value: unknown): MobileLocalState {
         computerId: recent.computerId,
         documentId: recent.documentId,
         title: recent.title.slice(0, 300),
-        relativePath: recent.relativePath.slice(0, 2_000),
+        relativePath: recent.relativePath,
         workspaceName: recent.workspaceName.slice(0, 300),
+        ...(recent.workspaceSyncKey ? { workspaceSyncKey: recent.workspaceSyncKey } : {}),
         position: recent.position,
       });
       if (recentDocuments.length >= MAX_RECENT_DOCUMENTS) break;
@@ -88,14 +98,23 @@ export function normalizeMobileLocalState(value: unknown): MobileLocalState {
 export function updateRecentDocument(
   state: MobileLocalState,
   recent: MobileRecentDocument,
+  previousDocumentId?: string,
 ): MobileLocalState {
   const recentKey = mobileDocumentStorageKey(recent.computerId, recent.documentId);
   const recentDocuments = [
     recent,
-    ...state.recentDocuments.filter(
-      ({ computerId, documentId }) =>
-        mobileDocumentStorageKey(computerId, documentId) !== recentKey,
-    ),
+    ...state.recentDocuments.filter((item) => {
+      if (item.computerId !== recent.computerId) return true;
+      if (item.documentId === previousDocumentId) return false;
+      if (
+        recent.workspaceSyncKey &&
+        recent.workspaceSyncKey === item.workspaceSyncKey &&
+        recent.relativePath === item.relativePath
+      ) {
+        return false;
+      }
+      return mobileDocumentStorageKey(item.computerId, item.documentId) !== recentKey;
+    }),
   ].slice(0, MAX_RECENT_DOCUMENTS);
   const positions = Object.fromEntries(
     recentDocuments.map((item) => [
@@ -107,6 +126,36 @@ export function updateRecentDocument(
     positions,
     recentDocuments,
   };
+}
+
+export function findRecentDocument(
+  state: MobileLocalState,
+  computerId: string,
+  document: MobileDocument,
+  workspaceSyncKey: string | undefined,
+  allowLegacyName: boolean,
+) {
+  const computerRecords = state.recentDocuments.filter(
+    (recent) => recent.computerId === computerId,
+  );
+  const current = computerRecords.find((recent) => recent.documentId === document.id);
+  if (current) return current;
+  if (workspaceSyncKey) {
+    const stable = computerRecords.find(
+      (recent) =>
+        recent.workspaceSyncKey === workspaceSyncKey &&
+        recent.relativePath === document.relativePath,
+    );
+    if (stable) return stable;
+  }
+  if (!allowLegacyName) return undefined;
+  const legacy = computerRecords.filter(
+    (recent) =>
+      !recent.workspaceSyncKey &&
+      recent.workspaceName === document.workspaceName &&
+      recent.relativePath === document.relativePath,
+  );
+  return legacy.length === 1 ? legacy[0] : undefined;
 }
 
 export function createBrowserMobileStore(

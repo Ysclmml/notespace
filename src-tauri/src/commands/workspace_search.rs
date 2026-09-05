@@ -33,6 +33,8 @@ pub struct WorkspaceSearchMatch {
     pub column: usize,
     pub match_length: usize,
     pub snippet: String,
+    pub snippet_match_start: usize,
+    pub snippet_match_end: usize,
 }
 
 #[derive(Debug, Default, Serialize)]
@@ -282,6 +284,7 @@ impl SearchScan {
                 // Keep the response at exactly the public result bound.
                 return;
             }
+            let snippet = make_snippet(line, found);
             self.response.matches.push(WorkspaceSearchMatch {
                 path: display_path(path),
                 relative_path: relative_path.clone(),
@@ -289,7 +292,9 @@ impl SearchScan {
                 line: index + 1,
                 column: line[..found.start].encode_utf16().count() + 1,
                 match_length: line[found.start..found.end].encode_utf16().count(),
-                snippet: make_snippet(line, found.start),
+                snippet: snippet.text,
+                snippet_match_start: snippet.match_start,
+                snippet_match_end: snippet.match_end,
             });
         }
     }
@@ -422,17 +427,37 @@ fn literal_match_span(line: &str, needle: &str, case_sensitive: bool) -> Option<
     None
 }
 
-fn make_snippet(line: &str, offset: usize) -> String {
-    let chars_before_match = line[..offset].chars().count();
+struct SearchSnippet {
+    text: String,
+    match_start: usize,
+    match_end: usize,
+}
+
+fn make_snippet(line: &str, found: MatchSpan) -> SearchSnippet {
+    let chars_before_match = line[..found.start].chars().count();
     let start = chars_before_match.saturating_sub(60);
-    let mut chars = line.chars().skip(start);
+    let byte_start = line
+        .char_indices()
+        .nth(start)
+        .map_or(line.len(), |(i, _)| i);
+    let mut chars = line[byte_start..].chars();
     let text: String = chars.by_ref().take(SNIPPET_CHARS).collect();
-    format!(
-        "{}{}{}",
-        if start > 0 { "…" } else { "" },
-        text,
-        if chars.next().is_some() { "…" } else { "" }
-    )
+    let prefix_length = usize::from(start > 0);
+    // Return UTF-16 offsets in the actual snippet, excluding either ellipsis.
+    // The UI must never execute the user's regex a second time while rendering.
+    let match_start = prefix_length + line[byte_start..found.start].encode_utf16().count();
+    let visible_end = found.end.min(byte_start + text.len());
+    let match_end = prefix_length + line[byte_start..visible_end].encode_utf16().count();
+    SearchSnippet {
+        text: format!(
+            "{}{}{}",
+            if start > 0 { "…" } else { "" },
+            text,
+            if chars.next().is_some() { "…" } else { "" }
+        ),
+        match_start,
+        match_end,
+    }
 }
 
 #[cfg(test)]
@@ -889,11 +914,63 @@ mod tests {
     #[test]
     fn snippets_are_bounded_and_include_late_unicode_matches() {
         let line = format!("{}needle{}", "中".repeat(400), "文".repeat(400));
-        let snippet = make_snippet(&line, 1200);
-        assert!(snippet.contains("needle"));
-        assert!(snippet.starts_with('…'));
-        assert!(snippet.ends_with('…'));
-        assert!(snippet.chars().count() <= SNIPPET_CHARS + 2);
+        let snippet = make_snippet(
+            &line,
+            MatchSpan {
+                start: 1200,
+                end: 1206,
+            },
+        );
+        assert!(snippet.text.contains("needle"));
+        assert!(snippet.text.starts_with('…'));
+        assert!(snippet.text.ends_with('…'));
+        assert!(snippet.text.chars().count() <= SNIPPET_CHARS + 2);
+        assert_eq!((snippet.match_start, snippet.match_end), (61, 67));
+    }
+
+    #[test]
+    fn snippet_ranges_include_utf16_prefixes_and_clip_long_matches() {
+        let line = format!("{}MATCH{}", "😀".repeat(160), "文".repeat(400));
+        let snippet = make_snippet(
+            &line,
+            MatchSpan {
+                start: 640,
+                end: line.len(),
+            },
+        );
+        assert_eq!((snippet.match_start, snippet.match_end), (121, 301));
+        let units: Vec<u16> = snippet.text.encode_utf16().collect();
+        let visible_match =
+            String::from_utf16(&units[snippet.match_start..snippet.match_end]).unwrap();
+        assert_eq!(visible_match, format!("MATCH{}", "文".repeat(175)));
+        assert!(snippet.text.ends_with('…'));
+        let literal_ellipsis = make_snippet("…😀 MATCH", MatchSpan { start: 8, end: 13 });
+        assert_eq!(
+            (literal_ellipsis.match_start, literal_ellipsis.match_end),
+            (4, 9)
+        );
+    }
+
+    #[test]
+    fn native_regex_search_returns_snippet_offsets_without_browser_rematching() {
+        let fixture = Fixture::new();
+        fixture.write("note.md", format!("{} MATCH", "a".repeat(160)));
+        let result = search_with_limits(
+            vec![fixture.root(false)],
+            "(a+)+b|MATCH",
+            true,
+            true,
+            None,
+            SearchLimits::default(),
+        )
+        .unwrap();
+        let found = &result.matches[0];
+        assert_eq!(found.column, 162);
+        assert_eq!(found.match_length, 5);
+        assert_eq!(found.snippet, format!("…{} MATCH", "a".repeat(59)));
+        let serialized = serde_json::to_value(found).unwrap();
+        assert_eq!(serialized["snippetMatchStart"], 61);
+        assert_eq!(serialized["snippetMatchEnd"], 66);
     }
 
     #[test]

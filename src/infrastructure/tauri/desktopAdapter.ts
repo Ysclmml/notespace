@@ -610,6 +610,8 @@ export class DemoDesktopAdapter implements DesktopAdapter {
               column: match.index + 1,
               matchLength: match[0].length,
               snippet,
+              snippetMatchStart: match.index,
+              snippetMatchEnd: match.index + match[0].length,
             });
           }
         }

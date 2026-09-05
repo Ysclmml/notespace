@@ -270,8 +270,7 @@ describe("horizontal editor groups", () => {
       });
       expect(state.tabs.reopened?.preview).toBe(true);
       state = reduce(state, closeTab("reopened"), closeTab("clean"));
-      expect(state.sessions["/workspace/clean.md"]).toBe(cleanSession);
-      expect(state.sessions[path]?.text).toBe("fresh disk text");
+      expect(state.sessions).toEqual({});
     },
   );
 
@@ -304,7 +303,7 @@ describe("horizontal editor groups", () => {
       expect(state.editorGroups.map((group) => group.id)).toEqual(["right"]);
       state = reduce(state, closeTab("copy"));
       expect(state.sessions[sharedPath]).toBeUndefined();
-      expect(state.sessions["/workspace/start.md"]).toBeDefined();
+      expect(state.sessions["/workspace/start.md"]).toBeUndefined();
     },
   );
 

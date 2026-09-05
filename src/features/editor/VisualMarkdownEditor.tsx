@@ -4,6 +4,7 @@ import "@milkdown/crepe/theme/classic.css";
 import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
 import {
   EditorState as CodeMirrorState,
+  Compartment,
   Prec,
   Transaction as CodeMirrorTransaction,
 } from "@codemirror/state";
@@ -61,6 +62,7 @@ import {
 import { prepareMarkdownImageSource, resolveMarkdownImageSource } from "./imageSource";
 import { linkDispositionFromPointer, type LinkDisposition } from "./linkTarget";
 import { createMermaidPreviewController } from "./mermaidPreview";
+import { stableCodeBlockView } from "./stableCodeBlockView";
 import { isOversizedInlineImagePaste } from "./pasteGuard";
 import {
   clipboardImagePasteKind,
@@ -168,8 +170,10 @@ export interface VisualMarkdownEditorProps {
   readonly instanceId?: string;
   readonly value: string;
   readonly autofocus?: boolean;
+  readonly readOnly?: boolean;
   readonly codeWrap?: boolean;
   readonly initialView?: VisualEditorViewSnapshot;
+  readonly surfaceActivation?: number;
   readonly locale?: MarkdownEditorLocale;
   readonly findRequest?: number;
   readonly onFindRequestConsumed?: (request: number) => void;
@@ -1322,8 +1326,10 @@ function VisualMarkdownEditorInstance({
   documentId,
   value,
   autofocus = true,
+  readOnly = false,
   codeWrap = false,
   initialView,
+  surfaceActivation,
   locale = "zh-CN",
   findRequest,
   onFindRequestConsumed,
@@ -1352,9 +1358,12 @@ function VisualMarkdownEditorInstance({
   const crepeRef = useRef<Crepe | null>(null);
   const editorViewRef = useRef<EditorView | null>(null);
   const readyRef = useRef(false);
+  const readOnlyRef = useRef(readOnly);
+  const syncReadOnlyRef = useRef<() => void>(() => {});
   const initialViewRestoredRef = useRef(false);
   const editorValueRef = useRef(value);
   const syncValueRef = useRef<(nextValue: string) => void>(() => {});
+  const resetCompositionRef = useRef<() => void>(() => {});
   const serializedValueRef = useRef<string | null>(null);
   const latestValueRef = useRef(value);
   const latestAutofocusRef = useRef(autofocus);
@@ -1394,6 +1403,16 @@ function VisualMarkdownEditorInstance({
   const [tableGridHover, setTableGridHover] = useState({ rows: 3, columns: 3 });
   const [tableResizeOpen, setTableResizeOpen] = useState(false);
   const [tableResizeDraft, setTableResizeDraft] = useState({ rows: 3, columns: 3 });
+  const [previousReadOnly, setPreviousReadOnly] = useState(readOnly);
+  if (previousReadOnly !== readOnly) {
+    setPreviousReadOnly(readOnly);
+    if (readOnly) {
+      setTypingCompletion(null);
+      setTableGridOpen(false);
+      setTableResizeOpen(false);
+      setEditingImage(null);
+    }
+  }
   const find = usePageFind(findRequest, onFindRequestConsumed);
   const { targetRef: findTargetRef, refresh: refreshFind } = find;
 
@@ -1416,7 +1435,8 @@ function VisualMarkdownEditorInstance({
   const acceptFenceLanguage = useCallback(
     (language: string) => {
       const view = editorViewRef.current;
-      if (!view || !createCodeBlockFromFenceQuery(view, language)) return;
+      if (readOnlyRef.current || !view || !createCodeBlockFromFenceQuery(view, language))
+        return;
       dismissedFencePrefixRef.current = null;
       setCompletion(null);
     },
@@ -1426,7 +1446,7 @@ function VisualMarkdownEditorInstance({
   const runCommand = useCallback((detail: VisualEditorCommandDetail) => {
     const crepe = crepeRef.current;
     const view = editorViewRef.current;
-    if (!crepe || !view || !readyRef.current) return false;
+    if (readOnlyRef.current || !crepe || !view || !readyRef.current) return false;
     if (
       detail.command === "insertTable" &&
       detail.rows === undefined &&
@@ -1445,6 +1465,12 @@ function VisualMarkdownEditorInstance({
     if (detail.command === "resizeTable") setTableResizeOpen(false);
     return true;
   }, []);
+
+  useLayoutEffect(() => {
+    readOnlyRef.current = readOnly;
+    syncReadOnlyRef.current();
+    refreshFind();
+  }, [readOnly, refreshFind]);
 
   useEffect(() => {
     if (!tableGridOpen && !tableResizeOpen) return undefined;
@@ -1481,7 +1507,7 @@ function VisualMarkdownEditorInstance({
     onImageInsertConsumedRef.current = onImageInsertConsumed;
   }, [autofocus, imageInsertRequest, onImageInsertConsumed, reveal, value]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     onChangeRef.current = onChange;
     onImagePasteRef.current = onImagePaste;
     onInternalLinkRef.current = onInternalLink;
@@ -1512,7 +1538,31 @@ function VisualMarkdownEditorInstance({
     let restoreFrame = 0;
     let compositionFrame = 0;
     let composing = false;
+    let finishingComposition = false;
+    let forwardingCodeComposition = false;
     let pendingExternalValue: { base: string; value: string } | null = null;
+    const codeReadOnly = new Compartment();
+    const codeReadOnlyExtensions = () =>
+      Prec.highest([
+        CodeMirrorState.readOnly.of(readOnlyRef.current),
+        CodeMirrorView.editable.of(!readOnlyRef.current),
+        // Noneditable code still needs focus for mouse selection and clipboard
+        // commands; otherwise CM cannot retain its range inside the parent PM.
+        CodeMirrorView.contentAttributes.of({ tabindex: "0" }),
+      ]);
+    const syncCodeReadOnly = () => {
+      for (const element of editorRoot.querySelectorAll<HTMLElement>(".cm-editor")) {
+        const code = CodeMirrorView.findFromDOM(element);
+        if (
+          code &&
+          codeReadOnly.get(code.state) &&
+          (code.state.readOnly !== readOnlyRef.current ||
+            code.state.facet(CodeMirrorView.editable) === readOnlyRef.current)
+        ) {
+          code.dispatch({ effects: codeReadOnly.reconfigure(codeReadOnlyExtensions()) });
+        }
+      }
+    };
     const mermaidPreview = createMermaidPreviewController(
       editorRoot,
       () => cancelled,
@@ -1525,7 +1575,7 @@ function VisualMarkdownEditorInstance({
     );
 
     const updateTypingCompletion = (view: EditorView) => {
-      if (cancelled || !initial.showTypingHints) return;
+      if (cancelled || readOnlyRef.current || !initial.showTypingHints) return;
       const nextCompletion = codeFenceTypingCompletion(view, scroller);
       if (nextCompletion && dismissedFencePrefixRef.current === nextCompletion.prefix) {
         setCompletion(null);
@@ -1558,7 +1608,7 @@ function VisualMarkdownEditorInstance({
     };
 
     const updateTableSelection = (view: EditorView) => {
-      if (cancelled) return;
+      if (cancelled || readOnlyRef.current) return;
       const selection = selectedTableSnapshot(view);
       setTableSelection(selection);
       if (selection) setTableGridOpen(false);
@@ -1570,6 +1620,7 @@ function VisualMarkdownEditorInstance({
         ".milkdown-code-block .language-button",
       );
       for (const button of buttons) {
+        button.disabled = readOnlyRef.current;
         const textNode = Array.from(button.childNodes).find(
           (node) => node.nodeType === Node.TEXT_NODE,
         );
@@ -1599,6 +1650,7 @@ function VisualMarkdownEditorInstance({
           ),
         )
       ) {
+        syncCodeReadOnly();
         refreshFind();
       }
     });
@@ -1613,7 +1665,7 @@ function VisualMarkdownEditorInstance({
     );
 
     const reportView = (view: EditorView, preferViewport = false) => {
-      if (cancelled || !initialViewRestoredRef.current) return;
+      if (cancelled || !initialViewRestoredRef.current || !scroller.isConnected) return;
       // Record the position in the event's turn. Deferring it to an animation
       // frame loses the last scroll/selection when a mode switch unmounts us.
       const selection = view.state.selection;
@@ -1636,16 +1688,39 @@ function VisualMarkdownEditorInstance({
       defaultValue: normalizeMathDelimiters(initial.value),
       features: {
         [CrepeFeature.AI]: false,
+        [CrepeFeature.BlockEdit]: false,
         [CrepeFeature.ImageBlock]: false,
         [CrepeFeature.Placeholder]: false,
         [CrepeFeature.Table]: false,
         [CrepeFeature.TopBar]: false,
       },
       featureConfigs: {
+        [CrepeFeature.Cursor]: {
+          // IME selections repeatedly add/remove the virtual cursor at doc start.
+          // That changes :first-child margins and triggers scroll restoration.
+          virtual: false,
+        },
         [CrepeFeature.CodeMirror]: {
           copyText: initial.messages.codeCopy,
           extensions: [
+            codeReadOnly.of(codeReadOnlyExtensions()),
             codeFindDecorations,
+            CodeMirrorView.updateListener.of((update) => {
+              if (
+                !finishingComposition ||
+                !update.docChanged ||
+                !update.transactions.some((transaction) =>
+                  transaction.isUserEvent("input.type.compose"),
+                )
+              )
+                return;
+              // The stock node forwards this update to PM immediately after
+              // our listener, but does not copy CM's composition annotation.
+              forwardingCodeComposition = true;
+              queueMicrotask(() => {
+                forwardingCodeComposition = false;
+              });
+            }),
             CodeMirrorState.transactionFilter.of((transaction) => {
               if (readyRef.current || !transaction.docChanged) return transaction;
               // Crepe's code-node synchronization requests scrollIntoView even
@@ -1701,6 +1776,9 @@ function VisualMarkdownEditorInstance({
       ctx.set(codeBlockKeymap.key, { CreateCodeBlock: { shortcuts: [] } });
     });
 
+    // Keep lazy code/diagram blocks at their measured height while off screen.
+    crepe.editor.use(stableCodeBlockView);
+
     // Crepe's ImageBlock changes CommonMark image alt text into its caption
     // model. Keep the standard image node so Markdown round-trips losslessly,
     // and only customize its DOM URL and viewer affordance.
@@ -1726,6 +1804,25 @@ function VisualMarkdownEditorInstance({
       $prose(
         (ctx) =>
           new Plugin({
+            props: {
+              attributes: () => ({
+                tabindex: "0",
+                "aria-readonly": String(readOnlyRef.current),
+              }),
+            },
+            filterTransaction(transaction) {
+              // Initialization and applyExternalValue run with ready=false.
+              // Shared text remains a live projection in reading mode; local
+              // typing, toolbar, checkbox, history and node commands do not.
+              return (
+                !readOnlyRef.current ||
+                !readyRef.current ||
+                !transaction.docChanged ||
+                (finishingComposition &&
+                  (typeof transaction.getMeta("composition") === "number" ||
+                    forwardingCodeComposition))
+              );
+            },
             appendTransaction(transactions, previousState, currentState) {
               if (
                 !readyRef.current ||
@@ -1748,7 +1845,8 @@ function VisualMarkdownEditorInstance({
               if (markdown !== serializedValueRef.current) {
                 serializedValueRef.current = markdown;
                 editorValueRef.current = markdown;
-                if (!pendingExternalValue) onChangeRef.current(markdown);
+                if (!pendingExternalValue && scroller.isConnected)
+                  onChangeRef.current(markdown);
               }
               return null;
             },
@@ -1774,6 +1872,51 @@ function VisualMarkdownEditorInstance({
     );
 
     crepeRef.current = crepe;
+    const updateFindTarget = () => {
+      const view = editorViewRef.current;
+      if (!view) return;
+      const target = visualFindTarget(
+        view,
+        scroller,
+        () => composing || Boolean(pendingExternalValue),
+      );
+      findTargetRef.current = readOnlyRef.current
+        ? { matches: target.matches, highlight: target.highlight, focus: target.focus }
+        : target;
+    };
+    syncReadOnlyRef.current = () => {
+      const { scrollTop, scrollLeft } = scroller;
+      const view = editorViewRef.current;
+      if (
+        readOnlyRef.current &&
+        view?.editable &&
+        (composing || view.composing || compositionFrame)
+      ) {
+        // Finish only the composition already in progress before locking.
+        // PM skips compositionend once editable=false, so let its public event
+        // path schedule the final DOM read while it can still handle that end.
+        finishingComposition = true;
+        if (view.composing) view.dispatchEvent(new CompositionEvent("compositionend"));
+        onCompositionEnd();
+        // The observer only reads text mutations while view.editable is true.
+        // Keep it enabled for this queued composition flush; capture handlers
+        // already block new input, and the transaction filter only permits its
+        // composition-tagged changes. Lock the native surface after that frame.
+        updateFindTarget();
+        return;
+      }
+      crepe.setReadonly(readOnlyRef.current);
+      syncCodeReadOnly();
+      localizeEmptyCodeLanguage();
+      updateFindTarget();
+      if (view) {
+        updateTypingCompletion(view);
+        updateTableSelection(view);
+      }
+      scroller.scrollTop = scrollTop;
+      scroller.scrollLeft = scrollLeft;
+    };
+    crepe.setReadonly(readOnlyRef.current);
 
     const serializeView = (view: EditorView) =>
       crepe.editor.action((ctx) =>
@@ -1801,7 +1944,7 @@ function VisualMarkdownEditorInstance({
         return;
       }
       if (nextValue === editorValueRef.current) return;
-      if (composing || view.composing) {
+      if (composing || view.composing || finishingComposition) {
         pendingExternalValue = {
           base: serializeView(view),
           value: nextValue,
@@ -1811,24 +1954,37 @@ function VisualMarkdownEditorInstance({
       applyExternalValue(view, nextValue);
     };
     const onCompositionStart = () => {
+      if (readOnlyRef.current) return;
       composing = true;
       window.cancelAnimationFrame(compositionFrame);
     };
     const onCompositionEnd = () => {
       composing = false;
+      window.cancelAnimationFrame(compositionFrame);
       compositionFrame = window.requestAnimationFrame(() => {
+        compositionFrame = 0;
         const pending = pendingExternalValue;
         const view = editorViewRef.current;
-        if (!pending || !view || composing || cancelled) return;
-        pendingExternalValue = null;
-        const merged = mergeCompositionChange(
-          pending.base,
-          serializeView(view),
-          pending.value,
-        );
-        applyExternalValue(view, merged);
-        if (merged !== pending.value) onChangeRef.current(merged);
+        finishingComposition = false;
+        if (!view || composing || cancelled) return;
+        if (pending && scroller.isConnected) {
+          pendingExternalValue = null;
+          const merged = mergeCompositionChange(
+            pending.base,
+            serializeView(view),
+            pending.value,
+          );
+          applyExternalValue(view, merged);
+          if (merged !== pending.value) onChangeRef.current(merged);
+        }
+        if (readOnlyRef.current) syncReadOnlyRef.current();
       });
+    };
+    resetCompositionRef.current = () => {
+      composing = false;
+      finishingComposition = false;
+      pendingExternalValue = null;
+      window.cancelAnimationFrame(compositionFrame);
     };
 
     const onScroll = () => {
@@ -1840,6 +1996,7 @@ function VisualMarkdownEditorInstance({
       selection: VisualEditorSelectionRange,
       markdown: string,
     ) => {
+      if (readOnlyRef.current) return;
       const image = imagePayloadFromUploadResult(
         markdown,
         initial.locale === "zh-CN"
@@ -1863,6 +2020,7 @@ function VisualMarkdownEditorInstance({
       if (
         !request ||
         !view ||
+        !scroller.isConnected ||
         cancelled ||
         !readyRef.current ||
         !initialViewRestoredRef.current ||
@@ -1874,6 +2032,7 @@ function VisualMarkdownEditorInstance({
       try {
         if (
           request.documentId !== initial.documentId ||
+          readOnlyRef.current ||
           request.editorMode !== "visual" ||
           request.expectedText !== editorValueRef.current ||
           !request.markdown.trim()
@@ -1888,6 +2047,11 @@ function VisualMarkdownEditorInstance({
       }
     };
     const onPaste = (event: ClipboardEvent) => {
+      if (readOnlyRef.current) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        return;
+      }
       const text = event.clipboardData?.getData("text/plain") ?? "";
       if (
         isOversizedInlineImagePaste(text) ||
@@ -1932,7 +2096,8 @@ function VisualMarkdownEditorInstance({
       const originalDocument = view.state.doc;
       void paste(selection, pasteKind)
         .then((markdown) => {
-          if (cancelled || !markdown.trim()) return;
+          if (cancelled || readOnlyRef.current || !scroller.isConnected || !markdown.trim())
+            return;
           const currentView = editorViewRef.current;
           if (currentView !== view) return;
           if (currentView.state.doc !== originalDocument) {
@@ -1945,7 +2110,7 @@ function VisualMarkdownEditorInstance({
           insertSavedImage(currentView, selection, markdown);
         })
         .catch((error: unknown) => {
-          if (cancelled || editorViewRef.current !== view) return;
+          if (cancelled || !scroller.isConnected || editorViewRef.current !== view) return;
           const message =
             error instanceof Error ? error.message : initial.messages.imagePasteFailed;
           onPasteErrorRef.current?.(message);
@@ -2035,6 +2200,7 @@ function VisualMarkdownEditorInstance({
       const target = event.target instanceof Element ? event.target : null;
       const view = editorViewRef.current;
       if (
+        !readOnlyRef.current &&
         view?.hasFocus() &&
         !composing &&
         !view.composing &&
@@ -2057,7 +2223,7 @@ function VisualMarkdownEditorInstance({
         event.target.closest(".visual-markdown-image__placeholder")
       )
         return;
-      const completion = typingCompletionRef.current;
+      const completion = readOnlyRef.current ? null : typingCompletionRef.current;
       if (completion && !event.isComposing) {
         if (event.key === "ArrowDown" || event.key === "ArrowUp") {
           event.preventDefault();
@@ -2100,6 +2266,7 @@ function VisualMarkdownEditorInstance({
     };
 
     const onEditorCommand = (event: Event) => {
+      if (readOnlyRef.current) return;
       if (!(event instanceof CustomEvent)) return;
       const detail = event.detail as VisualEditorCommandDetail | undefined;
       if (!detail || typeof detail.command !== "string") return;
@@ -2121,6 +2288,15 @@ function VisualMarkdownEditorInstance({
       if (runCommand(detail)) event.preventDefault();
     };
 
+    const preventReadOnlyMutation = (event: Event) => {
+      if (!readOnlyRef.current) return;
+      event.preventDefault();
+      // Keep internal tab drops bubbling to the containing editor group.
+      if (event.type !== "drop") event.stopImmediatePropagation();
+    };
+    scroller.addEventListener("beforeinput", preventReadOnlyMutation, true);
+    scroller.addEventListener("cut", preventReadOnlyMutation, true);
+    scroller.addEventListener("drop", preventReadOnlyMutation, true);
     scroller.addEventListener("scroll", onScroll, { passive: true });
     scroller.addEventListener("compositionstart", onCompositionStart, true);
     scroller.addEventListener("compositionend", onCompositionEnd);
@@ -2139,11 +2315,7 @@ function VisualMarkdownEditorInstance({
         }
         const view = crepe.editor.action((ctx) => ctx.get(editorViewCtx));
         editorViewRef.current = view;
-        findTargetRef.current = visualFindTarget(
-          view,
-          scroller,
-          () => composing || Boolean(pendingExternalValue),
-        );
+        syncReadOnlyRef.current();
         serializedValueRef.current = crepe.getMarkdown();
 
         const latestValue = latestValueRef.current;
@@ -2214,6 +2386,9 @@ function VisualMarkdownEditorInstance({
       mermaidPreview.dispose();
       codeControlObserver.disconnect();
       disposeLinkField();
+      scroller.removeEventListener("beforeinput", preventReadOnlyMutation, true);
+      scroller.removeEventListener("cut", preventReadOnlyMutation, true);
+      scroller.removeEventListener("drop", preventReadOnlyMutation, true);
       scroller.removeEventListener("scroll", onScroll);
       scroller.removeEventListener("compositionstart", onCompositionStart, true);
       scroller.removeEventListener("compositionend", onCompositionEnd);
@@ -2225,15 +2400,51 @@ function VisualMarkdownEditorInstance({
       editorViewRef.current = null;
       findTargetRef.current = null;
       syncValueRef.current = () => {};
+      syncReadOnlyRef.current = () => {};
+      resetCompositionRef.current = () => {};
       applyImageInsertRequestRef.current = () => {};
       crepeRef.current = null;
       if (crepe.editor.status === "Created") void crepe.destroy();
     };
   }, [acceptFenceLanguage, findTargetRef, refreshFind, runCommand, setCompletion]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
+    resetCompositionRef.current();
+    syncValueRef.current(value);
+    // Reattachment invalidates an old IME merge before consuming current text.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [surfaceActivation]);
+
+  useLayoutEffect(() => {
     syncValueRef.current(value);
   }, [value]);
+
+  useEffect(() => {
+    if (surfaceActivation === undefined || !initialViewRestoredRef.current) return;
+    const view = editorViewRef.current;
+    const scroller = scrollerRef.current;
+    if (!view || !scroller) return;
+    const semantic = initialView?.semanticPosition;
+    const from = semantic
+      ? visualPositionFromSemantic(view.state.doc, semantic)
+      : (initialView?.selectionFrom ?? view.state.selection.from);
+    const to = semantic ? from : (initialView?.selectionTo ?? from);
+    view.dispatch(view.state.tr.setSelection(selectionFor(view, from, to)));
+    if (semantic) view.dispatch(view.state.tr.scrollIntoView());
+    else if (initialView) scroller.scrollTop = initialView.scrollTop;
+    if (autofocus) view.focus();
+    onViewChangeRef.current?.({
+      scrollTop: scroller.scrollTop,
+      selectionFrom: view.state.selection.from,
+      selectionTo: view.state.selection.to,
+      semanticPosition: semanticPositionFromVisualDocument(
+        view.state.doc,
+        view.state.selection.from,
+      ),
+    });
+    // Apply the activation snapshot once, not on subsequent selection reports.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [surfaceActivation]);
 
   useEffect(() => {
     applyImageInsertRequestRef.current();
@@ -2262,24 +2473,25 @@ function VisualMarkdownEditorInstance({
 
   return (
     <div className="visual-markdown-editor-frame">
-      {editingImage && (
+      {!readOnly && editingImage && (
         <ImageReferenceDialog
           target={editingImage}
           locale={locale}
           onClose={closeImageEditor}
         />
       )}
-      <FindBar find={find} locale={locale} />
+      <FindBar find={find} locale={locale} readOnly={readOnly} />
       <div
         aria-label={messages.editorAriaLabel}
         className="visual-markdown-editor"
         data-code-line-numbers={String(showCodeLineNumbers)}
         data-code-wrap={String(codeWrap)}
         data-document-id={documentId}
+        data-read-only={String(readOnly)}
         data-editor-locale={locale}
         ref={scrollerRef}
       >
-        {(tableSelection || tableGridOpen) && (
+        {!readOnly && (tableSelection || tableGridOpen) && (
           <div className="visual-markdown-editor__table-tools-anchor">
             {tableSelection && (
               <div
@@ -2521,7 +2733,7 @@ function VisualMarkdownEditorInstance({
           </div>
         )}
         <div className="visual-markdown-editor__root" ref={editorRootRef} />
-        {typingCompletion && showTypingHints && (
+        {!readOnly && typingCompletion && showTypingHints && (
           <div
             aria-label={messages.codeFenceLanguages}
             className="visual-markdown-editor__typing-completion"

@@ -35,6 +35,10 @@ export function helpSections(locale: AppLocale): readonly HelpSection[] {
           intro: "Markdown 默认直接编辑排版后的内容，也可明确切换到源码。",
           items: [
             {
+              title: "阅读模式",
+              text: "顶部“阅读 / 编辑”随时一键切换，专注时也保留切换按钮。默认编辑；开启阅读后，所有标签和分屏（包括新打开的文件）防止误输入，并精简编辑工具与右键。仍可选字、复制、查找、打开链接和查看图表；切换保留当前位置、已有修改与撤销记录。下次启动仍默认编辑。",
+            },
+            {
               title: "可视与源码",
               text: "工具栏或 Cmd/Ctrl+/ 切换。切换本身不修改文档；首次可视编辑后，Markdown 的空白和标记可能被规范化。普通代码文件始终使用代码编辑器。",
             },
@@ -145,6 +149,10 @@ export function helpSections(locale: AppLocale): readonly HelpSection[] {
           intro:
             "Markdown opens in visual editing. Source mode is always an explicit choice.",
           items: [
+            {
+              title: "Reading mode",
+              text: "Use Read / Edit at the top, or in focus mode, to switch with one click. Editing is the default. Reading protects every tab and split, including newly opened files, from accidental input and hides editing tools. Selection, copying, find, links and diagram viewing remain available. Switching preserves your position, existing changes and undo history. The next launch starts in editing mode.",
+            },
             {
               title: "Visual and source",
               text: "Switch using the toolbar or Cmd/Ctrl+/. Switching does not edit the document. The first visual edit may normalize equivalent Markdown formatting. Code files use the code editor.",

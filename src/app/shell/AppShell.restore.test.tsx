@@ -117,6 +117,8 @@ class RestoreAdapter implements DesktopAdapter {
         column: 3,
         matchLength: 2,
         snippet: "中文查找内容",
+        snippetMatchStart: 2,
+        snippetMatchEnd: 4,
       },
     ],
     searchedFiles: 3,

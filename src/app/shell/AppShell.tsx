@@ -735,8 +735,10 @@ export function AppShell({
 }: { readonly adapter?: DesktopAdapter } = {}) {
   const { locale, t } = useI18n();
   const { settings, updateSettings } = useAppSettings();
+  const [readingMode, setReadingMode] = useState(false);
+  const readingModeRef = useRef(false);
   const { contextMenu, onContextMenu, onPointerDownCapture, closeContextMenu } =
-    useEditorContextMenu();
+    useEditorContextMenu({ readOnly: readingMode });
   const adapter = useMemo(
     () => providedAdapter ?? createDesktopAdapter(),
     [providedAdapter],
@@ -2699,6 +2701,8 @@ export function AppShell({
           : undefined;
       if (!session) return;
 
+      if (readingModeRef.current && !session.dirty && !forceSaveAs) return;
+
       if (!forceSaveAs && session.externalChange) {
         setStatus(t("external.changedStatus", { name: fileName(session.path) }));
         return;
@@ -3094,6 +3098,7 @@ export function AppShell({
       if (!event.shiftKey && event.key === "/" && activeTab) {
         event.preventDefault();
         event.stopPropagation();
+        if (readingModeRef.current) return;
         const currentState = appStateRef.current;
         const tab = selectActiveTab(currentState);
         const session = tab ? selectCurrentSession(currentState, tab.id) : undefined;
@@ -3133,6 +3138,7 @@ export function AppShell({
 
   const switchEditorMode = useCallback(
     (nextMode: "visual" | "source") => {
+      if (readingModeRef.current) return;
       const currentState = appStateRef.current;
       const tab = selectActiveTab(currentState);
       const session = tab ? selectCurrentSession(currentState, tab.id) : undefined;
@@ -3153,6 +3159,19 @@ export function AppShell({
     },
     [t],
   );
+
+  const switchReadingMode = (next: boolean) => {
+    if (readingModeRef.current === next) return;
+    readingModeRef.current = next;
+    setReadingMode(next);
+    closeContextMenu();
+    setMoreMenuVisible(false);
+    if (next) {
+      // A delayed clipboard result must not become a new edit after unlocking.
+      imagePasteRequestsRef.current.clear();
+      setImageInsertRequests({});
+    }
+  };
 
   useEffect(() => {
     if (!adapter.listenNativeMenuAction) return undefined;
@@ -3611,7 +3630,13 @@ export function AppShell({
       const state = appStateRef.current;
       const tab = state.tabs[tabId];
       const session = tab ? selectCurrentSession(state, tab.id) : undefined;
-      if (!tab || !session || session.kind !== "markdown" || imageSaveAsPendingRef.current)
+      if (
+        readingModeRef.current ||
+        !tab ||
+        !session ||
+        session.kind !== "markdown" ||
+        imageSaveAsPendingRef.current
+      )
         return "";
 
       setImagePasteFailure(null);
@@ -3626,6 +3651,7 @@ export function AppShell({
         const latestTab = latest.tabs[tabId];
         const latestSession = latest.sessions[documentPath];
         return (
+          !readingModeRef.current &&
           imagePasteMountedRef.current &&
           imagePasteRequestsRef.current.get(tabId) === request &&
           !nativeCloseCommittedRef.current &&
@@ -3797,6 +3823,41 @@ export function AppShell({
       commitAction(updateView(tabId, next));
   };
 
+  const outlineLineLabel = useCallback((line: number) => t("outline.line", { line }), [t]);
+  const navigateOutline = useCallback(
+    (item: ReturnType<typeof extractOutline>[number]) => {
+      const state = appStateRef.current;
+      const tab = selectActiveTab(state);
+      if (!tab) return;
+      const groupId = selectTabGroupId(state, tab.id);
+      if (groupId) {
+        documentOpenRequestsRef.current.set(
+          groupId,
+          (documentOpenRequestsRef.current.get(groupId) ?? 0) + 1,
+        );
+      }
+      commitAction(
+        navigateToView(
+          tab.id,
+          createViewState({
+            ...tab.current.view,
+            selectionFrom: item.from,
+            selectionTo: item.from,
+            visualSelectionFrom: item.from,
+            visualSelectionTo: item.from,
+          }),
+        ),
+      );
+      setEditorRevealForTab(tab.id, {
+        documentId: tab.current.documentId,
+        headingText: item.title,
+        position: item.from,
+        requestId: revealCounter.current++,
+      });
+    },
+    [commitAction, setEditorRevealForTab],
+  );
+
   const renderTabEditor = (tab: Tab, focused: boolean) => {
     const session = appState.sessions[tab.current.documentId];
     if (!session) return null;
@@ -3838,6 +3899,7 @@ export function AppShell({
             codeWrap={settings.codeWrap}
             content={session.text}
             editable
+            readOnly={readingMode}
             initialView={{
               scrollTop: tab.current.view.sourceScrollTop,
               selectionFrom: tab.current.view.selectionFrom,
@@ -3869,8 +3931,9 @@ export function AppShell({
           mode={session.mode}
           locale={settings.locale}
           presentationMode={mode}
+          readOnly={readingMode}
           showCodeLineNumbers={settings.showCodeLineNumbers}
-          showTypingHints={settings.showTypingHints}
+          showTypingHints={settings.showTypingHints && !readingMode}
           onChange={(text) => editSessionDocument(session.id, text)}
           onImagePaste={(selection, kind) => pasteClipboardImage(tab.id, selection, kind)}
           imageInsertRequest={
@@ -3920,21 +3983,50 @@ export function AppShell({
     );
   };
 
+  const readingModeSwitch = (
+    <div
+      className="editor-mode-switch reading-mode-switch"
+      role="group"
+      aria-label={t("toolbar.readingMode")}
+    >
+      <button
+        type="button"
+        aria-pressed={readingMode}
+        onClick={() => switchReadingMode(true)}
+        title={t("toolbar.readingHint")}
+      >
+        {t("toolbar.reading")}
+      </button>
+      <button
+        type="button"
+        aria-pressed={!readingMode}
+        onClick={() => switchReadingMode(false)}
+        title={t("toolbar.editingHint")}
+      >
+        {t("toolbar.editing")}
+      </button>
+    </div>
+  );
+
   return (
     <div
       className={`app-shell${sidebarCollapsed ? " app-shell--sidebar-collapsed" : ""}${focusMode ? " app-shell--focus" : ""}`}
+      data-reading-mode={readingMode}
       onContextMenu={onContextMenu}
       onPointerDownCapture={onPointerDownCapture}
     >
       {focusMode && (
-        <button
-          className="focus-mode-exit"
-          type="button"
-          onClick={() => setFocusMode(false)}
-          title={`${exitFocusLabel} · ${formatShortcut("Mod+Shift+Enter")}`}
-        >
-          {exitFocusLabel} <kbd>Esc</kbd>
-        </button>
+        <div className="focus-mode-actions">
+          {readingModeSwitch}
+          <button
+            className="focus-mode-exit"
+            type="button"
+            onClick={() => setFocusMode(false)}
+            title={`${exitFocusLabel} · ${formatShortcut("Mod+Shift+Enter")}`}
+          >
+            {exitFocusLabel} <kbd>Esc</kbd>
+          </button>
+        </div>
       )}
       <header className="shell-toolbar" data-native-context-menu="true">
         <div className="shell-toolbar__cluster" aria-label={t("toolbar.navigation")}>
@@ -4118,7 +4210,8 @@ export function AppShell({
               {activeSession && isFavorite(favorites, activeSession.path) ? "★" : "☆"}
             </button>
           )}
-          {activeSession?.kind === "markdown" && (
+          {!focusMode && readingModeSwitch}
+          {!readingMode && activeSession?.kind === "markdown" && (
             <div
               className="editor-mode-switch"
               role="group"
@@ -4187,30 +4280,38 @@ export function AppShell({
                 className="more-actions-menu"
                 role="menu"
               >
-                <button
-                  onClick={() => {
-                    setMoreMenuVisible(false);
-                    newDocument("markdown");
-                  }}
-                  role="menuitem"
-                  type="button"
-                >
-                  <span>{t("menu.newMarkdown")}</span>
-                  <kbd>{formatShortcut("Mod+N")}</kbd>
-                </button>
-                <button onClick={() => newDocument("text")} role="menuitem" type="button">
-                  <span>{t("menu.newText")}</span>
-                </button>
-                <button
-                  onClick={() => {
-                    setMoreMenuVisible(false);
-                    setTemplateVisible(true);
-                  }}
-                  role="menuitem"
-                  type="button"
-                >
-                  <span>{templateCopy.title}</span>
-                </button>
+                {!readingMode && (
+                  <>
+                    <button
+                      onClick={() => {
+                        setMoreMenuVisible(false);
+                        newDocument("markdown");
+                      }}
+                      role="menuitem"
+                      type="button"
+                    >
+                      <span>{t("menu.newMarkdown")}</span>
+                      <kbd>{formatShortcut("Mod+N")}</kbd>
+                    </button>
+                    <button
+                      onClick={() => newDocument("text")}
+                      role="menuitem"
+                      type="button"
+                    >
+                      <span>{t("menu.newText")}</span>
+                    </button>
+                    <button
+                      onClick={() => {
+                        setMoreMenuVisible(false);
+                        setTemplateVisible(true);
+                      }}
+                      role="menuitem"
+                      type="button"
+                    >
+                      <span>{templateCopy.title}</span>
+                    </button>
+                  </>
+                )}
                 <button
                   className="more-actions-menu__separated"
                   onClick={() => {
@@ -4285,31 +4386,35 @@ export function AppShell({
                     setExportFormat(format);
                   }}
                 />
-                <button
-                  disabled={!activeSession}
-                  onClick={() => {
-                    setMoreMenuVisible(false);
-                    void saveActiveDocument();
-                  }}
-                  role="menuitem"
-                  type="button"
-                >
-                  <span>{t("menu.save")}</span>
-                  <kbd>{formatShortcut("Mod+S")}</kbd>
-                </button>
-                <button
-                  className="more-actions-menu__separated"
-                  disabled={!activeSession}
-                  onClick={() => {
-                    setMoreMenuVisible(false);
-                    void saveActiveDocument(true);
-                  }}
-                  role="menuitem"
-                  type="button"
-                >
-                  <span>{t("menu.saveAs")}</span>
-                  <kbd>{formatShortcut("Mod+Shift+S")}</kbd>
-                </button>
+                {(!readingMode || activeSession?.dirty) && (
+                  <>
+                    <button
+                      disabled={!activeSession}
+                      onClick={() => {
+                        setMoreMenuVisible(false);
+                        void saveActiveDocument();
+                      }}
+                      role="menuitem"
+                      type="button"
+                    >
+                      <span>{t("menu.save")}</span>
+                      <kbd>{formatShortcut("Mod+S")}</kbd>
+                    </button>
+                    <button
+                      className="more-actions-menu__separated"
+                      disabled={!activeSession}
+                      onClick={() => {
+                        setMoreMenuVisible(false);
+                        void saveActiveDocument(true);
+                      }}
+                      role="menuitem"
+                      type="button"
+                    >
+                      <span>{t("menu.saveAs")}</span>
+                      <kbd>{formatShortcut("Mod+Shift+S")}</kbd>
+                    </button>
+                  </>
+                )}
                 <button
                   disabled={!activeSession || isUntitledPath(activeSession.path)}
                   onClick={() => {
@@ -4547,37 +4652,9 @@ export function AppShell({
               <Outline
                 emptyLabel={t("outline.noHeadings")}
                 label={t("outline.document")}
-                lineLabel={(line) => t("outline.line", { line })}
+                lineLabel={outlineLineLabel}
                 markdown={activeSession.text}
-                onNavigate={(item) => {
-                  const tab = appStateRef.current.tabs[activeTab.id];
-                  if (!tab) return;
-                  const groupId = selectTabGroupId(appStateRef.current, tab.id);
-                  if (groupId) {
-                    documentOpenRequestsRef.current.set(
-                      groupId,
-                      (documentOpenRequestsRef.current.get(groupId) ?? 0) + 1,
-                    );
-                  }
-                  commitAction(
-                    navigateToView(
-                      tab.id,
-                      createViewState({
-                        ...tab.current.view,
-                        selectionFrom: item.from,
-                        selectionTo: item.from,
-                        visualSelectionFrom: item.from,
-                        visualSelectionTo: item.from,
-                      }),
-                    ),
-                  );
-                  setEditorRevealForTab(activeTab.id, {
-                    documentId: activeSession.id,
-                    headingText: item.title,
-                    position: item.from,
-                    requestId: revealCounter.current++,
-                  });
-                }}
+                onNavigate={navigateOutline}
               />
             ) : (
               <div className="sidebar-empty">
@@ -5005,6 +5082,7 @@ export function AppShell({
         open={contextMenu.open}
         position={contextMenu.position}
         target={contextMenu.target}
+        readOnly={contextMenu.readOnly}
       />
 
       <footer className="status-bar" role="status" aria-live="polite">
@@ -5023,13 +5101,15 @@ export function AppShell({
           <DocumentStatisticsStatus
             session={activeSession}
             modeLabel={
-              activeSession.kind === "text"
-                ? activeSession.language
-                : activeSession.mode === "sourceOnly"
-                  ? t("status.sourceOnly")
-                  : editorMode === "visual"
-                    ? t("status.visualEditing")
-                    : t("status.sourceEditing")
+              readingMode
+                ? t("toolbar.readingMode")
+                : activeSession.kind === "text"
+                  ? activeSession.language
+                  : activeSession.mode === "sourceOnly"
+                    ? t("status.sourceOnly")
+                    : editorMode === "visual"
+                      ? t("status.visualEditing")
+                      : t("status.sourceEditing")
             }
           />
         ) : (

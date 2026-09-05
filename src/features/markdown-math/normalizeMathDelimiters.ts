@@ -75,6 +75,24 @@ function isUnescapedToken(markdown: string, offset: number, token: string): bool
   );
 }
 
+function containerPrefix(markdown: string, offset: number): string {
+  const start = markdown.lastIndexOf("\n", offset - 1) + 1;
+  const before = markdown.slice(start, offset);
+  return (
+    before.match(
+      /^(?:(?:[ \t]*>[ \t]?)|(?:[ \t]*(?:[-+*]|\d{1,9}[.)])[ \t]+)|[ \t]+)*/u,
+    )?.[0] ?? ""
+  );
+}
+
+function continuationPrefix(prefix: string): string {
+  // A list marker occurs only on the first line; continuation blocks use its
+  // indentation. Quote markers must remain on every inserted physical line.
+  return prefix.replace(/(?:[-+*]|\d{1,9}[.)])([ \t]+)/gu, (marker) =>
+    " ".repeat(marker.length),
+  );
+}
+
 function lineContainsOnlyWhitespaceAroundToken(
   markdown: string,
   offset: number,
@@ -84,8 +102,8 @@ function lineContainsOnlyWhitespaceAroundToken(
   const newline = markdown.indexOf("\n", offset + tokenLength);
   const lineEnd = newline === -1 ? markdown.length : newline;
   return (
-    markdown.slice(lineStart, offset).trim() === "" &&
-    markdown.slice(offset + tokenLength, lineEnd).trim() === ""
+    markdown.slice(lineStart + containerPrefix(markdown, offset).length, offset).trim() ===
+      "" && markdown.slice(offset + tokenLength, lineEnd).trim() === ""
   );
 }
 
@@ -178,10 +196,18 @@ export function normalizeMathDelimiters(markdown: string): string {
       });
     } else {
       const formula = markdown.slice(offset + 2, closingOffset);
+      const prefix = continuationPrefix(containerPrefix(markdown, offset));
+      const lineStart = markdown.lastIndexOf("\n", offset - 1) + 1;
+      const startsContent = offset === lineStart + containerPrefix(markdown, offset).length;
+      const lineEnd = markdown.indexOf("\n", closingOffset + 2);
+      const hasFollowingText =
+        markdown
+          .slice(closingOffset + 2, lineEnd === -1 ? markdown.length : lineEnd)
+          .trim() !== "";
       edits.push({
         start: offset,
         end: closingOffset + 2,
-        replacement: `\n$$\n${formula}\n$$\n`,
+        replacement: `${startsContent ? "" : `\n${prefix}`}$$\n${prefix}${formula}\n${prefix}$$${hasFollowingText ? `\n${prefix}` : ""}`,
       });
     }
 
@@ -189,9 +215,14 @@ export function normalizeMathDelimiters(markdown: string): string {
   }
 
   if (edits.length === 0) return markdown;
-  let normalized = markdown;
-  for (const edit of edits.sort((left, right) => right.start - left.start)) {
-    normalized = `${normalized.slice(0, edit.start)}${edit.replacement}${normalized.slice(edit.end)}`;
+  const fragments: string[] = [];
+  let start = 0;
+  // Edits are collected in source order. One join avoids copying the entire
+  // document once per delimiter in formula-heavy notes.
+  for (const edit of edits) {
+    fragments.push(markdown.slice(start, edit.start), edit.replacement);
+    start = edit.end;
   }
-  return normalized;
+  fragments.push(markdown.slice(start));
+  return fragments.join("");
 }

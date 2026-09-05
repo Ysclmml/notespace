@@ -13,6 +13,9 @@ export interface WorkspaceSearchMatch {
   /** UTF-16 length of the first match on this line. */
   readonly matchLength: number;
   readonly snippet: string;
+  /** Zero-based UTF-16 range within snippet, clipped before its trailing ellipsis. */
+  readonly snippetMatchStart: number;
+  readonly snippetMatchEnd: number;
 }
 
 export interface WorkspaceSearchResponse {

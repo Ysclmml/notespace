@@ -1,4 +1,5 @@
 import type { AppStateAction } from "./actions";
+import { reclaimDocumentHistory } from "./documentRetention";
 import {
   createViewState,
   documentIdFromPath,
@@ -709,10 +710,10 @@ function reduceAppState(state: AppState, action: StateMutationAction): AppState 
           [tab.current, ...tab.back, ...tab.forward].map((entry) => entry.documentId),
         ),
       );
-      // Closing the last reference discards unsaved text, not the clean document cache.
+      // Confirmed close drops the last owner of both clean and unsaved bodies.
       const sessions = { ...state.sessions };
-      for (const [documentId, session] of Object.entries(sessions)) {
-        if (session.dirty && !referencedDocumentIds.has(documentId)) {
+      for (const documentId of Object.keys(sessions)) {
+        if (!referencedDocumentIds.has(documentId)) {
           delete sessions[documentId];
         }
       }
@@ -895,7 +896,7 @@ function navigateWindow(
   );
 }
 
-export function appStateReducer(state: AppState, action: AppStateAction): AppState {
+function reduceWithNavigation(state: AppState, action: AppStateAction): AppState {
   if (action.type === "navigation/go-back" || action.type === "navigation/go-forward") {
     return navigateWindow(
       state,
@@ -959,4 +960,19 @@ export function appStateReducer(state: AppState, action: AppStateAction): AppSta
     case "session/restore":
       return next;
   }
+}
+
+export function appStateReducer(state: AppState, action: AppStateAction): AppState {
+  const next = reduceWithNavigation(state, action);
+  if (
+    next === state ||
+    action.type === "document/edit" ||
+    action.type === "document/external-change" ||
+    action.type === "tab/update-view" ||
+    action.type === "tab/keep-open"
+  )
+    return next;
+  // Navigation/save/close can release old bodies. Typing and scrolling must not
+  // scan every retained session on each editor transaction.
+  return reclaimDocumentHistory(next);
 }

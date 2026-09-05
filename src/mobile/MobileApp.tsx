@@ -11,6 +11,7 @@ import {
 import { MobileIcon } from "./MobileIcon";
 import { MobileReader } from "./MobileReader";
 import { DEFAULT_LAN_PORT } from "./httpTransport";
+import { findRecentWorkspace, resolveRecentDocumentId } from "./recentDocument";
 import {
   createBrowserMobileOfflineStore,
   downloadOfflineWorkspace,
@@ -26,6 +27,7 @@ import {
 } from "./offlineWorkspace";
 import {
   createBrowserMobileStore,
+  findRecentDocument,
   mobileDocumentStorageKey,
   updateRecentDocument,
   type MobileLocalStore,
@@ -599,9 +601,19 @@ function BrowseSection({
           </div>
         </div>
       </div>
+      {directory.truncated && (
+        <p className="mobile-notice" role="status">
+          目录未完整读取，部分内容可能未显示。请检查电脑上的文件访问权限或目录大小后重试。
+        </p>
+      )}
       {directory.entries.length === 0 ? (
-        <EmptyState icon="book" title="这个目录是空的">
-          桌面端没有提供可阅读的 Markdown 文档。
+        <EmptyState
+          icon="book"
+          title={directory.truncated ? "暂时没有可显示的内容" : "这个目录是空的"}
+        >
+          {directory.truncated
+            ? "目录读取尚不完整，可以重新进入目录重试。"
+            : "桌面端没有提供可阅读的 Markdown 文档。"}
         </EmptyState>
       ) : (
         <div className="mobile-file-list">
@@ -810,6 +822,7 @@ function RecentSection({
                 offlineSnapshots,
                 recent.workspaceName,
                 recent.relativePath,
+                recent.workspaceSyncKey,
               );
             return (
               <DocumentRow
@@ -1322,7 +1335,7 @@ export function MobileApp({
     }
   };
 
-  const openDocument = async (documentId: string) => {
+  const openDocument = async (documentId: string, recent?: MobileRecentDocument) => {
     const computerId = activeComputer?.id;
     if (!computerId) return;
     const requestId = documentRequestRef.current + 1;
@@ -1332,17 +1345,48 @@ export function MobileApp({
     setError(null);
     try {
       const onlineAtStart = lastConnectionKindRef.current === "connected";
-      const cachedDocument = findOfflineDocument(activeOfflineSnapshots, documentId);
+      const cachedDocument =
+        findOfflineDocument(activeOfflineSnapshots, documentId) ??
+        (recent
+          ? findOfflineDocumentByPath(
+              activeOfflineSnapshots,
+              recent.workspaceName,
+              recent.relativePath,
+              recent.workspaceSyncKey,
+            )
+          : undefined);
       const readFromComputer =
         onlineAtStart &&
-        (!cachedDocument || onlineWorkspaceIds.has(cachedDocument.workspaceId));
+        (!cachedDocument ||
+          (recent
+            ? Boolean(findRecentWorkspace(workspaces, recent))
+            : onlineWorkspaceIds.has(cachedDocument.workspaceId)));
       let opened: MobileDocument | undefined;
       try {
+        const resolvedId =
+          readFromComputer && recent
+            ? await resolveRecentDocumentId(
+                transport,
+                workspaces,
+                recent,
+                () =>
+                  requestId === documentRequestRef.current &&
+                  epoch === connectionEpochRef.current &&
+                  computerId === lastComputerIdRef.current,
+              )
+            : documentId;
         opened = readFromComputer
-          ? await transport.readDocument(documentId)
+          ? await transport.readDocument(resolvedId)
           : cachedDocument;
       } catch (reason) {
-        opened = findOfflineDocument(activeOfflineSnapshots, documentId);
+        if (
+          requestId !== documentRequestRef.current ||
+          epoch !== connectionEpochRef.current ||
+          computerId !== lastComputerIdRef.current
+        ) {
+          return;
+        }
+        opened = cachedDocument;
         if (!opened) throw reason;
         setNotice("电脑暂时无法读取这篇文档，已打开手机上的离线副本。");
       }
@@ -1355,21 +1399,46 @@ export function MobileApp({
         return;
       }
       setDocument(opened);
+      const workspace =
+        workspaces.find((item) => item.id === opened.workspaceId) ??
+        activeOfflineSnapshots.find((item) => item.workspace.id === opened.workspaceId)
+          ?.workspace;
+      const previous = findRecentDocument(
+        localState,
+        computerId,
+        opened,
+        workspace?.syncKey,
+        (readFromComputer
+          ? workspaces
+          : activeOfflineSnapshots.map((item) => item.workspace)
+        ).filter((item) => item.name === opened.workspaceName).length === 1,
+      );
       const storageKey = mobileDocumentStorageKey(computerId, opened.id);
-      const position = localState.positions[storageKey] ?? {
-        scrollTop: 0,
-        progress: 0,
-        updatedAt: new Date().toISOString(),
-      };
+      const previousPosition = previous
+        ? (localState.positions[
+            mobileDocumentStorageKey(computerId, previous.documentId)
+          ] ?? previous.position)
+        : undefined;
+      const position = localState.positions[storageKey] ??
+        previousPosition ?? {
+          scrollTop: 0,
+          progress: 0,
+          updatedAt: new Date().toISOString(),
+        };
       persistLocalState((current) =>
-        updateRecentDocument(current, {
-          computerId,
-          documentId: opened.id,
-          title: opened.title,
-          relativePath: opened.relativePath,
-          workspaceName: opened.workspaceName,
-          position,
-        }),
+        updateRecentDocument(
+          current,
+          {
+            computerId,
+            documentId: opened.id,
+            title: opened.title,
+            relativePath: opened.relativePath,
+            workspaceName: opened.workspaceName,
+            ...(workspace?.syncKey ? { workspaceSyncKey: workspace.syncKey } : {}),
+            position,
+          },
+          previous?.documentId,
+        ),
       );
     } catch (reason) {
       if (
@@ -1384,29 +1453,29 @@ export function MobileApp({
   };
 
   const openRecentDocument = (recent: MobileRecentDocument) => {
-    const cached =
-      findOfflineDocument(activeOfflineSnapshots, recent.documentId) ??
-      findOfflineDocumentByPath(
-        activeOfflineSnapshots,
-        recent.workspaceName,
-        recent.relativePath,
-      );
-    void openDocument(cached?.id ?? recent.documentId);
+    void openDocument(recent.documentId, recent);
   };
 
   const rememberPosition = useCallback(
     (position: MobileReadPosition) => {
       if (!document || !activeComputer) return;
-      persistLocalState((current) =>
-        updateRecentDocument(current, {
+      persistLocalState((current) => {
+        const previous = current.recentDocuments.find(
+          (item) =>
+            item.computerId === activeComputer.id && item.documentId === document.id,
+        );
+        return updateRecentDocument(current, {
           computerId: activeComputer.id,
           documentId: document.id,
           title: document.title,
           relativePath: document.relativePath,
           workspaceName: document.workspaceName,
+          ...(previous?.workspaceSyncKey
+            ? { workspaceSyncKey: previous.workspaceSyncKey }
+            : {}),
           position,
-        }),
-      );
+        });
+      });
     },
     [activeComputer, document, persistLocalState],
   );

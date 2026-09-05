@@ -41,6 +41,7 @@ export interface EditorContextMenuProps {
   readonly position: ContextMenuPosition;
   readonly target?: EventTarget | null;
   readonly actions?: EditorContextMenuActions;
+  readonly readOnly?: boolean;
   readonly onClose: () => void;
 }
 
@@ -205,6 +206,7 @@ export function EditorContextMenu({
   onClose,
   open,
   position,
+  readOnly = false,
   target,
 }: EditorContextMenuProps) {
   const { t } = useI18n();
@@ -220,18 +222,18 @@ export function EditorContextMenu({
   const [actionError, setActionError] = useState(false);
   const image = resolveImageActionTarget(target);
   const link = resolveContextMenuLink(target);
-  const writable = target == null || isWritableEditorTarget(target);
+  const writable = !readOnly && (target == null || isWritableEditorTarget(target));
   const readOnlyCode = isReadOnlyCodeTarget(target);
   const visualMarkdown = isVisualMarkdownTarget(target);
   const tableTarget = isTableTarget(target);
   const branches = useMemo(
     () =>
-      visualMarkdown && !image
+      visualMarkdown && !readOnly && !image
         ? tableTarget
           ? [...VISUAL_BRANCHES, TABLE_BRANCH]
           : VISUAL_BRANCHES
         : [],
-    [tableTarget, visualMarkdown, image],
+    [tableTarget, visualMarkdown, readOnly, image],
   );
   const menuItems = useMemo(() => {
     const items: MenuItem[] = [];
@@ -240,6 +242,7 @@ export function EditorContextMenu({
         if (image.element.querySelector("[data-visual-mermaid-id]"))
           items.push({ command: "previewImage", label: "context.previewDiagram" });
         if (
+          !readOnly &&
           image.element.closest(".milkdown-code-block")?.querySelector(".codemirror-host")
         )
           items.push({ command: "editMermaidSource", label: "context.editMermaidSource" });
@@ -256,13 +259,13 @@ export function EditorContextMenu({
             { command: "copyImageAddress", label: "context.copyImageAddress" },
             { command: "copyImageMarkdown", label: "context.copyImageMarkdown" },
           );
-        if (image.editable)
+        if (image.editable && !readOnly)
           items.push({ command: "editImage", label: "context.editImage", separated: true });
         if (image.localPath && actions?.revealImage)
           items.push({
             command: "revealImage",
             label: "context.revealImage",
-            separated: !image.editable,
+            separated: !image.editable || readOnly,
           });
       }
       return items;
@@ -276,7 +279,7 @@ export function EditorContextMenu({
     }
     items.push(...editingItems);
     return items;
-  }, [actions, image, link, readOnlyCode, writable]);
+  }, [actions, image, link, readOnly, readOnlyCode, writable]);
   const closeMenu = useCallback(() => {
     setOpenBranch(null);
     setActionError(false);

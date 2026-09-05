@@ -1,4 +1,5 @@
 import "./Outline.css";
+import { memo, useMemo } from "react";
 import { extractOutline, type OutlineItem } from "./outlineModel";
 
 interface OutlineProps {
@@ -9,14 +10,14 @@ interface OutlineProps {
   readonly lineLabel?: (line: number) => string;
 }
 
-export function Outline({
+export const Outline = memo(function Outline({
   markdown,
   onNavigate,
   label = "文档大纲",
   emptyLabel = "当前文档没有标题",
   lineLabel = (line) => `第 ${line} 行`,
 }: OutlineProps) {
-  const items = extractOutline(markdown);
+  const items = useMemo(() => extractOutline(markdown), [markdown]);
   if (items.length === 0) {
     return <p className="outline-empty">{emptyLabel}</p>;
   }
@@ -37,4 +38,4 @@ export function Outline({
       ))}
     </nav>
   );
-}
+});

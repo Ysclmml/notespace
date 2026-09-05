@@ -1,6 +1,6 @@
 [package]
 name = "notespace"
-version = "0.2.2"
+version = "0.2.3"
 description = "NoteSpace, a local-first Markdown and text editor"
 edition = "2021"
 license = "UNLICENSED"
