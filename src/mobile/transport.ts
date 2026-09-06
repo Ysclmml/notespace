@@ -23,12 +23,15 @@ export interface MobileTransport {
   subscribeConnection(listener: (state: MobileConnectionState) => void): () => void;
   subscribeComputers?(listener: () => void): () => void;
   listSavedComputers(): Promise<readonly MobileComputer[]>;
+  updateComputer?(computerId: string, address: string): Promise<void>;
+  removeComputer?(computerId: string): Promise<void>;
   pair(request: MobilePairingRequest): Promise<MobileComputer>;
   connect(computerId: string): Promise<void>;
   disconnect(): Promise<void>;
   listWorkspaces(): Promise<readonly MobileWorkspace[]>;
   listDirectory(workspaceId: string, directoryId?: string | null): Promise<MobileDirectory>;
   readDocument(documentId: string): Promise<MobileDocument>;
+  readImage?(documentId: string, reference: string, signal: AbortSignal): Promise<Blob>;
   search(request: MobileSearchRequest): Promise<readonly MobileSearchResult[]>;
   listFavorites(): Promise<readonly MobileFavorite[]>;
 }

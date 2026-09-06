@@ -1,13 +1,18 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import { MobileIcon } from "./MobileIcon";
 import { mobileMarkdownOutline } from "./markdownModel";
 import { SafeMarkdown } from "./SafeMarkdown";
+import { MobileVisualViewer, type MobileVisual } from "./MobileVisualViewer";
+import { mobileDocumentLink } from "./documentLink";
+import { useMobileBack } from "./mobileBack";
 import type { MobileDocument, MobileReadPosition, MobileReaderTheme } from "./types";
 
 export interface MobileReaderProps {
   readonly document: MobileDocument;
   readonly initialPosition?: MobileReadPosition;
+  readonly initialAnchor?: string;
+  readonly loadImage?: (reference: string, signal: AbortSignal) => Promise<Blob>;
   readonly offline?: boolean;
   readonly offlineNotice?: {
     readonly title: string;
@@ -28,6 +33,8 @@ function progressLabel(progress: number) {
 export function MobileReader({
   document,
   initialPosition,
+  initialAnchor,
+  loadImage,
   offline = false,
   offlineNotice,
   notice,
@@ -39,6 +46,38 @@ export function MobileReader({
 }: MobileReaderProps) {
   const scrollerRef = useRef<HTMLElement>(null);
   const [outlineOpen, setOutlineOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [visual, setVisual] = useState<MobileVisual | null>(null);
+  const visualReturnPosition = useRef<number | null>(null);
+  const visualPointerPosition = useRef<{ top: number; time: number } | null>(null);
+  const openVisual = useCallback((next: MobileVisual) => {
+    const pointer = visualPointerPosition.current;
+    visualReturnPosition.current =
+      pointer && Date.now() - pointer.time < 700
+        ? pointer.top
+        : (scrollerRef.current?.scrollTop ?? 0);
+    visualPointerPosition.current = null;
+    setVisual(next);
+  }, []);
+  useLayoutEffect(() => {
+    if (visual || visualReturnPosition.current === null) return;
+    // Restore only for an explicit viewer close. No scroll listeners or
+    // background correction compete with reading gestures.
+    if (scrollerRef.current) scrollerRef.current.scrollTop = visualReturnPosition.current;
+    visualReturnPosition.current = null;
+  }, [visual]);
+  const [linkNotice, setLinkNotice] = useState<string | null>(null);
+  const openLinkRef = useRef(onOpenLink);
+  useLayoutEffect(() => {
+    openLinkRef.current = onOpenLink;
+  }, [onOpenLink]);
+  const tapRef = useRef<{
+    id: number;
+    x: number;
+    y: number;
+    time: number;
+    scrollTop: number;
+  } | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [fontScale, setFontScale] = useState(1);
   const [theme, setTheme] = useState<MobileReaderTheme>("paper");
@@ -106,23 +145,59 @@ export function MobileReader({
     }
   };
 
-  const jumpToHeading = (id: string) => {
+  const jumpToHeading = useCallback((id: string) => {
     const target = scrollerRef.current?.querySelector<HTMLElement>(`#${CSS.escape(id)}`);
     target?.scrollIntoView({ block: "start" });
+    if (!target) setLinkNotice("文档中未找到这个标题或位置");
     setOutlineOpen(false);
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!initialAnchor) return;
+    scrollerRef.current
+      ?.querySelector<HTMLElement>(`#${CSS.escape(initialAnchor)}`)
+      ?.scrollIntoView({ block: "start" });
+  }, [initialAnchor]);
+
+  const openLink = useCallback(
+    (href: string) => {
+      setLinkNotice(null);
+      try {
+        const link = mobileDocumentLink(document.relativePath, href);
+        if (link.relativePath === document.relativePath) {
+          if (link.anchor) jumpToHeading(link.anchor);
+          else scrollerRef.current?.scrollTo({ top: 0 });
+        } else {
+          publishPendingPosition();
+          openLinkRef.current?.(href);
+        }
+      } catch (reason) {
+        setLinkNotice(reason instanceof Error ? reason.message : "无法打开链接");
+      }
+    },
+    [document.relativePath, jumpToHeading, publishPendingPosition],
+  );
+
+  const goBack = () => {
+    publishPendingPosition();
+    onBack();
   };
+  useMobileBack(() => {
+    if (outlineOpen) setOutlineOpen(false);
+    else if (settingsOpen) setSettingsOpen(false);
+    else if (menuOpen) setMenuOpen(false);
+    else goBack();
+    return true;
+  }, 10);
 
   return (
     <section className="mobile-reader" data-theme={theme}>
-      <div className="mobile-reader__chrome">
+      <div className="mobile-reader__chrome" inert={visual !== null}>
         <header className="mobile-reader__header">
           <button
             aria-label="返回"
             className="mobile-icon-button"
-            onClick={() => {
-              publishPendingPosition();
-              onBack();
-            }}
+            onClick={goBack}
             type="button"
           >
             <MobileIcon name="back" />
@@ -144,29 +219,13 @@ export function MobileReader({
             </button>
           )}
           <button
-            aria-expanded={outlineOpen}
-            aria-label="文档大纲"
+            aria-expanded={menuOpen}
+            aria-label="阅读菜单"
             className="mobile-icon-button"
-            disabled={outline.length === 0}
-            onClick={() => {
-              setSettingsOpen(false);
-              setOutlineOpen((current) => !current);
-            }}
+            onClick={() => setMenuOpen((current) => !current)}
             type="button"
           >
             <MobileIcon name="outline" />
-          </button>
-          <button
-            aria-expanded={settingsOpen}
-            aria-label="阅读设置"
-            className="mobile-icon-button mobile-reader__text-button"
-            onClick={() => {
-              setOutlineOpen(false);
-              setSettingsOpen((current) => !current);
-            }}
-            type="button"
-          >
-            Aa
           </button>
         </header>
 
@@ -225,11 +284,17 @@ export function MobileReader({
             </span>
           </div>
         )}
-        {notice && (
+        {(notice || linkNotice) && (
           <div className="mobile-notice" role="status">
-            <span>{notice}</span>
-            {onDismissNotice && (
-              <button onClick={onDismissNotice} type="button">
+            <span>{linkNotice || notice}</span>
+            {(onDismissNotice || linkNotice) && (
+              <button
+                onClick={() => {
+                  setLinkNotice(null);
+                  onDismissNotice?.();
+                }}
+                type="button"
+              >
                 知道了
               </button>
             )}
@@ -238,7 +303,11 @@ export function MobileReader({
       </div>
 
       {outlineOpen && (
-        <aside aria-label="文档大纲" className="mobile-reader__outline">
+        <aside
+          aria-label="文档大纲"
+          className="mobile-reader__outline"
+          inert={visual !== null}
+        >
           <div className="mobile-reader__outline-heading">
             <strong>文档大纲</strong>
             <button onClick={() => setOutlineOpen(false)} type="button">
@@ -263,6 +332,58 @@ export function MobileReader({
       <main
         className="mobile-reader__scroller"
         data-testid="mobile-reader-scroller"
+        inert={visual !== null}
+        onPointerDownCapture={(event) => {
+          if ((event.target as Element).closest("[data-mobile-visual-trigger]")) {
+            visualPointerPosition.current = {
+              top: event.currentTarget.scrollTop,
+              time: Date.now(),
+            };
+          } else {
+            visualPointerPosition.current = null;
+          }
+        }}
+        onPointerDown={(event) => {
+          if (
+            event.button !== 0 ||
+            tapRef.current ||
+            globalThis.getSelection()?.isCollapsed === false ||
+            (event.target as Element).closest("button,a,input,summary,pre,table")
+          ) {
+            tapRef.current = null;
+            return;
+          }
+          tapRef.current = {
+            id: event.pointerId,
+            x: event.clientX,
+            y: event.clientY,
+            time: Date.now(),
+            scrollTop: event.currentTarget.scrollTop,
+          };
+        }}
+        onPointerCancel={() => {
+          tapRef.current = null;
+        }}
+        onPointerUp={(event) => {
+          const tap = tapRef.current;
+          tapRef.current = null;
+          if (
+            !tap ||
+            tap.id !== event.pointerId ||
+            Date.now() - tap.time > 350 ||
+            Math.hypot(event.clientX - tap.x, event.clientY - tap.y) > 8 ||
+            Math.abs(event.currentTarget.scrollTop - tap.scrollTop) > 4 ||
+            globalThis.getSelection()?.isCollapsed === false
+          )
+            return;
+          const bounds = event.currentTarget.getBoundingClientRect();
+          const y = event.clientY - bounds.top;
+          if (y >= bounds.height / 3 && y <= (bounds.height * 2) / 3) {
+            setMenuOpen((open) => !open);
+            setOutlineOpen(false);
+            setSettingsOpen(false);
+          }
+        }}
         onScroll={rememberPosition}
         ref={attachScroller}
         style={{ "--mobile-reader-scale": fontScale } as React.CSSProperties}
@@ -273,9 +394,60 @@ export function MobileReader({
             <time dateTime={document.updatedAt}>磁盘内容 · {document.updatedAt}</time>
           )}
         </div>
-        <SafeMarkdown markdown={document.markdown} onOpenLink={onOpenLink} />
+        <SafeMarkdown
+          markdown={document.markdown}
+          onOpenLink={openLink}
+          loadImage={loadImage}
+          offline={offline}
+          onOpenVisual={openVisual}
+        />
         <footer className="mobile-reader__end">已读到 {progressLabel(progress)}</footer>
       </main>
+      {menuOpen && (
+        <nav
+          className="mobile-reader__bottom-menu"
+          aria-label="阅读菜单"
+          inert={visual !== null}
+        >
+          <button type="button" onClick={goBack}>
+            返回列表
+          </button>
+          <button
+            type="button"
+            aria-label="文档大纲"
+            aria-expanded={outlineOpen}
+            disabled={!outline.length}
+            onClick={() => {
+              setSettingsOpen(false);
+              setOutlineOpen((open) => !open);
+            }}
+          >
+            大纲
+          </button>
+          <button
+            type="button"
+            aria-label="阅读设置"
+            aria-expanded={settingsOpen}
+            onClick={() => {
+              setOutlineOpen(false);
+              setSettingsOpen((open) => !open);
+            }}
+          >
+            Aa 设置
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setMenuOpen(false);
+              setOutlineOpen(false);
+              setSettingsOpen(false);
+            }}
+          >
+            收起
+          </button>
+        </nav>
+      )}
+      {visual && <MobileVisualViewer visual={visual} onClose={() => setVisual(null)} />}
       <div aria-hidden="true" className="mobile-reader__progress">
         <span style={{ width: progressLabel(progress) }} />
       </div>

@@ -10,6 +10,13 @@ import {
 } from "./offlineWorkspace";
 import { createMemoryMobileStore } from "./storage";
 import type { MobileComputer, MobileDocument } from "./types";
+import { dispatchMobileBack } from "./mobileBack";
+
+vi.mock("../features/editor/mermaidRenderer", () => ({
+  renderMermaidSvg: vi.fn(
+    async () => '<svg viewBox="0 0 400 200"><text>示例图表</text></svg>',
+  ),
+}));
 
 async function connectDemo(transport = createDemoMobileTransport()) {
   const storage = createMemoryMobileStore();
@@ -261,7 +268,7 @@ describe("MobileApp", () => {
     expect(
       screen.getByText("手机端采用逐层目录和沉浸阅读，不照搬桌面端的永久文件树。"),
     ).toBeVisible();
-    expect(screen.getByRole("figure", { name: "Mermaid 图表占位" })).toBeVisible();
+    expect(screen.getByRole("figure", { name: "Mermaid 图表" })).toBeVisible();
     expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
   });
 
@@ -319,16 +326,128 @@ describe("MobileApp", () => {
     }
   });
 
-  it("shows link feedback inside the reader instead of deferring it until back", async () => {
+  it("follows a relative document link and returns to the original reading position", async () => {
     await connectDemo();
     fireEvent.click(screen.getByRole("button", { name: /产品笔记.*3 篇文档/ }));
     fireEvent.click(await screen.findByRole("button", { name: /移动阅读说明\.md/ }));
-    fireEvent.click(await screen.findByRole("button", { name: "链接导航示例" }));
+    await screen.findByRole("button", { name: "链接导航示例" });
+    const scroller = screen.getByTestId("mobile-reader-scroller");
+    scroller.scrollTop = 350;
+    fireEvent.scroll(scroller);
+    fireEvent.click(screen.getByRole("button", { name: "链接导航示例" }));
 
-    expect(screen.getByText("链接导航将在真实局域网连接完成后开放。")).toBeVisible();
+    expect(
+      await screen.findByRole("heading", { level: 1, name: "移动端阅读设计" }),
+    ).toBeVisible();
+    act(() => {
+      expect(dispatchMobileBack()).toBe(true);
+    });
     expect(
       screen.getByRole("heading", { level: 1, name: "欢迎使用移动阅读" }),
     ).toBeVisible();
+    expect(screen.getByTestId("mobile-reader-scroller").scrollTop).toBe(350);
+  });
+
+  it("returns through directories and workspaces before leaving root exit to Android", async () => {
+    await connectDemo();
+    fireEvent.click(screen.getByRole("button", { name: /产品笔记.*3 篇文档/ }));
+    fireEvent.click(await screen.findByRole("button", { name: /设计.*2 篇文档/ }));
+    await screen.findByRole("heading", { level: 1, name: "设计" });
+    act(() => {
+      expect(
+        window.dispatchEvent(new Event("notespace-mobile-back", { cancelable: true })),
+      ).toBe(false);
+    });
+    await screen.findByRole("heading", { level: 1, name: "产品笔记" });
+    act(() => {
+      expect(dispatchMobileBack()).toBe(true);
+    });
+    expect(screen.getByRole("heading", { level: 1, name: "共享工作区" })).toBeVisible();
+    act(() => {
+      expect(dispatchMobileBack()).toBe(true);
+    });
+    expect(
+      screen.getByRole("heading", { level: 1, name: "在手机上阅读电脑里的笔记" }),
+    ).toBeVisible();
+    act(() => {
+      expect(
+        window.dispatchEvent(new Event("notespace-mobile-back", { cancelable: true })),
+      ).toBe(true);
+    });
+  });
+
+  it("edits a connection and deletes only its address while keeping offline content", async () => {
+    const computer = { id: "saved", name: "阅读电脑", address: "old.local:49920" };
+    const transport = new MockMobileTransport({ computers: [computer] });
+    const offlineStorage = createMemoryMobileOfflineStore();
+    await offlineStorage.put(offlineSnapshot(computer, "workspace", "离线工作区"));
+    render(<MobileApp transport={transport} offlineStorage={offlineStorage} />);
+    fireEvent.click(await screen.findByRole("button", { name: "修改连接" }));
+    fireEvent.change(
+      within(screen.getByRole("dialog")).getByRole("textbox", { name: "电脑地址" }),
+      { target: { value: "new.local:49920" } },
+    );
+    fireEvent.click(screen.getByRole("button", { name: "保存地址" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect((await transport.listSavedComputers())[0]).toEqual({
+      ...computer,
+      address: "new.local:49920",
+    });
+    fireEvent.click(screen.getByRole("button", { name: "删除连接" }));
+    expect(await screen.findByText("仅保留离线内容")).toBeVisible();
+    expect(await transport.listSavedComputers()).toEqual([]);
+    expect(await offlineStorage.list()).toHaveLength(1);
+    fireEvent.click(screen.getByRole("button", { name: "离线阅读" }));
+    expect(await screen.findByRole("heading", { name: "共享工作区" })).toBeVisible();
+  });
+
+  it("follows saved document links offline and keeps missing links on the current page", async () => {
+    const computer = {
+      id: "saved-links",
+      name: "离线阅读电脑",
+      address: "old.local:49920",
+    };
+    const transport = new MockMobileTransport({ computers: [computer] });
+    const read = vi.spyOn(transport, "readDocument");
+    const offlineStorage = createMemoryMobileOfflineStore();
+    const snapshot = offlineSnapshot(computer, "cached-links", "离线链接");
+    await offlineStorage.put({
+      ...snapshot,
+      documents: [
+        { ...snapshot.documents[0]!, markdown: "# 离线笔记\n\n[下一篇](next.md)" },
+        {
+          id: "cached-next",
+          workspaceId: "cached-links",
+          workspaceName: "离线链接",
+          title: "下一篇",
+          relativePath: "next.md",
+          markdown: "# 离线下一篇\n\n[缺失文档](missing.md)",
+        },
+      ],
+      directories: [
+        {
+          ...snapshot.directories[0]!,
+          entries: [
+            ...snapshot.directories[0]!.entries,
+            { id: "cached-next", name: "next.md", kind: "document" },
+          ],
+        },
+      ],
+    });
+    render(<MobileApp transport={transport} offlineStorage={offlineStorage} />);
+    fireEvent.click(await screen.findByRole("button", { name: "离线阅读" }));
+    fireEvent.click(await screen.findByRole("button", { name: /离线链接/ }));
+    fireEvent.click(await screen.findByRole("button", { name: /离线笔记.md/ }));
+    fireEvent.click(await screen.findByRole("button", { name: "下一篇" }));
+    expect(await screen.findByRole("heading", { name: "离线下一篇" })).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "缺失文档" }));
+    expect(await screen.findByText("这篇文档没有保存在手机离线内容中")).toBeVisible();
+    expect(screen.getByRole("heading", { name: "离线下一篇" })).toBeVisible();
+    act(() => {
+      dispatchMobileBack();
+    });
+    expect(screen.getByRole("heading", { name: "离线笔记" })).toBeVisible();
+    expect(read).not.toHaveBeenCalled();
   });
 
   it("accepts an injected QR scanner and pairs without exposing scanner details to the UI", async () => {

@@ -81,6 +81,84 @@ describe("normalizeDebugHttpBaseUrl", () => {
 });
 
 describe("DebugHttpMobileTransport", () => {
+  it("keeps the same saved identity across address edits, restart, and reconnect", async () => {
+    const storage = memoryStorage();
+    const fetch = vi.fn(async () => statusResponse());
+    const transport = new DebugHttpMobileTransport({ fetch, storage });
+    const computer = await pairAndConnect(transport);
+    await transport.updateComputer(computer.id, "new.local");
+    expect(transport.getConnectionState().kind).toBe("disconnected");
+    const restored = new DebugHttpMobileTransport({ fetch, storage });
+    const [saved] = await restored.listSavedComputers();
+    expect(saved).toMatchObject({ id: computer.id, address: "new.local:49920" });
+    await restored.connect(computer.id);
+    expect(restored.getConnectionState().computer).toMatchObject({
+      id: computer.id,
+      address: "new.local:49920",
+    });
+    await restored.removeComputer(computer.id);
+    expect(
+      await new DebugHttpMobileTransport({ fetch, storage }).listSavedComputers(),
+    ).toEqual([]);
+  });
+
+  it("reads a relative image through opaque asset IDs and returns bounded binary data", async () => {
+    const fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/status")) return statusResponse();
+      if (url.endsWith("/assets/resolve")) return response({ assetId: "asset-1" });
+      return new Response('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"/>', {
+        headers: { "content-type": "image/svg+xml" },
+      });
+    });
+    const transport = new DebugHttpMobileTransport({ fetch, storage: memoryStorage() });
+    await pairAndConnect(transport);
+    const blob = await transport.readImage(
+      "document-1",
+      "../images/chart.svg",
+      new AbortController().signal,
+    );
+    expect(blob.type).toBe("image/svg+xml");
+    expect(blob.size).toBeGreaterThan(0);
+    expect(fetch).toHaveBeenCalledWith(
+      "http://192.168.1.20:43127/api/v1/assets/resolve",
+      expect.objectContaining({
+        body: JSON.stringify({
+          documentId: "document-1",
+          reference: "../images/chart.svg",
+        }),
+      }),
+    );
+    expect(fetch).toHaveBeenLastCalledWith(
+      "http://192.168.1.20:43127/api/v1/assets/asset-1",
+      expect.objectContaining({ credentials: "omit", redirect: "error" }),
+    );
+  });
+
+  it("rejects oversized and non-image resources without disconnecting the reader", async () => {
+    let oversized = false;
+    const fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/status")) return statusResponse();
+      if (url.endsWith("/assets/resolve")) return response({ assetId: "asset-1" });
+      return new Response("example", {
+        headers: oversized
+          ? { "content-type": "image/png", "content-length": String(17 * 1024 * 1024) }
+          : { "content-type": "text/html" },
+      });
+    });
+    const transport = new DebugHttpMobileTransport({ fetch, storage: memoryStorage() });
+    await pairAndConnect(transport);
+    await expect(
+      transport.readImage("document-1", "image.png", new AbortController().signal),
+    ).rejects.toThrow("格式暂不支持");
+    oversized = true;
+    await expect(
+      transport.readImage("document-1", "image.png", new AbortController().signal),
+    ).rejects.toThrow("16 MiB");
+    expect(transport.getConnectionState().kind).toBe("connected");
+  });
+
   it("uses port 49920 when a manual computer address omits the port", async () => {
     const fetch = vi.fn(async () => statusResponse());
     const transport = new DebugHttpMobileTransport({ fetch, storage: memoryStorage() });
@@ -379,7 +457,7 @@ describe("DebugHttpMobileTransport", () => {
     expect(transport.getConnectionState()).toMatchObject({
       kind: "connected",
       computer: {
-        id: "debug-http:192.168.1.80:43127",
+        id: computer!.id,
         address: "192.168.1.80:43127",
       },
     });
@@ -387,10 +465,19 @@ describe("DebugHttpMobileTransport", () => {
     const restored = new DebugHttpMobileTransport({ fetch, storage });
     expect(await restored.listSavedComputers()).toEqual([
       expect.objectContaining({
-        id: "debug-http:192.168.1.80:43127",
+        id: computer!.id,
         address: "192.168.1.80:43127",
       }),
     ]);
+    await transport.removeComputer(computer!.id);
+    expect(await transport.listSavedComputers()).toEqual([]);
+    expect(
+      await new DebugHttpMobileTransport({
+        fetch,
+        storage,
+        discovery,
+      }).listSavedComputers(),
+    ).toEqual([]);
   });
 
   it("maps timeout and disconnect aborts without returning transport details", async () => {

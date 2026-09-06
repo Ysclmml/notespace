@@ -808,7 +808,7 @@ impl HttpResponse {
         let mut header = String::new();
         write!(
             &mut header,
-            "HTTP/1.1 {}\r\nContent-Type: {}\r\nContent-Length: {}\r\nAccess-Control-Allow-Origin: *\r\nAccess-Control-Allow-Methods: GET, POST, OPTIONS\r\nAccess-Control-Allow-Headers: Content-Type\r\nAccess-Control-Allow-Private-Network: true\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n",
+            "HTTP/1.1 {}\r\nContent-Type: {}\r\nContent-Length: {}\r\nAccess-Control-Allow-Origin: *\r\nAccess-Control-Allow-Methods: GET, POST, OPTIONS\r\nAccess-Control-Allow-Headers: Content-Type\r\nAccess-Control-Allow-Private-Network: true\r\nContent-Security-Policy: sandbox; default-src 'none'; style-src 'unsafe-inline'; img-src data:\r\nX-Content-Type-Options: nosniff\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n",
             status_line(self.status),
             self.content_type,
             self.body.len()
@@ -1084,6 +1084,7 @@ mod tests {
         let asset = request(addr, "GET", &format!("/api/v1/assets/{asset_id}"), b"");
         assert!(asset.starts_with(b"HTTP/1.1 200 OK"));
         assert!(String::from_utf8_lossy(&asset).contains("Content-Type: image/png"));
+        assert!(String::from_utf8_lossy(&asset).contains("Content-Security-Policy: sandbox;"));
         assert!(asset.ends_with(&[137, 80, 78, 71]));
 
         let favorites = response_json(&request(addr, "GET", "/api/v1/favorites", b""));

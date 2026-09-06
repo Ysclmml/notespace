@@ -10,6 +10,8 @@ import {
 
 import { MobileIcon } from "./MobileIcon";
 import { MobileReader } from "./MobileReader";
+import { useMobileBack } from "./mobileBack";
+import { mobileDocumentLink } from "./documentLink";
 import { DEFAULT_LAN_PORT } from "./httpTransport";
 import { findRecentWorkspace, resolveRecentDocumentId } from "./recentDocument";
 import {
@@ -100,6 +102,9 @@ function ConnectionScreen({
   demoMode,
   insecureDebugMode,
   offlineComputerIds,
+  savedComputerIds,
+  onUpdateComputer,
+  onRemoveComputer,
 }: {
   readonly computers: readonly MobileComputer[];
   readonly busy: boolean;
@@ -112,10 +117,21 @@ function ConnectionScreen({
   readonly demoMode: boolean;
   readonly insecureDebugMode: boolean;
   readonly offlineComputerIds: ReadonlySet<string>;
+  readonly savedComputerIds: ReadonlySet<string>;
+  readonly onUpdateComputer?: (id: string, address: string) => Promise<void>;
+  readonly onRemoveComputer?: (id: string) => Promise<void>;
 }) {
   const [address, setAddress] = useState("");
   const [pairingCode, setPairingCode] = useState("");
   const [certificateFingerprint, setCertificateFingerprint] = useState("");
+  const [editing, setEditing] = useState<MobileComputer | null>(null);
+  const [editedAddress, setEditedAddress] = useState("");
+  const [saving, setSaving] = useState(false);
+  useMobileBack(() => {
+    if (!editing) return false;
+    setEditing(null);
+    return true;
+  }, 20);
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
@@ -176,12 +192,20 @@ function ConnectionScreen({
           <div className="mobile-connect__computers">
             {computers.map((computer) => {
               const hasOfflineContent = offlineComputerIds.has(computer.id);
+              const offlineOnly = !savedComputerIds.has(computer.id);
               return (
-                <div className="mobile-connect__computer-card" key={computer.id}>
+                <div
+                  className="mobile-connect__computer-card"
+                  key={computer.id}
+                  role="group"
+                  aria-label={computer.name}
+                >
                   <button
                     className="mobile-connect__computer"
                     disabled={busy}
-                    onClick={() => void onConnect(computer.id)}
+                    onClick={() =>
+                      void (offlineOnly ? onOpenOffline(computer) : onConnect(computer.id))
+                    }
                     type="button"
                   >
                     <span className="mobile-connect__computer-icon">
@@ -189,7 +213,7 @@ function ConnectionScreen({
                     </span>
                     <span>
                       <strong>{computer.name}</strong>
-                      <small>{computer.address}</small>
+                      <small>{offlineOnly ? "仅保留离线内容" : computer.address}</small>
                     </span>
                     <MobileIcon name="chevron" size={18} />
                   </button>
@@ -203,10 +227,85 @@ function ConnectionScreen({
                       离线阅读
                     </button>
                   )}
+                  {!demoMode && !offlineOnly && (
+                    <div className="mobile-connect__manage">
+                      {onUpdateComputer && (
+                        <button
+                          type="button"
+                          disabled={busy || saving}
+                          aria-label="修改连接"
+                          onClick={() => {
+                            setEditing(computer);
+                            setEditedAddress(computer.address);
+                          }}
+                        >
+                          修改地址
+                        </button>
+                      )}
+                      {onRemoveComputer && (
+                        <button
+                          type="button"
+                          disabled={busy || saving}
+                          aria-label="删除连接"
+                          onClick={() => {
+                            setSaving(true);
+                            void onRemoveComputer(computer.id)
+                              .catch(onScanError)
+                              .finally(() => setSaving(false));
+                          }}
+                        >
+                          删除连接
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </div>
               );
             })}
           </div>
+        </section>
+      )}
+
+      {editing && (
+        <section
+          className="mobile-connect__edit"
+          role="dialog"
+          aria-modal="true"
+          aria-label="修改连接地址"
+        >
+          <form
+            className="mobile-connect__form"
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (!onUpdateComputer || saving) return;
+              setSaving(true);
+              void onUpdateComputer(editing.id, editedAddress)
+                .then(() => setEditing(null))
+                .catch(onScanError)
+                .finally(() => setSaving(false));
+            }}
+          >
+            <h2>修改连接地址</h2>
+            <p>离线内容和最近阅读位置会保留。</p>
+            <label>
+              电脑地址
+              <input
+                value={editedAddress}
+                onChange={(event) => setEditedAddress(event.currentTarget.value)}
+                autoCapitalize="none"
+                autoCorrect="off"
+                inputMode="url"
+                required
+              />
+            </label>
+            {error && <p role="alert">{error}</p>}
+            <button type="submit" disabled={saving}>
+              保存地址
+            </button>
+            <button type="button" disabled={saving} onClick={() => setEditing(null)}>
+              取消
+            </button>
+          </form>
         </section>
       )}
 
@@ -576,9 +675,16 @@ function BrowseSection({
     <section className="mobile-section">
       <div className="mobile-directory-heading">
         <button
-          aria-label="返回工作区列表"
+          aria-label={directory.directoryId === null ? "返回工作区列表" : "返回上一级"}
           className="mobile-icon-button"
-          onClick={() => onOpenDirectory(directory.workspaceId, "__workspaces__")}
+          onClick={() =>
+            onOpenDirectory(
+              directory.workspaceId,
+              directory.directoryId === null
+                ? "__workspaces__"
+                : (directory.breadcrumbs.at(-2)?.id ?? null),
+            )
+          }
           type="button"
         >
           <MobileIcon name="back" />
@@ -866,6 +972,8 @@ export function MobileApp({
   const [directory, setDirectory] = useState<MobileDirectory | null>(null);
   const [section, setSection] = useState<MobileMainSection>("browse");
   const [document, setDocument] = useState<MobileDocument | null>(null);
+  const [documentAnchor, setDocumentAnchor] = useState<string | undefined>();
+  const documentHistoryRef = useRef<MobileDocument[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -925,6 +1033,10 @@ export function MobileApp({
     }
     return [...merged.values()];
   }, [computers, offlineSnapshots]);
+  const savedComputerIds = useMemo(
+    () => new Set(computers.map((computer) => computer.id)),
+    [computers],
+  );
 
   const invalidateRemoteRequests = useCallback(() => {
     connectionEpochRef.current += 1;
@@ -943,7 +1055,11 @@ export function MobileApp({
     setSearchWorkspaceId("");
     setSearchResults([]);
     setSearched(false);
-    if (!preserveDocument) setDocument(null);
+    if (!preserveDocument) {
+      documentHistoryRef.current = [];
+      setDocumentAnchor(undefined);
+      setDocument(null);
+    }
   }, []);
 
   const beginBusyOperation = useCallback(() => {
@@ -1335,7 +1451,11 @@ export function MobileApp({
     }
   };
 
-  const openDocument = async (documentId: string, recent?: MobileRecentDocument) => {
+  const openDocument = async (
+    documentId: string,
+    recent?: MobileRecentDocument,
+    navigation?: { readonly fromLink: boolean; readonly anchor: string },
+  ) => {
     const computerId = activeComputer?.id;
     if (!computerId) return;
     const requestId = documentRequestRef.current + 1;
@@ -1398,6 +1518,10 @@ export function MobileApp({
       ) {
         return;
       }
+      if (navigation?.fromLink && document) {
+        documentHistoryRef.current = [...documentHistoryRef.current, document].slice(-8);
+      } else documentHistoryRef.current = [];
+      setDocumentAnchor(navigation?.anchor || undefined);
       setDocument(opened);
       const workspace =
         workspaces.find((item) => item.id === opened.workspaceId) ??
@@ -1531,8 +1655,102 @@ export function MobileApp({
     ) {
       return;
     }
+    if (!savedComputerIds.has(activeComputer.id)) {
+      void disconnect();
+      return;
+    }
     void connect(activeComputer.id, true);
   };
+
+  const backFromDocument = () => {
+    documentRequestRef.current += 1;
+    directoryRequestRef.current += 1;
+    busyRequestRef.current += 1;
+    setBusy(false);
+    setDocumentAnchor(undefined);
+    setDocument(documentHistoryRef.current.pop() ?? null);
+    setNotice(null);
+    setError(null);
+  };
+
+  const parentDirectory = () => {
+    if (!directory) return;
+    const parent = directory.breadcrumbs.at(-2);
+    if (directory.directoryId === null) {
+      directoryRequestRef.current += 1;
+      setDirectory(null);
+    } else void openDirectory(directory.workspaceId, parent?.id ?? null);
+  };
+
+  useMobileBack(() => {
+    if (showConnections || !activeComputer) {
+      if (busy) {
+        connectionActionRef.current += 1;
+        invalidateRemoteRequests();
+        void transport.disconnect();
+        return true;
+      }
+      return false;
+    }
+    if (document) backFromDocument();
+    else if (busy || searching) invalidateRemoteRequests();
+    else if (section !== "browse") {
+      setSection("browse");
+      setError(null);
+    } else if (directory) parentDirectory();
+    else void disconnect();
+    return true;
+  });
+
+  const openDocumentLink = async (href: string) => {
+    if (!document || !activeComputer) return;
+    try {
+      const target = mobileDocumentLink(document.relativePath, href);
+      const workspace =
+        workspaces.find((item) => item.id === document.workspaceId) ??
+        activeOfflineSnapshots.find((item) => item.workspace.id === document.workspaceId)
+          ?.workspace;
+      if (!workspace) throw new Error("原工作区当前不可用，请重新连接或保存离线内容");
+      const recent: MobileRecentDocument = {
+        computerId: activeComputer.id,
+        documentId: "link-target",
+        title: "",
+        relativePath: target.relativePath,
+        workspaceName: workspace.name,
+        workspaceSyncKey: workspace.syncKey,
+        position: { scrollTop: 0, progress: 0, updatedAt: new Date().toISOString() },
+      };
+      await openDocument(recent.documentId, recent, {
+        fromLink: true,
+        anchor: target.anchor,
+      });
+    } catch (reason) {
+      setError(friendlyError(reason));
+    }
+  };
+
+  const loadImage = useCallback(
+    async (reference: string, signal: AbortSignal) => {
+      if (!document || !transport.readImage) throw new Error("当前连接无法加载图片");
+      return transport.readImage(document.id, reference, signal);
+    },
+    [document, transport],
+  );
+
+  const updateComputer = transport.updateComputer
+    ? async (id: string, address: string) => {
+        await transport.updateComputer!(id, address);
+        computersRequestRef.current += 1;
+        setComputers(await transport.listSavedComputers());
+      }
+    : undefined;
+  const removeComputer = transport.removeComputer
+    ? async (id: string) => {
+        await transport.removeComputer!(id);
+        computersRequestRef.current += 1;
+        setComputers(await transport.listSavedComputers());
+      }
+    : undefined;
 
   const rootClassName = `notespace-mobile-root${demoMode ? " is-demo has-environment-banner" : ""}`;
   if (showConnections || !activeComputer) {
@@ -1546,6 +1764,9 @@ export function MobileApp({
           error={error}
           insecureDebugMode={insecureDebugMode}
           offlineComputerIds={offlineComputerIds}
+          savedComputerIds={savedComputerIds}
+          onUpdateComputer={updateComputer}
+          onRemoveComputer={removeComputer}
           onConnect={connect}
           onOpenOffline={openOfflineComputer}
           onPair={pair}
@@ -1579,11 +1800,13 @@ export function MobileApp({
       {document ? (
         <MobileReader
           document={document}
+          initialAnchor={documentAnchor}
+          loadImage={loadImage}
           initialPosition={
             documentStorageKey ? localState.positions[documentStorageKey] : undefined
           }
           key={documentStorageKey ?? document.id}
-          notice={notice}
+          notice={error || notice}
           offline={!online}
           offlineNotice={
             showOfflineNotice
@@ -1599,9 +1822,12 @@ export function MobileApp({
                 }
               : undefined
           }
-          onBack={() => setDocument(null)}
-          onDismissNotice={() => setNotice(null)}
-          onOpenLink={() => setNotice("链接导航将在真实局域网连接完成后开放。")}
+          onBack={backFromDocument}
+          onDismissNotice={() => {
+            setNotice(null);
+            setError(null);
+          }}
+          onOpenLink={openDocumentLink}
           onPositionChange={rememberPosition}
           onReconnect={
             connection.kind === "connecting" || connection.kind === "reconnecting"

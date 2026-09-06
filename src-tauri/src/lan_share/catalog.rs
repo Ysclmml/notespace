@@ -1898,8 +1898,9 @@ fn asset_media_type(path: &Path) -> Option<&'static str> {
             "webp" => "image/webp",
             "bmp" => "image/bmp",
             "ico" => "image/x-icon",
-            // SVG is intentionally excluded because an image document can contain
-            // active content when embedded with an unsafe browser policy.
+            // The mobile reader uses inert <img> objects for SVG assets. The
+            // HTTP adapter also sandboxes direct navigation to resource URLs.
+            "svg" => "image/svg+xml",
             _ => return None,
         },
     )
@@ -2195,6 +2196,13 @@ mod tests {
         let asset = registry.read_asset(&asset_id).unwrap();
         assert_eq!(asset.media_type, "image/png");
         assert_eq!(asset.bytes, b"png bytes");
+        let vector_id = registry
+            .resolve_asset(&document_id, "../images/vector.svg", &mut entropy)
+            .unwrap();
+        assert_eq!(
+            registry.read_asset(&vector_id).unwrap().media_type,
+            "image/svg+xml"
+        );
         assert_eq!(
             registry
                 .resolve_asset(&document_id, "../../outside.png", &mut entropy)
@@ -2206,7 +2214,6 @@ mod tests {
             "https://example.test/image.png",
             "file:///tmp/image.png",
             "../.private/secret.png",
-            "../images/vector.svg",
         ] {
             assert!(registry
                 .resolve_asset(&document_id, reference, &mut entropy)

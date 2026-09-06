@@ -53,6 +53,16 @@ export class MockMobileTransport implements MobileTransport {
     return [...this.computers.values()];
   }
 
+  async updateComputer(id: string, address: string) {
+    const computer = this.computers.get(id);
+    if (!computer) throw new MobileTransportError("not-found", "没有找到这台电脑");
+    this.computers.set(id, { ...computer, address });
+  }
+
+  async removeComputer(id: string) {
+    this.computers.delete(id);
+  }
+
   async pair(request: MobilePairingRequest) {
     if (
       !request.address.trim() ||

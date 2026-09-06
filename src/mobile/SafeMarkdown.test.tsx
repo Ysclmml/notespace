@@ -22,7 +22,7 @@ describe("SafeMarkdown", () => {
 
     expect(screen.getByRole("heading", { level: 1, name: "标题" })).toBeVisible();
     expect(screen.getByRole("table")).toBeVisible();
-    expect(screen.getByRole("img")).toHaveTextContent("图片 · 封面");
+    expect(screen.getByRole("status")).toHaveTextContent("封面");
     expect(container.querySelector("script")).toBeNull();
     expect(container.querySelector("img")).toBeNull();
     expect(screen.getByText(/<img src=x/)).toBeVisible();

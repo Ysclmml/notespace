@@ -18,6 +18,8 @@ export interface MarkdownNode {
   readonly alt?: string;
   readonly title?: string;
   readonly lang?: string | null;
+  readonly identifier?: string;
+  readonly align?: readonly ("left" | "right" | "center" | null)[];
   readonly ordered?: boolean;
   readonly start?: number | null;
   readonly checked?: boolean | null;
@@ -66,7 +68,35 @@ export function parseMobileMarkdown(markdown: string) {
     .use(remarkMath)
     .use(remarkGfm)
     .parse(normalized) as unknown as MarkdownNode;
-  return prepareMathNodes(root, normalized);
+  const definitions = new Map<string, MarkdownNode>();
+  const collect = (node: MarkdownNode) => {
+    if (
+      node.type === "definition" &&
+      node.identifier &&
+      !definitions.has(node.identifier)
+    ) {
+      definitions.set(node.identifier, node);
+    }
+    node.children?.forEach(collect);
+  };
+  collect(root);
+  const resolve = (node: MarkdownNode): MarkdownNode => {
+    const definition = node.identifier ? definitions.get(node.identifier) : undefined;
+    const referenced =
+      definition && (node.type === "linkReference" || node.type === "imageReference");
+    return {
+      ...node,
+      ...(referenced
+        ? {
+            type: node.type === "linkReference" ? "link" : "image",
+            url: definition.url,
+            title: definition.title,
+          }
+        : {}),
+      ...(node.children ? { children: node.children.map(resolve) } : {}),
+    };
+  };
+  return resolve(prepareMathNodes(root, normalized));
 }
 
 function plainText(node: MarkdownNode): string {

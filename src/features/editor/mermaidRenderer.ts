@@ -124,7 +124,9 @@ async function mermaidApi() {
   if (!initialized) {
     mermaid.initialize({
       startOnLoad: false,
-      theme: "neutral",
+      // Base derives participant/node colors from our palette. Neutral keeps
+      // independent grayscale defaults even when primaryColor is overridden.
+      theme: "base",
       securityLevel: "strict",
       flowchart: { htmlLabels: true, useMaxWidth: false },
       themeCSS: labelStyles,

@@ -2,8 +2,8 @@
 
 | 字段     | 值                                                                               |
 | -------- | -------------------------------------------------------------------------------- |
-| 状态     | Approved baseline 2.5（ADR-0028；手动阅读模式，版本 0.2.3）                      |
-| 日期     | 2026-09-05                                                                       |
+| 状态     | Approved baseline 2.6（ADR-0029；安卓阅读导航与富媒体，0.2.4）                   |
+| 日期     | 2026-09-06                                                                       |
 | 首发平台 | macOS 桌面端；Android 移动阅读端优先                                             |
 | 技术栈   | React 19 + TypeScript + Milkdown/ProseMirror + CodeMirror 6 + Tauri 2 + Rust     |
 | 数据原则 | 本地 Markdown、文本与图片资源文件是唯一持久化真相；UI 投影和本机便利状态均可重建 |
@@ -13,6 +13,8 @@
 导航规则由 [ADR-0012](decisions/0012-markdown-link-policy-and-window-navigation.md) 更新：普通 Markdown 链接按当前标签是否固定选择新页/原位，工具栏前进/后退使用窗口级跨标签访问轨迹。[ADR-0013](decisions/0013-browsing-restore-and-unified-editor-panes.md) 进一步取代旧的独立右侧只读栏、分屏复制标签和不恢复浏览元数据边界。[ADR-0014](decisions/0014-external-filesystem-changes.md) 接受轻量外部文件监听、重载与版本检查，取代“外部修改后置”。[ADR-0015](decisions/0015-workspace-clipboard-images.md) 接受每工作区截图位置、剪贴板兼容和本地图片单文件授权；冲突时以最新适用 ADR 和当前 baseline 2.4 为准。
 
 ## 1. 产品定义
+
+[ADR-0029](decisions/0029-mobile-reading-navigation-and-media.md) 完成安卓阅读菜单、分层返回与首页双返回退出、共享工作区内 Markdown/锚点跳转、连接地址修改/删除，以及按需加载的图片和本地 Mermaid 渲染。链接返回只保留内存最近 8 篇及各自位置；修改地址保留连接身份，删除不清除离线正文。图片包含以惰性 `<img>` 展示的 SVG，仍限制共享根和 16 MiB；离线快照不存图片。图像查看器支持双指缩放和单指平移，关闭恢复原位置。原始 HTML 和普通代码仍保持字面文本。冲突以 baseline 2.6 和最新适用 ADR 为准。
 
 [ADR-0028](decisions/0028-manual-reading-mode.md) 增加桌面手动阅读模式：默认编辑，顶部常驻“阅读 / 编辑”，专注时也可直接切换；窗口内所有现有和新打开标签一同只读。保留当前可视/源码表面、位置、已有修改和 Undo；隐藏正文编辑工具、源码切换和查找替换，只保留选择、复制、查找、链接/图表查看等阅读动作。普通查找/设置输入框不受影响，不清除 dirty 或绕过保存/关闭保护，不持久化阅读开关。冲突时以 baseline 2.5 和最新适用 ADR 为准。
 
@@ -640,9 +642,12 @@ interface DesktopAdapter {
 ## 8. Mermaid 与视觉查看器
 
 - Mermaid 按需动态加载；每次渲染绑定唯一 DOM marker，卸载或源码变更后丢弃迟到结果。
+- 默认使用 `base` 主题派生应用的浅蓝配色，时序图参与者等图形保持同一套颜色；源码中的主题或显式样式仍由 Mermaid 解析，不改写源文本，单图设置不泄漏到下一图。
 - 生成 SVG 的局部文字样式在临时测量容器、正文和查看器中保持一致；字体就绪后再测量，避免正文段落行距放大 `foreignObject` 内容而裁切中文。默认 Dagre flowchart 恢复连线的预留标签位置并按需扩展 viewBox，不改节点、连线路径或源文本；显式布局引擎及无法可靠识别的 SVG metadata 保留原样，不引入通用碰撞排版引擎。
 - 失败只在当前图块显示错误；源码仍可通过显式源码模式编辑。
 - 查看器只消费渲染结果，不修改 Markdown；SVG 保持矢量，支持滚轮/触控板缩放、拖拽、双击 Fit、`+/-/0` 和 Esc。
+- SVG 以 viewBox 为固有尺寸、图片以原始尺寸计算显示宽高；缩放不使用已缩放的 DOM 尺寸反推比例，不把 SVG 转成位图。手动缩放或平移后，重复加载、父组件更新与窗口尺寸变化不重置视图；显式 Fit 恢复随窗口适配。
+- 查看器阻止滚轮默认行为，Tab/Shift+Tab 在可用按钮间循环，不聚焦遮住的正文；关闭时以不滚动的方式恢复此前焦点，保留文档阅读位置。
 - 图片使用同一 viewer shell，支持 100%、Fit、缩放和平移。
 - production CSP 允许 Mermaid 生成的内联样式，但不开放远程脚本或文档上传。
 - standalone Debug 与 Release 使用的 `font-src` 和开发模式一致，仅允许 `'self' data:`，兼容 Vite 内嵌的 KaTeX 小字体；不开放远程字体、脚本或连接。字体加载策略与原生截图读取/保存是不同链路。
@@ -830,4 +835,5 @@ ADR-0011 接受扁平水平编辑分组；ADR-0013 将右侧引用统一为普�
 - [ADR-0023：Debug 局域网无配对只读共享](decisions/0023-debug-lan-sharing-without-pairing.md)
 - [ADR-0024：Debug 局域网共享的运行时语义与 Release 隔离](decisions/0024-debug-lan-runtime-and-release-isolation.md)
 - [ADR-0025：普通构建的局域网阅读与移动离线快照](decisions/0025-lan-offline-reader.md)
+- [ADR-0029：安卓阅读导航、连接管理与富媒体](decisions/0029-mobile-reading-navigation-and-media.md)
 - [ADR-0026：数学分隔符兼容与跨表面一致渲染](decisions/0026-math-delimiter-compatibility.md)

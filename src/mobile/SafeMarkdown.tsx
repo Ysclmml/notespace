@@ -1,5 +1,7 @@
 import { renderToString } from "katex";
-import { useMemo, type ReactNode } from "react";
+import { memo, useMemo, type ReactNode } from "react";
+import { MobileCode, MobileImage, MobileMermaid } from "./MobileMedia";
+import { MobileMediaContext, type MobileMediaContextValue } from "./mediaContext";
 
 import "katex/dist/katex.min.css";
 
@@ -9,7 +11,7 @@ import {
   type MarkdownNode,
 } from "./markdownModel";
 
-export interface SafeMarkdownProps {
+export interface SafeMarkdownProps extends MobileMediaContextValue {
   readonly markdown: string;
   readonly onOpenLink?: (href: string) => void;
 }
@@ -69,9 +71,10 @@ function children(
   key: string,
   ids: ReadonlyMap<MarkdownNode, string>,
   onOpenLink: SafeMarkdownProps["onOpenLink"],
+  insideLink = false,
 ) {
   return (node.children ?? []).map((child, index) =>
-    renderNode(child, `${key}-${index}`, ids, onOpenLink),
+    renderNode(child, `${key}-${index}`, ids, onOpenLink, insideLink),
   );
 }
 
@@ -81,12 +84,13 @@ function renderTableRow(
   header: boolean,
   ids: ReadonlyMap<MarkdownNode, string>,
   onOpenLink: SafeMarkdownProps["onOpenLink"],
+  align?: MarkdownNode["align"],
 ) {
   const Cell = header ? "th" : "td";
   return (
     <tr key={key}>
       {(row.children ?? []).map((cell, index) => (
-        <Cell key={`${key}-${index}`}>
+        <Cell key={`${key}-${index}`} style={{ textAlign: align?.[index] ?? undefined }}>
           {children(cell, `${key}-${index}`, ids, onOpenLink)}
         </Cell>
       ))}
@@ -99,6 +103,7 @@ function renderNode(
   key: string,
   ids: ReadonlyMap<MarkdownNode, string>,
   onOpenLink: SafeMarkdownProps["onOpenLink"],
+  insideLink = false,
 ): ReactNode {
   switch (node.type) {
     case "root":
@@ -148,11 +153,11 @@ function renderNode(
       );
     }
     case "strong":
-      return <strong key={key}>{children(node, key, ids, onOpenLink)}</strong>;
+      return <strong key={key}>{children(node, key, ids, onOpenLink, insideLink)}</strong>;
     case "emphasis":
-      return <em key={key}>{children(node, key, ids, onOpenLink)}</em>;
+      return <em key={key}>{children(node, key, ids, onOpenLink, insideLink)}</em>;
     case "delete":
-      return <del key={key}>{children(node, key, ids, onOpenLink)}</del>;
+      return <del key={key}>{children(node, key, ids, onOpenLink, insideLink)}</del>;
     case "inlineCode":
       return <code key={key}>{node.value ?? ""}</code>;
     case "inlineMath":
@@ -161,28 +166,9 @@ function renderNode(
       return renderMath(node, key, true);
     case "code":
       if (node.lang?.toLocaleLowerCase() === "mermaid") {
-        return (
-          <figure
-            aria-label="Mermaid 图表占位"
-            className="mobile-markdown__diagram"
-            key={key}
-          >
-            <figcaption>Mermaid 图表</figcaption>
-            <p>已安全读取图表源码，联网阅读适配器接入后将在这里渲染。</p>
-            <details>
-              <summary>查看源码</summary>
-              <pre>
-                <code>{node.value ?? ""}</code>
-              </pre>
-            </details>
-          </figure>
-        );
+        return <MobileMermaid key={`${key}:${node.value}`} source={node.value ?? ""} />;
       }
-      return (
-        <pre key={key}>
-          <code data-language={node.lang ?? undefined}>{node.value ?? ""}</code>
-        </pre>
-      );
+      return <MobileCode key={key} source={node.value ?? ""} language={node.lang} />;
     case "blockquote":
       return <blockquote key={key}>{children(node, key, ids, onOpenLink)}</blockquote>;
     case "list": {
@@ -196,7 +182,9 @@ function renderNode(
     case "listItem":
       return (
         <li
-          className={node.checked === null ? undefined : "mobile-markdown__task"}
+          className={
+            typeof node.checked === "boolean" ? "mobile-markdown__task" : undefined
+          }
           key={key}
         >
           {typeof node.checked === "boolean" && (
@@ -219,18 +207,17 @@ function renderNode(
           title={node.title ?? undefined}
           type="button"
         >
-          {children(node, key, ids, onOpenLink)}
+          {children(node, key, ids, onOpenLink, true)}
         </button>
       );
     case "image":
       return (
-        <span className="mobile-markdown__asset" key={key} role="img">
-          <span aria-hidden="true">▧</span>
-          <span>
-            图片{node.alt ? ` · ${node.alt}` : ""}
-            <small>{node.url}</small>
-          </span>
-        </span>
+        <MobileImage
+          key={`${key}:${node.url}`}
+          reference={node.url ?? ""}
+          alt={node.alt ?? ""}
+          linked={insideLink}
+        />
       );
     case "thematicBreak":
       return <hr key={key} />;
@@ -242,12 +229,21 @@ function renderNode(
         <div className="mobile-markdown__table-scroll" key={key}>
           <table>
             {head && (
-              <thead>{renderTableRow(head, `${key}-head`, true, ids, onOpenLink)}</thead>
+              <thead>
+                {renderTableRow(head, `${key}-head`, true, ids, onOpenLink, node.align)}
+              </thead>
             )}
             {body.length > 0 && (
               <tbody>
                 {body.map((row, index) =>
-                  renderTableRow(row, `${key}-row-${index}`, false, ids, onOpenLink),
+                  renderTableRow(
+                    row,
+                    `${key}-row-${index}`,
+                    false,
+                    ids,
+                    onOpenLink,
+                    node.align,
+                  ),
                 )}
               </tbody>
             )}
@@ -263,17 +259,54 @@ function renderNode(
       );
     case "definition":
       return null;
+    case "footnoteReference":
+      return (
+        <sup key={key}>
+          <button
+            type="button"
+            className="mobile-markdown__link"
+            onClick={() =>
+              onOpenLink?.(`#mobile-footnote-${encodeURIComponent(node.identifier ?? "")}`)
+            }
+          >
+            [{node.identifier}]
+          </button>
+        </sup>
+      );
+    case "footnoteDefinition":
+      return (
+        <section
+          key={key}
+          id={`mobile-footnote-${node.identifier ?? ""}`}
+          className="mobile-markdown__footnote"
+        >
+          <strong>[{node.identifier}]</strong>
+          {children(node, key, ids, onOpenLink)}
+        </section>
+      );
     default:
       return <span key={key}>{children(node, key, ids, onOpenLink)}</span>;
   }
 }
 
-export function SafeMarkdown({ markdown, onOpenLink }: SafeMarkdownProps) {
+export const SafeMarkdown = memo(function SafeMarkdown({
+  markdown,
+  onOpenLink,
+  loadImage,
+  offline,
+  onOpenVisual,
+}: SafeMarkdownProps) {
   const root = useMemo(() => parseMobileMarkdown(markdown), [markdown]);
   const ids = useMemo(() => mobileMarkdownHeadingIds(root), [root]);
-  return (
-    <article className="mobile-markdown">
-      {renderNode(root, "markdown", ids, onOpenLink)}
-    </article>
+  const media = useMemo(
+    () => ({ loadImage, offline, onOpenVisual }),
+    [loadImage, offline, onOpenVisual],
   );
-}
+  return (
+    <MobileMediaContext value={media}>
+      <article className="mobile-markdown">
+        {renderNode(root, "markdown", ids, onOpenLink)}
+      </article>
+    </MobileMediaContext>
+  );
+});

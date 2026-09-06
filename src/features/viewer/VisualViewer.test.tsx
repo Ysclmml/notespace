@@ -28,6 +28,221 @@ beforeEach(() => {
 });
 
 describe("VisualViewer", () => {
+  it("keeps Tab navigation out of the covered document and returns focus without scrolling", () => {
+    const trigger = document.createElement("button");
+    trigger.textContent = "Open diagram";
+    document.body.append(trigger);
+    trigger.focus();
+    const restoreFocus = vi.spyOn(trigger, "focus");
+    const { unmount } = render(
+      <AppSettingsProvider storage={null}>
+        <VisualViewer
+          onClose={vi.fn()}
+          visual={{ kind: "image", source: "/fixtures/a.png", title: "A" }}
+        />
+      </AppSettingsProvider>,
+    );
+    try {
+      const close = screen.getByRole("button", { name: "关闭查看器" });
+      const first = screen.getByRole("button", { name: "缩小" });
+      expect(close).toHaveFocus();
+      expect(fireEvent.keyDown(close, { key: "Tab" })).toBe(false);
+      expect(first).toHaveFocus();
+      fireEvent.keyDown(first, { key: "Tab", shiftKey: true });
+      expect(close).toHaveFocus();
+      for (let index = 0; index < 25; index++) {
+        fireEvent.keyDown(document.activeElement!, { key: "Tab" });
+        expect(screen.getByRole("dialog")).toContainElement(
+          document.activeElement as HTMLElement,
+        );
+      }
+      expect(restoreFocus).not.toHaveBeenCalled();
+      unmount();
+      expect(trigger).toHaveFocus();
+      expect(restoreFocus).toHaveBeenCalledExactlyOnceWith({ preventScroll: true });
+    } finally {
+      unmount();
+      trigger.remove();
+    }
+  });
+
+  it("keeps the close button reachable after an image fails", () => {
+    render(
+      <AppSettingsProvider storage={null}>
+        <VisualViewer
+          onClose={vi.fn()}
+          visual={{ kind: "image", source: "/fixtures/missing.png", title: "Missing" }}
+        />
+      </AppSettingsProvider>,
+    );
+    fireEvent.error(screen.getByRole("img"));
+    const close = screen.getByRole("button", { name: "关闭查看器" });
+    fireEvent.keyDown(close, { key: "Tab" });
+    expect(close).toHaveFocus();
+    fireEvent.keyDown(close, { key: "Tab", shiftKey: true });
+    expect(close).toHaveFocus();
+  });
+
+  it("preserves image zoom across repeated load, parent renders and resize notifications", async () => {
+    let resize!: ResizeObserverCallback;
+    const disconnect = vi.fn();
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        constructor(callback: ResizeObserverCallback) {
+          resize = callback;
+        }
+        observe() {}
+        disconnect = disconnect;
+      },
+    );
+    const visual = {
+      kind: "image" as const,
+      source: "/fixtures/original.svg",
+      title: "Original SVG",
+    };
+    const renderViewer = () => (
+      <AppSettingsProvider storage={null}>
+        <VisualViewer visual={{ ...visual }} onClose={vi.fn()} />
+      </AppSettingsProvider>
+    );
+    const { container, rerender, unmount } = render(renderViewer());
+    try {
+      const stage = container.querySelector<HTMLElement>(".visual-viewer__stage")!;
+      const content = container.querySelector<HTMLElement>(".visual-viewer__content")!;
+      const image = screen.getByRole("img", { name: "Original SVG" });
+      let width = 900;
+      Object.defineProperties(stage, {
+        clientWidth: { get: () => width },
+        clientHeight: { value: 600 },
+      });
+      Object.defineProperties(image, {
+        naturalWidth: { value: 400 },
+        naturalHeight: { value: 200 },
+      });
+      fireEvent.load(image);
+      expect(content.style.width).toBe("756px");
+      fireEvent.click(screen.getByRole("button", { name: "100%" }));
+      fireEvent.click(screen.getByRole("button", { name: /^放大$/u }));
+      expect(content.style.width).toBe("472px");
+      const zoomed = content.style.cssText;
+      fireEvent.load(image);
+      rerender(renderViewer());
+      await act(
+        async () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())),
+      );
+      width = 700;
+      act(() => resize([], {} as ResizeObserver));
+      expect(content.style.cssText).toBe(zoomed);
+      expect(screen.getByText("118%")).toBeVisible();
+      expect(screen.getByRole("img")).toBe(image);
+      expect(container.querySelector("svg, object, iframe, canvas")).toBeNull();
+      expect(image).toHaveAttribute("src", "/fixtures/original.svg");
+
+      fireEvent.click(screen.getByRole("button", { name: "适合窗口" }));
+      expect(content.style.width).toBe("556px");
+      width = 900;
+      act(() => resize([], {} as ResizeObserver));
+      expect(content.style.width).toBe("756px");
+      const fitted = content.style.cssText;
+      act(() => resize([], {} as ResizeObserver));
+      expect(content.style.cssText).toBe(fitted);
+    } finally {
+      unmount();
+      expect(disconnect).toHaveBeenCalledOnce();
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("accumulates wheel zoom at the pointer and cancels native scrolling", () => {
+    const onWheel = vi.fn();
+    const { container } = render(
+      <AppSettingsProvider storage={null}>
+        <div onWheel={onWheel}>
+          <VisualViewer
+            onClose={vi.fn()}
+            visual={{ kind: "image", source: "/fixtures/a.png", title: "A" }}
+          />
+        </div>
+      </AppSettingsProvider>,
+    );
+    const stage = container.querySelector<HTMLElement>(".visual-viewer__stage")!;
+    const content = container.querySelector<HTMLElement>(".visual-viewer__content")!;
+    Object.defineProperties(stage, {
+      clientWidth: { value: 900 },
+      clientHeight: { value: 600 },
+    });
+    const image = screen.getByRole("img");
+    Object.defineProperties(image, {
+      naturalWidth: { value: 400 },
+      naturalHeight: { value: 200 },
+    });
+    fireEvent.load(image);
+    fireEvent.click(screen.getByRole("button", { name: "100%" }));
+    const events = [0, 1].map(
+      () =>
+        new WheelEvent("wheel", {
+          bubbles: true,
+          cancelable: true,
+          deltaY: -100,
+          clientX: 450,
+          clientY: 300,
+        }),
+    );
+    act(() => events.forEach((event) => stage.dispatchEvent(event)));
+    expect(events.every((event) => event.defaultPrevented)).toBe(true);
+    expect(onWheel).not.toHaveBeenCalled();
+    const scale = Math.exp(0.3);
+    expect(parseFloat(content.style.width)).toBeCloseTo(400 * scale);
+    const coordinates = content.style.transform.match(
+      /translate\(([-.\d]+)px, ([-.\d]+)px\)/u,
+    )!;
+    expect(Number(coordinates[1])).toBeCloseTo(450 - 200 * scale);
+    expect(Number(coordinates[2])).toBeCloseTo(300 - 100 * scale);
+    fireEvent.keyDown(window, { key: "-" });
+    expect(parseFloat(content.style.width)).toBeCloseTo((400 * scale) / 1.18);
+  });
+
+  it("sizes responsive Mermaid from its viewBox and keeps SVG at the displayed resolution", async () => {
+    vi.mocked(renderMermaidSvg).mockResolvedValueOnce(
+      '<svg viewBox="-50 -10 1200 600" width="100%" style="max-width:1200px"><text>responsive diagram</text></svg>',
+    );
+    const visual = {
+      kind: "mermaid" as const,
+      source: "sequenceDiagram\nA->>B: Request",
+      title: "Responsive diagram",
+    };
+    const renderViewer = () => (
+      <AppSettingsProvider storage={null}>
+        <VisualViewer visual={{ ...visual }} onClose={vi.fn()} />
+      </AppSettingsProvider>
+    );
+    const { container, rerender } = render(renderViewer());
+    const stage = container.querySelector<HTMLElement>(".visual-viewer__stage")!;
+    Object.defineProperties(stage, {
+      clientWidth: { value: 900 },
+      clientHeight: { value: 600 },
+    });
+    await waitFor(() => expect(screen.getByText("responsive diagram")).toBeVisible());
+    const content = container.querySelector<HTMLElement>(".visual-viewer__content")!;
+    const svg = container.querySelector("svg")!;
+    expect(content.style.width).toBe("756px");
+    expect(content.style.height).toBe("378px");
+    expect(screen.getByText("63%")).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "100%" }));
+    fireEvent.click(screen.getByRole("button", { name: /^放大$/u }));
+    expect(content.style.width).toBe("1416px");
+    expect(content.style.height).toBe("708px");
+    expect(content.style.transform).not.toContain("scale");
+    expect(getComputedStyle(content).willChange).not.toContain("transform");
+    const calls = vi.mocked(renderMermaidSvg).mock.calls.length;
+    rerender(renderViewer());
+    expect(vi.mocked(renderMermaidSvg)).toHaveBeenCalledTimes(calls);
+    expect(container.querySelector("svg")).toBe(svg);
+    expect(screen.getByText("118%")).toBeVisible();
+    expect(container.querySelector("img, canvas")).toBeNull();
+  });
+
   it("provides read-only image copy/reference actions in the viewer and keeps Escape scoped to the menu", async () => {
     isTauri.mockReturnValue(true);
     invoke.mockResolvedValue("/fixtures/assets/photo.png");
@@ -443,7 +658,7 @@ describe("VisualViewer", () => {
     const returnTarget = document.createElement("button");
     document.body.append(returnTarget);
     returnTarget.focus();
-    const { unmount } = render(
+    const { container, unmount } = render(
       <AppSettingsProvider storage={null}>
         <VisualViewer
           onClose={onClose}
@@ -454,6 +669,10 @@ describe("VisualViewer", () => {
 
     expect(screen.getByRole("dialog", { name: "架构图" })).toBeVisible();
     expect(screen.getByRole("button", { name: "关闭查看器" })).toHaveFocus();
+    Object.defineProperties(container.querySelector(".visual-viewer__stage"), {
+      clientWidth: { value: 900 },
+      clientHeight: { value: 600 },
+    });
     await waitFor(() => expect(screen.getByText("diagram")).toBeVisible());
     const scaleLabel = screen.getByText("架构图").nextElementSibling;
     await waitFor(() => expect(scaleLabel).not.toHaveTextContent("100%"));

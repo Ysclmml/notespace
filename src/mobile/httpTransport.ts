@@ -22,6 +22,8 @@ const MAX_SAVED_COMPUTERS = 30;
 const MAX_SEARCH_QUERY_CHARACTERS = 512;
 const MAX_FILE_FILTER_CHARACTERS = 256;
 const SAVED_COMPUTERS_KEY = "notespace.mobile.debug-http.computers.v1";
+const HIDDEN_COMPUTERS_KEY = "notespace.mobile.hidden-addresses.v1";
+const MAX_IMAGE_BYTES = 16 * 1024 * 1024;
 const OPAQUE_ID_PATTERN = /^[A-Za-z0-9._~-]{1,256}$/;
 
 type FetchImplementation = (
@@ -428,7 +430,16 @@ function computerId(address: string): string {
 
 function storedComputerId(value: unknown, address: string): string | null {
   if (value === undefined) return computerId(address);
-  if (value === computerId(address)) return value;
+  // An edited address must not change the key of offline content and recents.
+  if (typeof value === "string" && value.startsWith("debug-http:")) {
+    try {
+      return computerId(normalizeDebugHttpBaseUrl(value.slice(11)).address) === value
+        ? value
+        : null;
+    } catch {
+      return null;
+    }
+  }
   return typeof value === "string" && /^debug-service:[a-f0-9]{16}$/.test(value)
     ? computerId(address)
     : null;
@@ -489,6 +500,7 @@ export class DebugHttpMobileTransport implements MobileTransport {
   private readonly workspaceNames = new Map<string, string>();
   private connectedBaseUrl: string | undefined;
   private connectionAttempt = 0;
+  private readonly hiddenAddresses = new Set<string>();
 
   constructor({
     fetch: fetchImplementation = globalThis.fetch.bind(globalThis),
@@ -502,6 +514,16 @@ export class DebugHttpMobileTransport implements MobileTransport {
     this.discovery = discovery;
     this.timeoutMs = Math.min(60_000, Math.max(250, Math.round(timeoutMs)));
     this.now = now;
+    try {
+      const hidden: unknown = JSON.parse(storage?.getItem(HIDDEN_COMPUTERS_KEY) ?? "[]");
+      if (Array.isArray(hidden)) {
+        for (const address of hidden.slice(0, MAX_SAVED_COMPUTERS)) {
+          if (typeof address === "string") this.hiddenAddresses.add(address);
+        }
+      }
+    } catch {
+      // A malformed local preference does not prevent manual connections.
+    }
     for (const computer of this.readStoredComputers()) {
       this.knownComputers.set(computer.id, computer);
     }
@@ -526,6 +548,7 @@ export class DebugHttpMobileTransport implements MobileTransport {
     const merged = new Map(stored.map((computer) => [computer.id, computer]));
     this.connectionCandidates.clear();
     for (const { computer, candidates } of discovered) {
+      if (this.hiddenAddresses.has(computer.address)) continue;
       const existing =
         merged.get(computer.id) ??
         candidates
@@ -575,11 +598,15 @@ export class DebugHttpMobileTransport implements MobileTransport {
       try {
         const status = await this.status(normalized.baseUrl);
         const computer: MobileComputer = {
-          id: computerId(normalized.address),
+          id:
+            this.readStoredComputers().find((item) => item.address === normalized.address)
+              ?.id ?? computerId(normalized.address),
           name: status.serviceName,
           address: normalized.address,
         };
         this.knownComputers.set(computer.id, computer);
+        this.hiddenAddresses.delete(computer.address);
+        this.persistHiddenAddresses();
         this.persistKnownComputer(computer);
         return computer;
       } catch {
@@ -617,7 +644,7 @@ export class DebugHttpMobileTransport implements MobileTransport {
       try {
         const status = await this.status(candidate.baseUrl);
         if (attempt !== this.connectionAttempt) return;
-        const connectedId = computerId(candidate.address);
+        const connectedId = computer.id;
         const connectedComputer: MobileComputer = {
           ...computer,
           id: connectedId,
@@ -659,6 +686,61 @@ export class DebugHttpMobileTransport implements MobileTransport {
     this.setConnectionState({ kind: "disconnected", computer });
   }
 
+  async updateComputer(id: string, address: string): Promise<void> {
+    const computer = this.knownComputers.get(id);
+    if (!computer) throw new MobileTransportError("not-found", "没有找到这台电脑");
+    const normalized = normalizeDebugHttpBaseUrl(address);
+    if (
+      [...this.knownComputers.values()].some(
+        (item) => item.id !== id && item.address === normalized.address,
+      )
+    ) {
+      throw new MobileTransportError("unavailable", "这个地址已有连接，请使用已有连接");
+    }
+    if (this.state.computer?.id === id) await this.disconnect();
+    this.hiddenAddresses.add(computer.address);
+    this.hiddenAddresses.delete(normalized.address);
+    this.persistHiddenAddresses();
+    const updated = { ...computer, address: normalized.address };
+    this.connectionCandidates.delete(id);
+    this.knownComputers.set(id, updated);
+    this.persistKnownComputer(updated);
+  }
+
+  async removeComputer(id: string): Promise<void> {
+    const computer = this.knownComputers.get(id);
+    if (!computer) return;
+    if (this.state.computer?.id === id) {
+      await this.disconnect();
+      this.setConnectionState({ kind: "disconnected" });
+    }
+    this.hiddenAddresses.add(computer.address);
+    for (const candidate of this.connectionCandidates.get(id) ?? []) {
+      this.hiddenAddresses.add(candidate.address);
+    }
+    this.persistHiddenAddresses();
+    this.knownComputers.delete(id);
+    this.connectionCandidates.delete(id);
+    this.storage?.setItem(
+      SAVED_COMPUTERS_KEY,
+      JSON.stringify(this.readStoredComputers().filter((item) => item.id !== id)),
+    );
+  }
+
+  private persistHiddenAddresses(): void {
+    while (this.hiddenAddresses.size > MAX_SAVED_COMPUTERS) {
+      this.hiddenAddresses.delete(this.hiddenAddresses.values().next().value!);
+    }
+    try {
+      this.storage?.setItem(
+        HIDDEN_COMPUTERS_KEY,
+        JSON.stringify([...this.hiddenAddresses]),
+      );
+    } catch {
+      // Discovery suppression remains active for this run if storage is full.
+    }
+  }
+
   async listWorkspaces(): Promise<readonly MobileWorkspace[]> {
     const workspaces = await this.connectedRequest("/workspaces", normalizeWorkspaces);
     this.workspaceNames.clear();
@@ -690,6 +772,91 @@ export class DebugHttpMobileTransport implements MobileTransport {
       normalizeDocument,
       "文档不存在或已停止共享",
     );
+  }
+
+  async readImage(
+    documentId: string,
+    reference: string,
+    signal: AbortSignal,
+  ): Promise<Blob> {
+    if (signal.aborted) throw new DOMException("Image canceled", "AbortError");
+    if (!reference || reference.length > 4096 || hasUnsafeCharacters(reference)) {
+      throw new MobileTransportError("unavailable", "图片地址无效");
+    }
+    if (/^[a-z][a-z0-9+.-]*:/i.test(reference) || reference.startsWith("//")) {
+      throw new MobileTransportError(
+        "unavailable",
+        "请将图片放在当前共享工作区，暂不加载外部图片地址",
+      );
+    }
+    const attempt = this.connectionAttempt;
+    const assetId = await this.connectedRequest(
+      "/assets/resolve",
+      (value) => opaqueId(asRecord(value).assetId),
+      "图片不存在或未共享",
+      {
+        method: "POST",
+        body: JSON.stringify({ documentId: opaqueId(documentId), reference }),
+      },
+    );
+    if (signal.aborted || attempt !== this.connectionAttempt || !this.connectedBaseUrl) {
+      throw new DOMException("Image canceled", "AbortError");
+    }
+    const controller = new AbortController();
+    const cancel = () => controller.abort();
+    signal.addEventListener("abort", cancel, { once: true });
+    const timeout = setTimeout(cancel, this.timeoutMs);
+    this.activeControllers.add(controller);
+    try {
+      const response = await this.fetchImplementation(
+        `${this.connectedBaseUrl}/assets/${assetId}`,
+        {
+          signal: controller.signal,
+          cache: "no-store",
+          credentials: "omit",
+          redirect: "error",
+          referrerPolicy: "no-referrer",
+        },
+      );
+      const type = response.headers.get("content-type")?.split(";", 1)[0]?.trim();
+      if (
+        !response.ok ||
+        !type ||
+        !/^image\/(png|jpeg|gif|webp|bmp|x-icon|svg\+xml)$/.test(type)
+      ) {
+        throw new MobileTransportError("unavailable", "图片不存在或格式暂不支持");
+      }
+      if (Number(response.headers.get("content-length")) > MAX_IMAGE_BYTES) {
+        await response.body?.cancel();
+        throw new MobileTransportError("unavailable", "图片超过 16 MiB，无法加载");
+      }
+      const reader = response.body?.getReader();
+      if (!reader) throw new MobileTransportError("unavailable", "图片内容为空");
+      const parts: ArrayBuffer[] = [];
+      let length = 0;
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        length += value.byteLength;
+        if (length > MAX_IMAGE_BYTES) {
+          await reader.cancel();
+          throw new MobileTransportError("unavailable", "图片超过 16 MiB，无法加载");
+        }
+        parts.push(value.slice().buffer);
+      }
+      if (
+        signal.aborted ||
+        controller.signal.aborted ||
+        attempt !== this.connectionAttempt
+      ) {
+        throw new DOMException("Image canceled", "AbortError");
+      }
+      return new Blob(parts, { type });
+    } finally {
+      clearTimeout(timeout);
+      signal.removeEventListener("abort", cancel);
+      this.activeControllers.delete(controller);
+    }
   }
 
   async search(request: MobileSearchRequest): Promise<readonly MobileSearchResult[]> {
