@@ -27,6 +27,7 @@ import {
   blockquoteKeymap,
   codeBlockKeymap,
   emphasisKeymap,
+  emphasisStarInputRule,
   headingKeymap,
   imageSchema,
   inlineCodeKeymap,
@@ -1754,6 +1755,11 @@ function VisualMarkdownEditorInstance({
         },
       },
     });
+
+    // Single stars are commonly multiplication operators in technical notes.
+    // Remove their typing shortcut before creation; keep Markdown parsing,
+    // explicit italic commands and the double-star bold rule.
+    void crepe.editor.remove(emphasisStarInputRule);
 
     // Formatting is routed through our live settings. Disable only the stock
     // formatting bindings, retaining heading deletion and other editing keys.

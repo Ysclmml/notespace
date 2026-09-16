@@ -2,8 +2,8 @@
 
 | 字段     | 值                                                                               |
 | -------- | -------------------------------------------------------------------------------- |
-| 状态     | Approved baseline 2.6（ADR-0029；安卓阅读导航与富媒体，0.2.4）                   |
-| 日期     | 2026-09-06                                                                       |
+| 状态     | Approved baseline 2.6（ADR-0029；安卓阅读导航与富媒体，0.2.5）                   |
+| 日期     | 2026-09-16                                                                       |
 | 首发平台 | macOS 桌面端；Android 移动阅读端优先                                             |
 | 技术栈   | React 19 + TypeScript + Milkdown/ProseMirror + CodeMirror 6 + Tauri 2 + Rust     |
 | 数据原则 | 本地 Markdown、文本与图片资源文件是唯一持久化真相；UI 投影和本机便利状态均可重建 |
@@ -226,6 +226,7 @@ NoteSpace（笔记空间）是一个“像 Typora 一样编辑、像浏览器一
 ### 4.1 Markdown 双表面
 
 - `normal` Markdown 默认 Milkdown/ProseMirror 可视编辑。标题、强调、引用、列表、链接、代码块、图片和 GFM 表格保持结构化视觉形态；光标或 composition 不自动展开标记。
+- 可视输入单星号不自动转换斜体，`Ab * a*`、`a*b*c` 等乘法表达式保留字面星号，包括列表和表格内。斜体仍通过格式菜单/快捷键设置；双星号粗体、行首星号加空格的列表入口和已有 Markdown 斜体解析保持。序列化按需转义字面星号，切换源码或保存重开后显示不变。
 - 用户通过工具栏或 `⌘/` 明确切到 CodeMirror 源码。切换不修改正文、不进 Undo、不标 dirty。
 - `sourceOnly` 是 Rust 预检决定的性能降级，强制 CodeMirror 并禁用可视切换；它与用户的 `visual/source` 选择不同。
 - 禁止恢复“活动块显示源码、非活动块显示 Widget”的旧 `livePreview.ts` 路线。
