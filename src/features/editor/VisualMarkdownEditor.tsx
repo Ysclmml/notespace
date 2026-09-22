@@ -1813,6 +1813,8 @@ function VisualMarkdownEditorInstance({
             props: {
               attributes: () => ({
                 tabindex: "0",
+                autocapitalize: "off",
+                autocorrect: "off",
                 "aria-readonly": String(readOnlyRef.current),
               }),
             },

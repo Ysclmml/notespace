@@ -98,6 +98,11 @@ import {
 import { EditorGroupLayout } from "../../features/editor-groups/EditorGroupLayout";
 import { EditorGroupTabs } from "../../features/editor-groups/EditorGroupTabs";
 import {
+  closingDirtyDocumentIds,
+  tabsToClose,
+  type PendingCloseRequest,
+} from "../../features/editor-groups/tabClosing";
+import {
   EditorContextMenu,
   useEditorContextMenu,
   useNativeContextMenuPolicy,
@@ -237,17 +242,6 @@ interface WorkspaceRestoreRun {
   readonly promise: Promise<readonly (OpenWorkspaceState | null)[]>;
 }
 
-type PendingCloseRequest =
-  | {
-      readonly kind: "tab";
-      readonly tabId: string;
-      readonly dirtyPaths: readonly string[];
-    }
-  | {
-      readonly kind: "window";
-      readonly dirtyPaths: readonly string[];
-    };
-
 interface PendingWorkspaceDelete {
   readonly owner: WorkspaceSelection;
   readonly node: WorkspaceNode;
@@ -319,10 +313,6 @@ function withoutWorkspaceEntry(
 
 function tabHistoryEntries(tab: Tab) {
   return [tab.current, ...tab.back, ...tab.forward];
-}
-
-function tabReferencesDocument(tab: Tab, documentId: string): boolean {
-  return tabHistoryEntries(tab).some((entry) => entry.documentId === documentId);
 }
 
 function referencedDirtyDocumentIds(state: AppState): readonly string[] {
@@ -555,16 +545,25 @@ function trapConfirmationFocus(event: KeyboardEvent, button: HTMLButtonElement |
 function UnsavedCloseDialog({
   dirtyPaths,
   kind,
+  busy,
+  error,
   onCancel,
   onConfirm,
+  onDiscardOne,
+  onSave,
 }: {
   readonly dirtyPaths: readonly string[];
-  readonly kind: PendingCloseRequest["kind"];
+  readonly kind: "tab" | "tabs" | "window";
+  readonly busy: boolean;
+  readonly error: string | null;
   readonly onCancel: () => void;
   readonly onConfirm: () => void;
+  readonly onDiscardOne: () => void;
+  readonly onSave: (all: boolean) => void;
 }) {
   const { t } = useI18n();
   const cancelButtonRef = useRef<HTMLButtonElement>(null);
+  const [reviewing, setReviewing] = useState(false);
 
   useEffect(() => {
     const returnFocus =
@@ -579,7 +578,7 @@ function UnsavedCloseDialog({
     window.addEventListener("keydown", handleKeyDown);
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
-      returnFocus?.focus();
+      if (returnFocus?.isConnected) returnFocus.focus({ preventScroll: true });
     };
   }, [onCancel]);
 
@@ -602,10 +601,19 @@ function UnsavedCloseDialog({
         <div className="confirmation-dialog__body">
           <p style={{ margin: "0 0 14px", lineHeight: 1.6 }}>
             {t(
-              kind === "window" ? "closeConfirm.windowMessage" : "closeConfirm.tabMessage",
+              kind === "window"
+                ? "closeConfirm.windowMessage"
+                : kind === "tabs"
+                  ? "closeConfirm.tabsMessage"
+                  : "closeConfirm.tabMessage",
               { count: dirtyPaths.length },
             )}
           </p>
+          {reviewing && dirtyPaths[0] && (
+            <p className="confirmation-dialog__path">
+              {t("closeConfirm.currentFile", { path: dirtyPaths[0] })}
+            </p>
+          )}
           <ul
             style={{
               maxHeight: 180,
@@ -621,20 +629,49 @@ function UnsavedCloseDialog({
               </li>
             ))}
           </ul>
+          {error && <p role="alert">{error}</p>}
         </div>
         <footer className="settings-dialog__footer confirmation-dialog__footer">
           <button
             className="settings-reset-button"
+            disabled={busy}
             onClick={onCancel}
             ref={cancelButtonRef}
             type="button"
           >
             {t("common.cancel")}
           </button>
-          <button className="primary-button" onClick={onConfirm} type="button">
+          <button
+            className="secondary-button"
+            disabled={busy}
+            onClick={reviewing ? onDiscardOne : onConfirm}
+            type="button"
+          >
             {t(
-              kind === "window" ? "closeConfirm.discardWindow" : "closeConfirm.discardTab",
+              reviewing
+                ? "closeConfirm.skipFile"
+                : kind === "window"
+                  ? "closeConfirm.discardWindow"
+                  : kind === "tabs"
+                    ? "closeConfirm.discardTabs"
+                    : "closeConfirm.discardTab",
             )}
+          </button>
+          <button
+            className="secondary-button"
+            disabled={busy || dirtyPaths.length === 0}
+            onClick={() => (reviewing ? onSave(false) : setReviewing(true))}
+            type="button"
+          >
+            {t(reviewing ? "closeConfirm.saveFile" : "closeConfirm.review")}
+          </button>
+          <button
+            className="primary-button"
+            disabled={busy}
+            onClick={() => onSave(true)}
+            type="button"
+          >
+            {t(busy ? "closeConfirm.saving" : "closeConfirm.saveAll")}
           </button>
         </footer>
       </section>
@@ -1029,6 +1066,9 @@ export function AppShell({
   const [moreMenuVisible, setMoreMenuVisible] = useState(false);
   const [pendingCloseRequest, setPendingCloseRequest] =
     useState<PendingCloseRequest | null>(null);
+  const [closeSaveBusy, setCloseSaveBusy] = useState(false);
+  const [closeSaveError, setCloseSaveError] = useState<string | null>(null);
+  const closeSaveRunningRef = useRef(false);
   const [pendingWorkspaceDelete, setPendingWorkspaceDelete] =
     useState<PendingWorkspaceDelete | null>(null);
 
@@ -1457,11 +1497,10 @@ export function AppShell({
     if (dirtyDocumentIds.length > 0) {
       setPendingCloseRequest({
         kind: "window",
-        dirtyPaths: dirtyDocumentIds.flatMap((documentId) => {
-          const session = state.sessions[documentId];
-          return session ? [session.path] : [];
-        }),
+        tabIds: [...state.tabOrder],
+        discardedTexts: new Map(),
       });
+      setCloseSaveError(null);
       return;
     }
     destroyNativeWindow();
@@ -3296,48 +3335,86 @@ export function AppShell({
     [closeLocalPreview, commitAction, setEditorRevealForTab, t],
   );
 
-  const closeTab = useCallback(
-    (tab: Tab) => {
-      const state = appStateRef.current;
-      const currentTab = state.tabs[tab.id] ?? tab;
-      const dirtyDocumentIds = tabDirtyDocumentIds(state, currentTab).filter(
-        (documentId) =>
-          !state.tabOrder.some((tabId) => {
-            const otherTab = state.tabs[tabId];
-            if (tabId === currentTab.id || !otherTab) return false;
-            return tabReferencesDocument(otherTab, documentId);
-          }),
-      );
-      if (dirtyDocumentIds.length > 0) {
-        setPendingCloseRequest({
-          kind: "tab",
-          tabId: currentTab.id,
-          dirtyPaths: dirtyDocumentIds.flatMap((documentId) => {
-            const session = state.sessions[documentId];
-            return session ? [session.path] : [];
-          }),
-        });
-        return;
-      }
-      commitTabClose(currentTab.id);
+  const finishCloseRequest = useCallback(
+    (request: PendingCloseRequest) => {
+      setPendingCloseRequest(null);
+      setCloseSaveError(null);
+      if (request.kind === "window") destroyNativeWindow();
+      else for (const tabId of request.tabIds) commitTabClose(tabId);
     },
-    [commitTabClose],
+    [commitTabClose, destroyNativeWindow],
+  );
+
+  const requestTabClose = useCallback(
+    (tabIds: readonly string[]) => {
+      if (confirmationPendingRef.current || closeSaveRunningRef.current) return;
+      const request: PendingCloseRequest = {
+        kind: "tabs",
+        tabIds,
+        discardedTexts: new Map(),
+      };
+      setCloseSaveError(null);
+      if (closingDirtyDocumentIds(appStateRef.current, request).length > 0) {
+        setPendingCloseRequest(request);
+      } else finishCloseRequest(request);
+    },
+    [finishCloseRequest],
   );
 
   const cancelPendingClose = useCallback(() => {
+    if (closeSaveRunningRef.current) return;
     setPendingCloseRequest(null);
+    setCloseSaveError(null);
   }, []);
 
   const confirmPendingClose = useCallback(() => {
-    const request = pendingCloseRequest;
-    if (!request) return;
-    setPendingCloseRequest(null);
-    if (request.kind === "window") {
-      destroyNativeWindow();
-      return;
-    }
-    commitTabClose(request.tabId);
-  }, [commitTabClose, destroyNativeWindow, pendingCloseRequest]);
+    if (pendingCloseRequest && !closeSaveRunningRef.current)
+      finishCloseRequest(pendingCloseRequest);
+  }, [finishCloseRequest, pendingCloseRequest]);
+
+  const discardPendingCloseOne = useCallback(() => {
+    if (!pendingCloseRequest || closeSaveRunningRef.current) return;
+    const state = appStateRef.current;
+    const id = closingDirtyDocumentIds(state, pendingCloseRequest)[0];
+    const discardedTexts = new Map(pendingCloseRequest.discardedTexts);
+    const session = id ? state.sessions[id] : undefined;
+    if (session) discardedTexts.set(session.id, session.text);
+    const next = { ...pendingCloseRequest, discardedTexts };
+    setCloseSaveError(null);
+    if (closingDirtyDocumentIds(state, next).length === 0) finishCloseRequest(next);
+    else setPendingCloseRequest(next);
+  }, [finishCloseRequest, pendingCloseRequest]);
+
+  const savePendingClose = useCallback(
+    async (all: boolean) => {
+      const request = pendingCloseRequest;
+      if (!request || closeSaveRunningRef.current) return;
+      closeSaveRunningRef.current = true;
+      setCloseSaveBusy(true);
+      setCloseSaveError(null);
+      try {
+        do {
+          const id = closingDirtyDocumentIds(appStateRef.current, request)[0];
+          if (!id) break;
+          const savedId = await saveActiveDocument(false, id);
+          if (externalSyncRef.current.disposed) return;
+          // Save As may migrate the ID. Cancellation, errors and later edits
+          // must all keep the entire requested set of tabs open.
+          const session = appStateRef.current.sessions[savedId ?? id];
+          if (!session || session.dirty) {
+            setCloseSaveError(t("closeConfirm.saveIncomplete"));
+            return;
+          }
+        } while (all);
+        if (closingDirtyDocumentIds(appStateRef.current, request).length === 0)
+          finishCloseRequest(request);
+      } finally {
+        closeSaveRunningRef.current = false;
+        if (!externalSyncRef.current.disposed) setCloseSaveBusy(false);
+      }
+    },
+    [finishCloseRequest, pendingCloseRequest, saveActiveDocument, t],
+  );
 
   const loadLocalPreview = async (
     reference: string,
@@ -4744,9 +4821,11 @@ export function AppShell({
                     commitAction(activateTab(tabId));
                   }}
                   onClose={(tabId) => {
-                    const tab = appStateRef.current.tabs[tabId];
-                    if (tab) closeTab(tab);
+                    requestTabClose([tabId]);
                   }}
+                  onCloseMultiple={(tabId, scope) =>
+                    requestTabClose(tabsToClose(appStateRef.current, tabId, scope))
+                  }
                   onNew={() => newDocument("markdown", group.id)}
                   onKeepOpen={(tabId) => commitAction(keepTabOpen(tabId))}
                   onSplitRight={(tabId) =>
@@ -4771,6 +4850,9 @@ export function AppShell({
                     keepOpen: t("tabs.keepOpen"),
                     moveTo: (label) => t("tabs.moveToGroup", { group: label }),
                     close: t("common.close"),
+                    closeAll: t("tabs.closeAll"),
+                    closeLeft: t("tabs.closeLeft"),
+                    closeRight: t("tabs.closeRight"),
                   }}
                 />
               )}
@@ -5058,10 +5140,22 @@ export function AppShell({
       )}
       {pendingCloseRequest && (
         <UnsavedCloseDialog
-          dirtyPaths={pendingCloseRequest.dirtyPaths}
-          kind={pendingCloseRequest.kind}
+          dirtyPaths={closingDirtyDocumentIds(appState, pendingCloseRequest).flatMap(
+            (id) => (appState.sessions[id] ? [appState.sessions[id].path] : []),
+          )}
+          kind={
+            pendingCloseRequest.kind === "window"
+              ? "window"
+              : pendingCloseRequest.tabIds.length === 1
+                ? "tab"
+                : "tabs"
+          }
+          busy={closeSaveBusy}
+          error={closeSaveError ? (saveFailure?.error ?? closeSaveError) : null}
           onCancel={cancelPendingClose}
           onConfirm={confirmPendingClose}
+          onDiscardOne={discardPendingCloseOne}
+          onSave={(all) => void savePendingClose(all)}
         />
       )}
       {pendingWorkspaceDelete && (

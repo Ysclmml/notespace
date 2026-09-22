@@ -18,6 +18,9 @@ const labels: EditorGroupTabsProps["labels"] = {
   moveTo: (label) => `Move to ${label}`,
   keepOpen: "Keep open",
   close: "Close tab",
+  closeAll: "Close all tabs",
+  closeLeft: "Close tabs to the left",
+  closeRight: "Close tabs to the right",
 };
 
 function props(overrides: Partial<EditorGroupTabsProps> = {}): EditorGroupTabsProps {
@@ -37,6 +40,7 @@ function props(overrides: Partial<EditorGroupTabsProps> = {}): EditorGroupTabsPr
     draggedTabId: null,
     onActivate: vi.fn(),
     onClose: vi.fn(),
+    onCloseMultiple: vi.fn(),
     onNew: vi.fn(),
     onSplitRight: vi.fn(),
     onMove: vi.fn(),
@@ -46,6 +50,36 @@ function props(overrides: Partial<EditorGroupTabsProps> = {}): EditorGroupTabsPr
     ...overrides,
   };
 }
+
+it.each(["all", "left", "right"] as const)(
+  "routes %s close from the clicked, inactive tab",
+  (scope) => {
+    const input = props();
+    render(<EditorGroupTabs {...input} />);
+    fireEvent.contextMenu(screen.getByTitle("C:\\notes\\beta.py"));
+    const label =
+      scope === "all"
+        ? labels.closeAll
+        : scope === "left"
+          ? labels.closeLeft
+          : labels.closeRight;
+    fireEvent.click(screen.getByRole("menuitem", { name: label }));
+    expect(input.onCloseMultiple).toHaveBeenCalledExactlyOnceWith("b", scope);
+    expect(input.onActivate).not.toHaveBeenCalled();
+  },
+);
+
+it("disables empty left/right ranges and skips disabled actions with the keyboard", () => {
+  render(<EditorGroupTabs {...props()} />);
+  fireEvent.contextMenu(screen.getByTitle("/notes/alpha.md"));
+  expect(screen.getByRole("menuitem", { name: labels.closeLeft })).toBeDisabled();
+  screen.getByRole("menuitem", { name: labels.close }).focus();
+  fireEvent.keyDown(document.activeElement!, { key: "ArrowDown" });
+  expect(screen.getByRole("menuitem", { name: labels.closeRight })).toHaveFocus();
+  fireEvent.keyDown(document.activeElement!, { key: "Escape" });
+  fireEvent.contextMenu(screen.getByTitle("/notes/gamma.json"));
+  expect(screen.getByRole("menuitem", { name: labels.closeRight })).toBeDisabled();
+});
 
 function transfer(initial: Record<string, string> = {}) {
   const data = new Map(Object.entries(initial));
@@ -174,10 +208,10 @@ describe("EditorGroupTabs", () => {
     fireEvent.keyDown(menu, { key: "ArrowDown" });
     expect(screen.getByRole("menuitem", { name: labels.keepOpen })).toHaveFocus();
     fireEvent.keyDown(document.activeElement as HTMLElement, { key: "End" });
-    expect(screen.getByRole("menuitem", { name: labels.close })).toHaveFocus();
+    expect(screen.getByRole("menuitem", { name: labels.closeAll })).toHaveFocus();
     fireEvent.keyDown(document.activeElement as HTMLElement, { key: "Home" });
     fireEvent.keyDown(document.activeElement as HTMLElement, { key: "ArrowUp" });
-    expect(screen.getByRole("menuitem", { name: labels.close })).toHaveFocus();
+    expect(screen.getByRole("menuitem", { name: labels.closeAll })).toHaveFocus();
     fireEvent.keyDown(menu, { key: "Escape" });
     expect(screen.queryByRole("menu")).not.toBeInTheDocument();
     expect(target).toHaveFocus();

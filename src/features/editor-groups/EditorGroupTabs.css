@@ -97,7 +97,12 @@
   white-space: nowrap;
 }
 
-.editor-group-tab-menu button:hover,
+.editor-group-tab-menu button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.editor-group-tab-menu button:hover:not(:disabled),
 .editor-group-tab-menu button:focus-visible {
   color: #fff;
   background: #4c82e8;

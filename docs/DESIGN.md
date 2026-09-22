@@ -2,8 +2,8 @@
 
 | 字段     | 值                                                                               |
 | -------- | -------------------------------------------------------------------------------- |
-| 状态     | Approved baseline 2.6（ADR-0029；安卓阅读导航与富媒体，0.2.5）                   |
-| 日期     | 2026-09-16                                                                       |
+| 状态     | Approved baseline 2.7（ADR-0030；批量关闭与保存选择）                            |
+| 日期     | 2026-09-22                                                                       |
 | 首发平台 | macOS 桌面端；Android 移动阅读端优先                                             |
 | 技术栈   | React 19 + TypeScript + Milkdown/ProseMirror + CodeMirror 6 + Tauri 2 + Rust     |
 | 数据原则 | 本地 Markdown、文本与图片资源文件是唯一持久化真相；UI 投影和本机便利状态均可重建 |
@@ -13,6 +13,10 @@
 导航规则由 [ADR-0012](decisions/0012-markdown-link-policy-and-window-navigation.md) 更新：普通 Markdown 链接按当前标签是否固定选择新页/原位，工具栏前进/后退使用窗口级跨标签访问轨迹。[ADR-0013](decisions/0013-browsing-restore-and-unified-editor-panes.md) 进一步取代旧的独立右侧只读栏、分屏复制标签和不恢复浏览元数据边界。[ADR-0014](decisions/0014-external-filesystem-changes.md) 接受轻量外部文件监听、重载与版本检查，取代“外部修改后置”。[ADR-0015](decisions/0015-workspace-clipboard-images.md) 接受每工作区截图位置、剪贴板兼容和本地图片单文件授权；冲突时以最新适用 ADR 和当前 baseline 2.4 为准。
 
 ## 1. 产品定义
+
+[ADR-0030](decisions/0030-batch-tab-close-and-save.md) 增加标签右键批量关闭：全部覆盖当前窗口，左右以所选标签所在组为界且保留该标签。未保存文档按最后引用去重，支持逐个保存/不保存或全部保存；所有必要处理完成后才关闭整批。取消、保存失败、另存为取消、外部冲突及保存期间再次编辑均保留标签和未保存正文；已成功的保存不回滚。窗口退出复用这些选择，冲突以 baseline 2.7 和最新适用 ADR 为准。
+
+正文输入保留用户输入的大小写：可视正文显式关闭系统自动首字母大写和自动纠正，与源码及代码编辑区一致；不改变用户手动输入的大写或已有正文。
 
 [ADR-0029](decisions/0029-mobile-reading-navigation-and-media.md) 完成安卓阅读菜单、分层返回与首页双返回退出、共享工作区内 Markdown/锚点跳转、连接地址修改/删除，以及按需加载的图片和本地 Mermaid 渲染。链接返回只保留内存最近 8 篇及各自位置；修改地址保留连接身份，删除不清除离线正文。图片包含以惰性 `<img>` 展示的 SVG，仍限制共享根和 16 MiB；离线快照不存图片。图像查看器支持双指缩放和单指平移，关闭恢复原位置。原始 HTML 和普通代码仍保持字面文本。冲突以 baseline 2.6 和最新适用 ADR 为准。
 
@@ -838,3 +842,4 @@ ADR-0011 接受扁平水平编辑分组；ADR-0013 将右侧引用统一为普�
 - [ADR-0025：普通构建的局域网阅读与移动离线快照](decisions/0025-lan-offline-reader.md)
 - [ADR-0029：安卓阅读导航、连接管理与富媒体](decisions/0029-mobile-reading-navigation-and-media.md)
 - [ADR-0026：数学分隔符兼容与跨表面一致渲染](decisions/0026-math-delimiter-compatibility.md)
+- [ADR-0030：批量关闭标签与保存选择](decisions/0030-batch-tab-close-and-save.md)

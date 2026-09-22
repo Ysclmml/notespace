@@ -82,6 +82,14 @@ function typeText(view: EditorView, text: string) {
   }
 }
 
+it("opts out of automatic capitalization and correction without changing typed case", async () => {
+  const { view } = await renderEditor("");
+  expect(view.dom).toHaveAttribute("autocapitalize", "off");
+  expect(view.dom).toHaveAttribute("autocorrect", "off");
+  typeText(view, "algorithm. next MixedCASE");
+  expect(view.state.doc.textContent).toBe("algorithm. next MixedCASE");
+});
+
 it.each([
   { markdown: "- Ab * a", prefix: "Ab * a", suffix: "* b * c", selector: "li p" },
   { markdown: "Ab * a", prefix: "Ab * a", suffix: "* b * c", selector: "p" },
@@ -210,9 +218,12 @@ it("preserves typed stars through source mode and reopening serialized Markdown"
     container.querySelector<HTMLElement>(".cm-editor")!,
   )!;
   expect(source.state.doc.toString()).toBe(serialized);
+  expect(source.contentDOM).toHaveAttribute("autocapitalize", "off");
+  expect(source.contentDOM).toHaveAttribute("autocorrect", "off");
   onChange.mockClear();
   fireEvent.click(getByText("Toggle"));
   expect(findView(container)).toBe(view);
+  expect(view.dom).toHaveAttribute("autocapitalize", "off");
   expect(view.dom.querySelector("li p")).toHaveTextContent("a*b*c");
   expect(view.dom.querySelector("em")).toBeNull();
   expect(onChange).not.toHaveBeenCalled();

@@ -9,6 +9,7 @@ import {
 import { createPortal } from "react-dom";
 
 import { PlusIcon } from "../../app/shell/icons";
+import type { TabCloseScope } from "./tabClosing";
 import "./EditorGroupTabs.css";
 
 export const TAB_DRAG_MIME = "application/x-notespace-tab";
@@ -28,6 +29,7 @@ export interface EditorGroupTabsProps {
   readonly onDragTabChange: (id: string | null) => void;
   readonly onActivate: (tabId: string) => void;
   readonly onClose: (tabId: string) => void;
+  readonly onCloseMultiple: (tabId: string, scope: TabCloseScope) => void;
   readonly onNew: () => void;
   readonly onSplitRight: (tabId: string) => void;
   readonly onMove: (tabId: string, targetGroupId: string, beforeTabId?: string) => void;
@@ -43,6 +45,9 @@ export interface EditorGroupTabsProps {
     readonly moveTo: (label: string) => string;
     readonly keepOpen: string;
     readonly close: string;
+    readonly closeAll: string;
+    readonly closeLeft: string;
+    readonly closeRight: string;
   };
 }
 
@@ -56,6 +61,7 @@ interface TabMenu {
 
 interface MenuAction {
   readonly label: string;
+  readonly disabled?: boolean;
   readonly run: () => void;
 }
 
@@ -81,7 +87,8 @@ function TabContextMenu({
       x: Math.max(8, Math.min(menu.x, window.innerWidth - bounds.width - 8)),
       y: Math.max(8, Math.min(menu.y, window.innerHeight - bounds.height - 8)),
     });
-    if (menu.keyboard) element.querySelector<HTMLButtonElement>("button")?.focus();
+    if (menu.keyboard)
+      element.querySelector<HTMLButtonElement>("button:not(:disabled)")?.focus();
     else element.focus({ preventScroll: true });
   }, [menu]);
 
@@ -127,7 +134,7 @@ function TabContextMenu({
         event.preventDefault();
         event.stopPropagation();
         const items = Array.from(
-          event.currentTarget.querySelectorAll<HTMLButtonElement>("button"),
+          event.currentTarget.querySelectorAll<HTMLButtonElement>("button:not(:disabled)"),
         );
         const current = items.indexOf(document.activeElement as HTMLButtonElement);
         const next =
@@ -156,6 +163,7 @@ function TabContextMenu({
             )}
             {group.map((action) => (
               <button
+                disabled={action.disabled}
                 key={action.label}
                 onClick={() => {
                   onClose();
@@ -189,6 +197,7 @@ export function EditorGroupTabs({
   onDragTabChange,
   onActivate,
   onClose,
+  onCloseMultiple,
   onNew,
   onSplitRight,
   onMove,
@@ -373,7 +382,20 @@ export function EditorGroupTabs({
                 label: labels.moveTo(destination.label),
                 run: () => onMove(menu.tabId, destination.id),
               })),
-            [{ label: labels.close, run: () => onClose(menu.tabId) }],
+            [
+              { label: labels.close, run: () => onClose(menu.tabId) },
+              {
+                label: labels.closeLeft,
+                disabled: tabs[0]?.id === menu.tabId,
+                run: () => onCloseMultiple(menu.tabId, "left"),
+              },
+              {
+                label: labels.closeRight,
+                disabled: tabs.at(-1)?.id === menu.tabId,
+                run: () => onCloseMultiple(menu.tabId, "right"),
+              },
+              { label: labels.closeAll, run: () => onCloseMultiple(menu.tabId, "all") },
+            ],
           ]}
           label={labels.tabActions}
           menu={menu}

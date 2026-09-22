@@ -1414,37 +1414,46 @@ describe("AppShell", () => {
     );
   });
 
-  it("keeps hidden history dirty state visible and can still close the native app", async () => {
-    const { container } = renderShell(
-      <AppShell adapter={new NativeAnchorDesktopAdapter()} />,
-    );
-    await waitFor(() => expect(nativeWindowTestState.closeListeners).toHaveLength(1));
-    fireEvent.click(screen.getAllByRole("button", { name: "打开工作区" })[0]!);
-    fireEvent.click(await screen.findByRole("button", { name: /^example\.py/ }));
-    const editor = await screen.findByLabelText("代码编辑器");
-    const view = await waitFor(() => {
-      const mountedView = EditorView.findFromDOM(editor);
-      if (!mountedView) throw new Error("Text editor view was not mounted");
-      return mountedView;
-    });
-    view.dispatch({ changes: { from: view.state.doc.length, insert: "\nchanged" } });
-    await waitFor(() => expect(container.querySelector(".tab-rail__dirty")).toBeTruthy());
+  it.each(["放弃更改并退出", "全部保存并关闭"])(
+    "handles hidden history when closing the native app with %s",
+    async (action) => {
+      const adapter = new NativeAnchorDesktopAdapter();
+      const save = vi.spyOn(adapter, "saveDocument");
+      const { container } = renderShell(<AppShell adapter={adapter} />);
+      await waitFor(() => expect(nativeWindowTestState.closeListeners).toHaveLength(1));
+      fireEvent.click(screen.getAllByRole("button", { name: "打开工作区" })[0]!);
+      fireEvent.click(await screen.findByRole("button", { name: /^example\.py/ }));
+      const editor = await screen.findByLabelText("代码编辑器");
+      const view = await waitFor(() => {
+        const mountedView = EditorView.findFromDOM(editor);
+        if (!mountedView) throw new Error("Text editor view was not mounted");
+        return mountedView;
+      });
+      view.dispatch({ changes: { from: view.state.doc.length, insert: "\nchanged" } });
+      await waitFor(() => expect(container.querySelector(".tab-rail__dirty")).toBeTruthy());
 
-    fireEvent.click(screen.getByRole("button", { name: /^other\.md/ }));
-    await screen.findByTitle("/workspace/other.md");
-    expect(container.querySelector(".tab-rail__dirty")).toBeTruthy();
+      fireEvent.click(screen.getByRole("button", { name: /^other\.md/ }));
+      await screen.findByTitle("/workspace/other.md");
+      expect(container.querySelector(".tab-rail__dirty")).toBeTruthy();
 
-    const preventDefault = vi.fn();
-    nativeWindowTestState.closeListeners[0]?.({ preventDefault });
-    const dialog = await screen.findByRole("alertdialog", {
-      name: "有未保存的更改",
-    });
-    expect(within(dialog).getByText("example.py")).toBeVisible();
-    fireEvent.click(within(dialog).getByRole("button", { name: "放弃更改并退出" }));
+      const preventDefault = vi.fn();
+      nativeWindowTestState.closeListeners[0]?.({ preventDefault });
+      const dialog = await screen.findByRole("alertdialog", {
+        name: "有未保存的更改",
+      });
+      expect(within(dialog).getByText("example.py")).toBeVisible();
+      fireEvent.click(within(dialog).getByRole("button", { name: action }));
 
-    expect(preventDefault).toHaveBeenCalledOnce();
-    await waitFor(() => expect(nativeWindowTestState.destroy).toHaveBeenCalledOnce());
-  });
+      expect(preventDefault).toHaveBeenCalledOnce();
+      await waitFor(() => expect(nativeWindowTestState.destroy).toHaveBeenCalledOnce());
+      if (action === "全部保存并关闭") {
+        expect(save).toHaveBeenCalledWith(
+          "/workspace/example.py",
+          expect.stringContaining("changed"),
+        );
+      } else expect(save).not.toHaveBeenCalled();
+    },
+  );
 
   it("destroys a clean native Tauri window after intercepting its close request", async () => {
     renderShell(<AppShell adapter={new NativeAnchorDesktopAdapter()} />);
